@@ -24,8 +24,7 @@ PGP Converter is a web-based tool that enables users to encrypt and decrypt text
 PGP Converter offers:
 
 - Easy-to-use PGP encryption and decryption
-- Secure implementation using Web Cryptography API
-- Client-side operations
+- Secure implementation using client-side operations
 - Cross-platform compatibility
 - Open-source code for transparency and contributions
 
@@ -46,7 +45,7 @@ The website is built using SvelteKit. Here's a brief overview of the main direct
 
 ## Security
 
-Security is paramount for PGP Converter. We use the Web Cryptography API for all cryptographic functions, and no data ever leaves your browser — all encryption and decryption is done client-side.
+Security is paramount for PGP Converter. No data ever leaves your browser — all encryption and decryption is done client-side.
 
 ## Building and Running Locally
 
