@@ -1,4 +1,4 @@
-import { w as head } from "../../../chunks/index.js";
+import { y as head } from "../../../chunks/index.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     head("1vby5nc", $$renderer2, ($$renderer3) => {

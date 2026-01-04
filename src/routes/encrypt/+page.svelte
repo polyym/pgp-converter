@@ -137,9 +137,10 @@
 
   <!-- Shortcuts Modal -->
   {#if showShortcuts}
-    <div class="shortcuts-overlay" onclick={() => showShortcuts = false} onkeydown={(e) => e.key === 'Escape' && (showShortcuts = false)} role="dialog" aria-modal="true" tabindex="-1">
-      <div class="shortcuts-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
-        <h3>Keyboard Shortcuts</h3>
+    <div class="shortcuts-overlay" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+      <button class="overlay-close" onclick={() => showShortcuts = false} aria-label="Close dialog"></button>
+      <div class="shortcuts-modal">
+        <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
         <div class="shortcut-list">
           <div class="shortcut-item">
             <span>Encrypt message</span>
@@ -757,7 +758,19 @@
     animation: fadeIn 0.15s ease;
   }
 
+  .overlay-close {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+
   .shortcuts-modal {
+    position: relative;
+    z-index: 1;
     width: 100%;
     max-width: 320px;
     padding: 24px;

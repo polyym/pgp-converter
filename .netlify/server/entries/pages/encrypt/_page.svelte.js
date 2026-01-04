@@ -1,6 +1,5 @@
-import { w as head, y as attr_class, x as attr } from "../../../chunks/index.js";
+import { y as head, z as escape_html, G as attr_class, F as attr } from "../../../chunks/index.js";
 import "openpgp";
-import { e as escape_html } from "../../../chunks/context.js";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let plaintext = "";

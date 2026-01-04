@@ -1,4 +1,4 @@
-import { w as head, x as attr, y as attr_class } from "../../../chunks/index.js";
+import { y as head, F as attr, G as attr_class } from "../../../chunks/index.js";
 import "openpgp";
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
