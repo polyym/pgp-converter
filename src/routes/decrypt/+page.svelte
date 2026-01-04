@@ -1,39 +1,25 @@
 <script lang="ts">
-  import * as openpgp from 'openpgp';
+  import { decryptMessage } from '$lib/decryption';
 
   let encrypted = '';
   let privateKey = '';
   let passphrase = '';
   let decrypted = '';
   let errorMessage = '';
-  let isLoading = false; // Added loading state
+  let isLoading = false;
 
-  async function decryptMessage() {
-    isLoading = true; // Set loading state to true
-    try {
-        const privateKeyObject = await openpgp.readKey({ armoredKey: privateKey });
-        const decryptedPrivateKey = await openpgp.decryptKey({
-            privateKey: privateKeyObject,
-            passphrase: passphrase
-        });
-
-        const message = await openpgp.readMessage({ armoredMessage: encrypted });
-        const options = {
-            message: message,
-            decryptionKeys: decryptedPrivateKey, // for decryption
-        };
-
-        const decryptedMessage = await openpgp.decrypt(options);
-        decrypted = decryptedMessage.data;
-        errorMessage = ''; // Clear any previous errors
-    } catch (e) {
-        console.error(e);
-        errorMessage = `Error decrypting message: ${e.message}`;
-        decrypted = ''; // Clear the decrypted message
-    } finally {
-        isLoading = false; // Reset loading state
-    }
-}
+  async function handleDecrypt() {
+      isLoading = true;
+      const result = await decryptMessage(encrypted, privateKey, passphrase);
+      if (result.success && result.data) {
+          decrypted = result.data;
+          errorMessage = '';
+      } else {
+          errorMessage = result.error || 'Unknown error occurred';
+          decrypted = '';
+      }
+      isLoading = false;
+  }
 </script>
 
 <main class="flex flex-col items-center font-sans bg-gray-900 text-gray-300 max-w-lg mx-auto p-4 min-h-screen">
@@ -50,7 +36,7 @@
       <label for="passphrase" class="block text-lg mb-2">Passphrase:</label>
       <input type="password" id="passphrase" bind:value={passphrase} placeholder="Enter your passphrase here..." class="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded" />
   </div>
-  <button class="my-4 px-4 py-2 text-lg text-white bg-blue-500 rounded cursor-pointer transition-colors duration-300 ease-out hover:bg-blue-700" on:click={decryptMessage} disabled={isLoading}>
+  <button class="my-4 px-4 py-2 text-lg text-white bg-blue-500 rounded cursor-pointer transition-colors duration-300 ease-out hover:bg-blue-700" on:click={handleDecrypt} disabled={isLoading}>
     {#if isLoading}
       Decrypting...
     {:else}

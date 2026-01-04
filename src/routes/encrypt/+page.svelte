@@ -1,30 +1,23 @@
 <script lang="ts">
-  import { readKey, encrypt, createMessage } from 'openpgp';
+  import { encryptMessage } from '$lib/encryption';
 
   let plaintext = '';
   let publicKey = '';
   let encrypted = '';
   let errorMessage = '';
-  let isLoading = false; // Added loading state
+  let isLoading = false;
 
-  async function encryptMessage() {
-      isLoading = true; // Set loading state to true
-      try {
-          const pubKeyObj = await readKey({ armoredKey: publicKey });
-          const message = await createMessage({ text: plaintext });
-          const encryptedMessage = await encrypt({
-              message: message,
-              encryptionKeys: pubKeyObj
-          });
-          encrypted = encryptedMessage;
-          errorMessage = ''; // Clear any previous errors
-      } catch (e) {
-          console.error(e);
-          errorMessage = `Error encrypting message: ${e.message}`;
-          encrypted = ''; // Clear the encrypted message
-      } finally {
-          isLoading = false; // Reset loading state
+  async function handleEncrypt() {
+      isLoading = true;
+      const result = await encryptMessage(plaintext, publicKey);
+      if (result.success && result.data) {
+          encrypted = result.data;
+          errorMessage = '';
+      } else {
+          errorMessage = result.error || 'Unknown error occurred';
+          encrypted = '';
       }
+      isLoading = false;
   }
 </script>
 
@@ -38,7 +31,7 @@
       <label for="publicKey" class="block text-lg mb-2">Public Key:</label>
       <textarea id="publicKey" bind:value={publicKey} placeholder="Enter your public key here..." class="w-full h-24 p-2 bg-gray-700 text-white border border-gray-600 rounded"></textarea>
   </div>
-  <button class="my-4 px-4 py-2 text-lg text-white bg-blue-500 rounded cursor-pointer transition-colors duration-300 ease-out hover:bg-blue-700" on:click={encryptMessage} disabled={isLoading}>
+  <button class="my-4 px-4 py-2 text-lg text-white bg-blue-500 rounded cursor-pointer transition-colors duration-300 ease-out hover:bg-blue-700" on:click={handleEncrypt} disabled={isLoading}>
     {#if isLoading}
       Encrypting...
     {:else}

@@ -24,6 +24,6 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"openpgp": "^5.8.0"
+		"openpgp": "^6.0.0"
 	}
 }
