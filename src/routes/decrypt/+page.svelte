@@ -139,8 +139,8 @@
 
   <!-- Shortcuts Modal -->
   {#if showShortcuts}
-    <div class="shortcuts-overlay" onclick={() => showShortcuts = false} role="dialog" aria-modal="true">
-      <div class="shortcuts-modal" onclick={(e) => e.stopPropagation()}>
+    <div class="shortcuts-overlay" onclick={() => showShortcuts = false} onkeydown={(e) => e.key === 'Escape' && (showShortcuts = false)} role="dialog" aria-modal="true" tabindex="-1">
+      <div class="shortcuts-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
         <h3>Keyboard Shortcuts</h3>
         <div class="shortcut-list">
           <div class="shortcut-item">

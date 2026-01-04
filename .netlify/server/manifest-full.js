@@ -7,16 +7,18 @@ function __memo(fn) {
 return {
 	appDir: "_app",
 	appPath: "_app",
-	assets: new Set(["body.css","pgp_key_icon.png"]),
+	assets: new Set(["body.css","old_pgp_key_icon.png","pgp_key_icon.png"]),
 	mimeTypes: {".css":"text/css",".png":"image/png"},
 	_: {
-		client: {start:"_app/immutable/entry/start.GfyTln3-.js",app:"_app/immutable/entry/app.BIy8neQW.js",imports:["_app/immutable/entry/start.GfyTln3-.js","_app/immutable/chunks/DiZCsdUp.js","_app/immutable/chunks/BSxgazJ1.js","_app/immutable/chunks/CA4SMY3K.js","_app/immutable/entry/app.BIy8neQW.js","_app/immutable/chunks/BSxgazJ1.js","_app/immutable/chunks/CzEOOxpE.js","_app/immutable/chunks/DfERk5ox.js","_app/immutable/chunks/CA4SMY3K.js","_app/immutable/chunks/8nD881Kp.js","_app/immutable/chunks/BBRshnga.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.BID4kfCZ.js",app:"_app/immutable/entry/app.Cju8IwGZ.js",imports:["_app/immutable/entry/start.BID4kfCZ.js","_app/immutable/chunks/6VXs-PN0.js","_app/immutable/chunks/Cis852S_.js","_app/immutable/chunks/C_agyyW5.js","_app/immutable/entry/app.Cju8IwGZ.js","_app/immutable/chunks/Cis852S_.js","_app/immutable/chunks/yo_XsYKl.js","_app/immutable/chunks/CQePt9EA.js","_app/immutable/chunks/C_agyyW5.js","_app/immutable/chunks/CR1Swj-b.js","_app/immutable/chunks/CNdnUJee.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
 			__memo(() => import('./nodes/2.js')),
 			__memo(() => import('./nodes/3.js')),
-			__memo(() => import('./nodes/4.js'))
+			__memo(() => import('./nodes/4.js')),
+			__memo(() => import('./nodes/5.js')),
+			__memo(() => import('./nodes/6.js'))
 		],
 		remotes: {
 			
@@ -41,6 +43,20 @@ return {
 				pattern: /^\/encrypt\/?$/,
 				params: [],
 				page: { layouts: [0,], errors: [1,], leaf: 4 },
+				endpoint: null
+			},
+			{
+				id: "/generate",
+				pattern: /^\/generate\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 5 },
+				endpoint: null
+			},
+			{
+				id: "/help",
+				pattern: /^\/help\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 6 },
 				endpoint: null
 			}
 		],

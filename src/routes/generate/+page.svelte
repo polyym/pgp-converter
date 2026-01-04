@@ -7,7 +7,7 @@
   let passphrase = $state('');
   let confirmPassphrase = $state('');
   let keyType = $state<'ecc' | 'rsa'>('ecc');
-  let curve = $state<'curve25519' | 'p256' | 'p384' | 'p521'>('curve25519');
+  let curve = $state<'curve25519' | 'nistP256' | 'nistP384' | 'nistP521'>('curve25519');
   let rsaBits = $state<2048 | 3072 | 4096>(4096);
 
   let publicKey = $state('');
@@ -182,8 +182,8 @@
 
   <!-- Shortcuts Modal -->
   {#if showShortcuts}
-    <div class="shortcuts-overlay" onclick={() => showShortcuts = false} role="dialog" aria-modal="true" tabindex="-1">
-      <div class="shortcuts-modal" onclick={(e) => e.stopPropagation()} role="document">
+    <div class="shortcuts-overlay" onclick={() => showShortcuts = false} onkeydown={(e) => e.key === 'Escape' && (showShortcuts = false)} role="dialog" aria-modal="true" tabindex="-1">
+      <div class="shortcuts-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
         <h3>Keyboard Shortcuts</h3>
         <div class="shortcut-list">
           <div class="shortcut-item">
@@ -302,9 +302,9 @@
             <label for="curve">Curve</label>
             <select id="curve" bind:value={curve}>
               <option value="curve25519">Curve25519 (Recommended)</option>
-              <option value="p256">NIST P-256</option>
-              <option value="p384">NIST P-384</option>
-              <option value="p521">NIST P-521</option>
+              <option value="nistP256">NIST P-256</option>
+              <option value="nistP384">NIST P-384</option>
+              <option value="nistP521">NIST P-521</option>
             </select>
           </div>
         {:else}
@@ -339,7 +339,7 @@
                   </svg>
                 {/if}
               </button>
-              <button class="action-btn" onclick={downloadPublicKey}>
+              <button class="action-btn" onclick={downloadPublicKey} aria-label="Download public key">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                   <polyline points="7 10 12 15 17 10"/>
@@ -367,7 +367,7 @@
                   </svg>
                 {/if}
               </button>
-              <button class="action-btn" onclick={downloadPrivateKey}>
+              <button class="action-btn" onclick={downloadPrivateKey} aria-label="Download private key">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                   <polyline points="7 10 12 15 17 10"/>

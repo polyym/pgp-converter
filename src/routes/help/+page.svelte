@@ -175,7 +175,7 @@
           <div class="tip-icon">🔑</div>
           <div class="tip-content">
             <strong>Use a strong passphrase</strong>
-            <p>Choose a long, unique passphrase that you can remember but others cannot guess.</p>
+            <p>Choose a long, unique passphrase that you can remember but others cannot guess. This protects your private key.</p>
           </div>
         </div>
         <div class="tip">
@@ -192,6 +192,20 @@
             <p>Keep secure backups of your key pair. If you lose your private key, you cannot decrypt messages.</p>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- Security Note -->
+    <section class="section">
+      <h2>Security Considerations</h2>
+      <div class="info-box">
+        <p>As noted in the <a href="https://docs.openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js documentation</a>, web-hosted cryptographic applications provide a different security model compared to installable applications. With web apps, users trust the server to deliver the correct code each time.</p>
+        <p>For maximum security in sensitive contexts:</p>
+        <ul>
+          <li>Verify the <a href="https://github.com/polyym/pgp-converter" target="_blank" rel="noopener noreferrer">source code</a> matches what is deployed</li>
+          <li>Use browser developer tools to confirm no network requests are made during crypto operations</li>
+          <li>For high-security needs, consider running locally or using dedicated PGP software</li>
+        </ul>
       </div>
     </section>
 
@@ -444,6 +458,30 @@
   .section strong {
     color: var(--text);
     font-weight: 500;
+  }
+
+  .info-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+
+  .info-box p {
+    font-size: 14px;
+    line-height: 1.7;
+    margin: 0 0 12px;
+  }
+
+  .info-box ul {
+    margin: 0;
+    padding-left: 20px;
+  }
+
+  .info-box li {
+    font-size: 14px;
+    line-height: 1.7;
+    margin-bottom: 6px;
   }
 
   .concept {
