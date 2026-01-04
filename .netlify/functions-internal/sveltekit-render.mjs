@@ -1,19 +1,30 @@
 import { init } from '../serverless.js';
 
-export const handler = init({
+export const handler = init((() => {
+function __memo(fn) {
+	let value;
+	return () => value ??= (value = fn());
+}
+
+return {
 	appDir: "_app",
 	appPath: "_app",
-	assets: new Set(["body.css","pgp_key_icon.png"]),
+	assets: new Set(["body.css","old_pgp_key_icon.png","pgp_key_icon.png"]),
 	mimeTypes: {".css":"text/css",".png":"image/png"},
 	_: {
-		client: {"start":"_app/immutable/entry/start.86df5d92.js","app":"_app/immutable/entry/app.a7c100e9.js","imports":["_app/immutable/entry/start.86df5d92.js","_app/immutable/chunks/index.a58d2f33.js","_app/immutable/chunks/singletons.6ffd9d79.js","_app/immutable/entry/app.a7c100e9.js","_app/immutable/chunks/index.a58d2f33.js"],"stylesheets":[],"fonts":[]},
+		client: {start:"_app/immutable/entry/start.BSv3Rnig.js",app:"_app/immutable/entry/app.65LMwqF2.js",imports:["_app/immutable/entry/start.BSv3Rnig.js","_app/immutable/chunks/BgR8oyGS.js","_app/immutable/chunks/Dose5HPm.js","_app/immutable/chunks/BUEJsZug.js","_app/immutable/entry/app.65LMwqF2.js","_app/immutable/chunks/Dose5HPm.js","_app/immutable/chunks/C3a2u4WA.js","_app/immutable/chunks/Fa_fcHcR.js","_app/immutable/chunks/CDKpq-SY.js","_app/immutable/chunks/BUEJsZug.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
-			() => import('../server/nodes/0.js'),
-			() => import('../server/nodes/1.js'),
-			() => import('../server/nodes/2.js'),
-			() => import('../server/nodes/3.js'),
-			() => import('../server/nodes/4.js')
+			__memo(() => import('../server/nodes/0.js')),
+			__memo(() => import('../server/nodes/1.js')),
+			__memo(() => import('../server/nodes/2.js')),
+			__memo(() => import('../server/nodes/3.js')),
+			__memo(() => import('../server/nodes/4.js')),
+			__memo(() => import('../server/nodes/5.js')),
+			__memo(() => import('../server/nodes/6.js'))
 		],
+		remotes: {
+			
+		},
 		routes: [
 			{
 				id: "/",
@@ -35,11 +46,28 @@ export const handler = init({
 				params: [],
 				page: { layouts: [0,], errors: [1,], leaf: 4 },
 				endpoint: null
+			},
+			{
+				id: "/generate",
+				pattern: /^\/generate\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 5 },
+				endpoint: null
+			},
+			{
+				id: "/help",
+				pattern: /^\/help\/?$/,
+				params: [],
+				page: { layouts: [0,], errors: [1,], leaf: 6 },
+				endpoint: null
 			}
 		],
+		prerendered_routes: new Set([]),
 		matchers: async () => {
 			
 			return {  };
-		}
+		},
+		server_assets: {}
 	}
-});
+}
+})());
