@@ -81,6 +81,21 @@
           <polyline points="9 18 15 12 9 6"/>
         </svg>
       </a>
+
+      <a href="/generate" class="card">
+        <div class="card-icon generate">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+          </svg>
+        </div>
+        <div class="card-content">
+          <h2>Generate</h2>
+          <p>Create a new PGP key pair</p>
+        </div>
+        <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </a>
     </div>
 
     <!-- Footer Links -->
@@ -93,6 +108,8 @@
       </a>
       <span class="divider">·</span>
       <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer" class="footer-link">OpenPGP.js</a>
+      <span class="divider">·</span>
+      <a href="/help" class="footer-link">Help</a>
       <span class="divider">·</span>
       <span class="credit">by polyym</span>
     </footer>
@@ -279,6 +296,11 @@
   .card-icon.decrypt {
     background: rgba(59, 130, 246, 0.1);
     color: #3b82f6;
+  }
+
+  .card-icon.generate {
+    background: rgba(168, 85, 247, 0.1);
+    color: #a855f7;
   }
 
   .card-content {
