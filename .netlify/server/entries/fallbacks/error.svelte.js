@@ -1,72 +1,56 @@
-import { g as getContext, c as create_ssr_component, a as subscribe, e as escape } from "../../chunks/index2.js";
-import { w as writable } from "../../chunks/index.js";
-/* @__PURE__ */ new WeakSet();
-function notifiable_store(value) {
-  const store = writable(value);
-  let ready = true;
-  function notify() {
-    ready = true;
-    store.update((val) => val);
-  }
-  function set(new_value) {
-    ready = false;
-    store.set(new_value);
-  }
-  function subscribe2(run) {
-    let old_value;
-    return store.subscribe((new_value) => {
-      if (old_value === void 0 || ready && new_value !== old_value) {
-        run(old_value = new_value);
-      }
-    });
-  }
-  return { notify, set, subscribe: subscribe2 };
-}
+import { e as escape_html } from "../../chunks/escaping.js";
+import "clsx";
+import { q as noop, t as getContext } from "../../chunks/context.js";
+import "@sveltejs/kit/internal/server";
+import "@sveltejs/kit/internal";
+import { w as writable } from "../../chunks/exports.js";
+import "../../chunks/utils.js";
 function create_updated_store() {
-  const { set, subscribe: subscribe2 } = writable(false);
-  async function check() {
-    return false;
+  const { set, subscribe } = writable(false);
+  {
+    return {
+      subscribe,
+      // eslint-disable-next-line @typescript-eslint/require-await
+      check: async () => false
+    };
   }
-  return {
-    subscribe: subscribe2,
-    check
-  };
 }
-({
-  url: notifiable_store({}),
-  page: notifiable_store({}),
-  navigating: writable(
-    /** @type {import('types').Navigation | null} */
-    null
-  ),
-  updated: create_updated_store()
-});
-const getStores = () => {
-  const stores = getContext("__svelte__");
-  return {
-    page: {
-      subscribe: stores.page.subscribe
-    },
-    navigating: {
-      subscribe: stores.navigating.subscribe
-    },
-    updated: stores.updated
-  };
+const is_legacy = noop.toString().includes("$$") || /function \w+\(\) \{\}/.test(noop.toString());
+if (is_legacy) {
+  ({
+    data: {},
+    form: null,
+    error: null,
+    params: {},
+    route: { id: null },
+    state: {},
+    status: -1,
+    url: new URL("https://example.com")
+  });
+}
+const stores = {
+  updated: /* @__PURE__ */ create_updated_store()
 };
-const page = {
-  /** @param {(value: any) => void} fn */
-  subscribe(fn) {
-    const store = getStores().page;
-    return store.subscribe(fn);
+({
+  check: stores.updated.check
+});
+function context() {
+  return getContext("__request__");
+}
+const page$1 = {
+  get error() {
+    return context().page.error;
+  },
+  get status() {
+    return context().page.status;
   }
 };
-const Error$1 = create_ssr_component(($$result, $$props, $$bindings, slots) => {
-  let $page, $$unsubscribe_page;
-  $$unsubscribe_page = subscribe(page, (value) => $page = value);
-  $$unsubscribe_page();
-  return `<h1>${escape($page.status)}</h1>
-<p>${escape($page.error?.message)}</p>`;
-});
+const page = page$1;
+function Error$1($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    $$renderer2.push(`<h1>${escape_html(page.status)}</h1> <p>${escape_html(page.error?.message)}</p>`);
+  });
+}
 export {
   Error$1 as default
 };

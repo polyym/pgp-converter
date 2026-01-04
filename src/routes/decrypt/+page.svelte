@@ -1,12 +1,12 @@
 <script lang="ts">
   import { decryptMessage } from '$lib/decryption';
 
-  let encrypted = '';
-  let privateKey = '';
-  let passphrase = '';
-  let decrypted = '';
-  let errorMessage = '';
-  let isLoading = false;
+  let encrypted = $state('');
+  let privateKey = $state('');
+  let passphrase = $state('');
+  let decrypted = $state('');
+  let errorMessage = $state('');
+  let isLoading = $state(false);
 
   async function handleDecrypt() {
       isLoading = true;
@@ -36,7 +36,7 @@
       <label for="passphrase" class="block text-lg mb-2">Passphrase:</label>
       <input type="password" id="passphrase" bind:value={passphrase} placeholder="Enter your passphrase here..." class="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded" />
   </div>
-  <button class="my-4 px-4 py-2 text-lg text-white bg-blue-500 rounded cursor-pointer transition-colors duration-300 ease-out hover:bg-blue-700" on:click={handleDecrypt} disabled={isLoading}>
+  <button class="my-4 px-4 py-2 text-lg text-white bg-blue-500 rounded cursor-pointer transition-colors duration-300 ease-out hover:bg-blue-700" onclick={handleDecrypt} disabled={isLoading}>
     {#if isLoading}
       Decrypting...
     {:else}
@@ -68,17 +68,17 @@
       box-sizing: border-box;
       min-height: 100vh;
     }
-  
+
     h2 {
       color: #fff;
     }
-  
+
     label {
       display: block;
       font-size: 18px;
       margin-bottom: 10px;
     }
-  
+
     textarea, input[type="password"] {
       width: 100%;
       padding: 10px;
@@ -98,7 +98,7 @@
     textarea:focus, input[type="password"]:focus {
       border-color: #007BFF; /* Blue border when focused */
     }
-  
+
     #passphrase {
       width: 100%;
       padding: 10px;

@@ -1,11 +1,11 @@
 <script lang="ts">
   import { encryptMessage } from '$lib/encryption';
 
-  let plaintext = '';
-  let publicKey = '';
-  let encrypted = '';
-  let errorMessage = '';
-  let isLoading = false;
+  let plaintext = $state('');
+  let publicKey = $state('');
+  let encrypted = $state('');
+  let errorMessage = $state('');
+  let isLoading = $state(false);
 
   async function handleEncrypt() {
       isLoading = true;
@@ -31,7 +31,7 @@
       <label for="publicKey" class="block text-lg mb-2">Public Key:</label>
       <textarea id="publicKey" bind:value={publicKey} placeholder="Enter your public key here..." class="w-full h-24 p-2 bg-gray-700 text-white border border-gray-600 rounded"></textarea>
   </div>
-  <button class="my-4 px-4 py-2 text-lg text-white bg-blue-500 rounded cursor-pointer transition-colors duration-300 ease-out hover:bg-blue-700" on:click={handleEncrypt} disabled={isLoading}>
+  <button class="my-4 px-4 py-2 text-lg text-white bg-blue-500 rounded cursor-pointer transition-colors duration-300 ease-out hover:bg-blue-700" onclick={handleEncrypt} disabled={isLoading}>
     {#if isLoading}
       Encrypting...
     {:else}

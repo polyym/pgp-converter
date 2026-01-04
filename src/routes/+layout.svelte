@@ -1,12 +1,15 @@
-<script>
+<script lang="ts">
   import "../app.css";
+  import type { Snippet } from 'svelte';
+
+  let { children }: { children: Snippet } = $props();
 </script>
 
 <header class="text-center mt-4">
 <h1 style="color: white; margin-bottom: 1rem; font-size: 3rem;">PGP Converter</h1>
 </header>
 
-<slot />
+{@render children()}
 
 <footer style="background: #4a5568; color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid white; position: fixed; bottom: 0; width: 100%; height: 4rem;">
 <div>

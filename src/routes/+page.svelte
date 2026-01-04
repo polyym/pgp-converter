@@ -1,6 +1,3 @@
-<script lang="ts">
-</script>
-
 <main class="grid grid-cols-3 gap-4 items-center justify-center min-h-[calc(100vh-60px)] py-2 px-4">
   <section class="max-w-[300px] text-center">
     <a href="/encrypt" class="inline-block mt-5 py-3 px-6 text-white bg-blue-500 rounded-lg no-underline transition-colors duration-300 ease-out hover:bg-blue-700 text-lg">Encrypt Text</a>
