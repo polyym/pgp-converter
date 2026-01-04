@@ -28,7 +28,8 @@ export async function decryptMessage(
 		const message = await readMessage({ armoredMessage: armoredMessage });
 		const decryptedMessage = await decrypt({
 			message: message,
-			decryptionKeys: decryptedPrivateKey
+			decryptionKeys: decryptedPrivateKey,
+			config: { allowMissingKeyFlags: true }
 		});
 
 		return {

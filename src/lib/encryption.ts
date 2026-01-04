@@ -21,7 +21,8 @@ export async function encryptMessage(
 		const message = await createMessage({ text: plaintext });
 		const encryptedMessage = await encrypt({
 			message: message,
-			encryptionKeys: publicKeyObj
+			encryptionKeys: publicKeyObj,
+			config: { allowMissingKeyFlags: true }
 		});
 
 		return {
