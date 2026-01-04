@@ -1,41 +1,23 @@
-var is_array = Array.isArray;
-var index_of = Array.prototype.indexOf;
-var array_from = Array.from;
-var define_property = Object.defineProperty;
-var get_descriptor = Object.getOwnPropertyDescriptor;
-var object_prototype = Object.prototype;
-var array_prototype = Array.prototype;
-var get_prototype_of = Object.getPrototypeOf;
-var is_extensible = Object.isExtensible;
-const noop = () => {
-};
-function run_all(arr) {
-  for (var i = 0; i < arr.length; i++) {
-    arr[i]();
-  }
-}
-function deferred() {
-  var resolve;
-  var reject;
-  var promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-function equals(value) {
-  return value === this.v;
-}
-function safe_not_equal(a, b) {
-  return a != a ? b == b : a !== b || a !== null && typeof a === "object" || typeof a === "function";
-}
-function safe_equals(value) {
-  return !safe_not_equal(value, this.v);
-}
 function lifecycle_outside_component(name) {
   {
     throw new Error(`https://svelte.dev/e/lifecycle_outside_component`);
   }
+}
+const ATTR_REGEX = /[&"<]/g;
+const CONTENT_REGEX = /[&<]/g;
+function escape_html(value, is_attr) {
+  const str = String(value ?? "");
+  const pattern = is_attr ? ATTR_REGEX : CONTENT_REGEX;
+  pattern.lastIndex = 0;
+  let escaped = "";
+  let last = 0;
+  while (pattern.test(str)) {
+    const i = pattern.lastIndex - 1;
+    const ch = str[i];
+    escaped += str.substring(last, i) + (ch === "&" ? "&amp;" : ch === '"' ? "&quot;" : "&lt;");
+    last = i + 1;
+  }
+  return escaped + str.substring(last);
 }
 var ssr_context = null;
 function set_ssr_context(v) {
@@ -78,25 +60,11 @@ function get_parent_context(ssr_context2) {
   return null;
 }
 export {
-  array_prototype as a,
-  get_prototype_of as b,
-  is_extensible as c,
-  deferred as d,
-  equals as e,
-  index_of as f,
-  get_descriptor as g,
-  define_property as h,
-  is_array as i,
-  array_from as j,
-  set_ssr_context as k,
-  ssr_context as l,
-  pop as m,
-  setContext as n,
-  object_prototype as o,
+  set_ssr_context as a,
+  ssr_context as b,
+  pop as c,
+  escape_html as e,
+  getContext as g,
   push as p,
-  noop as q,
-  run_all as r,
-  safe_equals as s,
-  getContext as t,
-  safe_not_equal as u
+  setContext as s
 };

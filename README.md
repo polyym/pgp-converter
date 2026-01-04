@@ -1,6 +1,6 @@
 # PGP Converter
 
-PGP Converter is a web-based tool that enables users to encrypt and decrypt text using the PGP (Pretty Good Privacy) protocol. The application is built with Node.js, SvelteKit, Vite and Tailwind CSS, and it uses the OpenPGP.js library to handle the encryption and decryption process.
+PGP Converter is a web-based tool that enables users to encrypt and decrypt text using the PGP (Pretty Good Privacy) protocol. The application is built with Node.js, SvelteKit, Vite and Tailwind CSS, and it utilises the OpenPGP.js library to handle the encryption and decryption process.
 
 <p align="center">
   <img src="https://www.pandasecurity.com/en/mediacenter/src/uploads/2023/03/pgp-encryption-process.png" alt="PGP Process">
@@ -13,7 +13,7 @@ PGP Converter is a web-based tool that enables users to encrypt and decrypt text
 ## Table of Contents
 
 - [Key Features](#key-features)
-- [Features to Look Out For in the Next Release](#features-to-look-out-for-in-the-next-release)
+- [How It Works](#how-it-works)
 - [Website Structure](#website-structure)
 - [Security](#security)
 - [Building and Running Locally](#building-and-running-locally)
@@ -27,31 +27,34 @@ PGP Converter offers:
 - Secure implementation using client-side operations
 - Cross-platform compatibility
 - Open-source code for transparency and contributions
+- Modern, responsive user interface
 
-## Features to Look Out For in the Next Release
+## How It Works
 
-Future versions of PGP Converter will provide:
+All encryption and decryption happens entirely in your browser using the [OpenPGP.js](https://openpgpjs.org/) library. No data is transmitted to any server — the processing is between you, your browser, and OpenPGP.js.
 
-- Key generation capabilities
-- Key storage solutions
-- Comprehensive PGP instruction guide
+This means:
+- Your private keys never leave your device
+- Your messages are never sent over the network
+- You can verify exactly what the code does by viewing the source
 
 ## Website Structure
 
 The website is built using SvelteKit. Here's a brief overview of the main directories and their roles:
 
-- `/src/routes`: This directory contains the Svelte components for each page.
-- `/static`: This directory houses reusable Svelte components and utility functions.
+- `/src/routes`: This directory contains the Svelte components for each page
+- `/src/lib`: This directory houses reusable TypeScript modules for encryption and decryption
+- `/static`: This directory contains static assets such as icons
 
 ## Security
 
-Security is paramount for PGP Converter. No data ever leaves your browser — all encryption and decryption is done client-side.
+Security is paramount for PGP Converter. No data ever leaves your browser — all encryption and decryption is done client-side. The source code is fully open and available on GitHub for inspection.
 
 ## Building and Running Locally
 
-To build and run PGP Converter locally, ensure that you have Node.js v14.0.0 or later and npm v6.0.0 or later installed on your machine. 
+To build and run PGP Converter locally, ensure that you have Node.js v24.0.0 or later installed on your machine.
 
-**Project Setup**
+### Project Setup
 
 To set up the project on your local machine, follow these steps:
 
@@ -62,36 +65,9 @@ To set up the project on your local machine, follow these steps:
 
 You can open the application in a new browser tab with `npm run dev -- --open`.
 
-## Developing
+### Building for Production
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-    ```
-
-You can open the application in a new browser tab with:
-    ```
-npm run dev -- --open
-    ```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
+To create a production version of the application:
 
 ```bash
 npm run build
@@ -99,7 +75,7 @@ npm run build
 
 You can preview the production build with `npm run preview`.
 
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
+> To deploy your application, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
 
 ## Contributions
 
