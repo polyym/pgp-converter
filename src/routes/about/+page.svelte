@@ -74,11 +74,12 @@
 
     <section class="section">
       <h2>About This App</h2>
-      <p>PGP Converter is a free, open-source tool for encrypting and decrypting messages using PGP (Pretty Good Privacy). It has been free, ad-free, and open source since its launch in May 2023. The application runs entirely in your browser; no data is ever sent to any server.</p>
+      <p>PGP Converter is a free, open-source tool for encrypting and decrypting messages using PGP (Pretty Good Privacy). It has been free, ad-free, and open source since its launch in May 2023. All cryptographic operations run entirely in your browser; no keys, messages, or passphrases are ever sent to any server.</p>
       <p>This means:</p>
       <ul>
         <li>Your private keys never leave your device</li>
         <li>Your messages are never transmitted over the network</li>
+        <li>The only external request the app makes is to fetch up-to-date donation wallet addresses on the donate page — no user data is involved</li>
         <li>You can verify the source code on <a href="https://github.com/polyym/pgp-converter" target="_blank" rel="noopener noreferrer">GitHub</a></li>
       </ul>
     </section>
@@ -91,7 +92,7 @@
         <ul>
           <li>No cookies are set</li>
           <li>No client-side tracking scripts are loaded</li>
-          <li>No third-party code runs on this site besides <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js</a></li>
+          <li>No third-party code runs on this site besides <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js</a> and a private API used solely to retrieve donation wallet addresses</li>
           <li>No personal data is collected, stored, or transmitted by the application</li>
         </ul>
       </div>

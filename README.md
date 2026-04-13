@@ -46,13 +46,17 @@ This means:
 The website is built using SvelteKit with Svelte 5 runes. Here's a brief overview of the main directories and their roles:
 
 ```
+netlify/
+└── functions/
+    └── wallet-proxy.mts  # Serverless proxy for wallet address API
+
 src/
 ├── lib/
 │   ├── components/      # Shared UI components (NavBar, Toast, etc.)
 │   ├── constants.ts     # Shared constants and configuration
 │   ├── errors.ts        # User-friendly error mapping
 │   ├── donation-banner.ts # Donation banner cooldown logic
-│   ├── donations.ts     # Wallet config and QR code generation
+│   ├── donations.ts     # Wallet API fetch, UI config, and QR code generation
 │   ├── encryption.ts    # Message encryption module
 │   ├── decryption.ts    # Message decryption module
 │   └── keygen.ts        # Key pair generation module
@@ -80,7 +84,7 @@ static/
 Security is paramount for PGP Converter:
 
 - **Client-Side Only**: All cryptographic operations happen in your browser
-- **No Data Transmission**: No messages, keys, or passphrases are ever sent to any server
+- **No Data Transmission**: No messages, keys, or passphrases are ever sent to any server. The only external request is fetching donation wallet addresses on the donate page — no user data is involved
 - **Open Source**: The complete source code is available on GitHub for inspection
 - **Modern Cryptography**: Uses OpenPGP.js v6 with support for modern ECC curves (Curve25519, NIST P-256/384/521) and RSA (2048-4096 bits)
 - **Secure Defaults**: ECC with Curve25519 is recommended for optimal security and performance
@@ -111,6 +115,7 @@ As noted in the [OpenPGP.js documentation](https://docs.openpgpjs.org/), web-hos
 - **QR Codes**: qrcode (for donation wallet addresses)
 - **Testing**: Vitest 4.x
 - **TypeScript**: 6.x with strict mode
+- **Serverless**: Netlify Functions v2 (wallet address proxy)
 - **Deployment**: Netlify adapter included
 
 ## Building and Running Locally

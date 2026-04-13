@@ -11,12 +11,19 @@ export interface Wallet {
 	icon: string;
 }
 
-export const WALLETS: readonly Wallet[] = [
+interface ApiAddresses {
+	solana: string;
+	ethereum: string;
+	bitcoin_taproot: string;
+	bitcoin_native_segwit: string;
+}
+
+/** Static UI config for each chain — everything except the address */
+const WALLET_UI: Omit<Wallet, 'address'>[] = [
 	{
 		id: 'sol',
 		name: 'Solana',
 		ticker: 'SOL',
-		address: '7h1mQGWJjATBSuPnULEMKHVu6fdd4VrqDmbCMx6WBSVM',
 		color: '#9945FF',
 		bg: 'rgba(153, 69, 255, 0.1)',
 		icon: `<svg width="20" height="20" viewBox="0 0 397.7 311.7" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -29,7 +36,6 @@ export const WALLETS: readonly Wallet[] = [
 		id: 'eth',
 		name: 'Ethereum',
 		ticker: 'ETH',
-		address: '0x1ACe3863B60e18B1D4B1BCe5a9B6659eede757D5',
 		color: '#627EEA',
 		bg: 'rgba(98, 126, 234, 0.1)',
 		icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -43,7 +49,6 @@ export const WALLETS: readonly Wallet[] = [
 		name: 'Bitcoin',
 		ticker: 'BTC',
 		badge: 'Taproot',
-		address: 'bc1p3lclkuj028nwdnckwe6epch2nnw43aj9pxhg2tj5vvpktww889ds8fz6g7',
 		color: '#F7931A',
 		bg: 'rgba(247, 147, 26, 0.1)',
 		icon: `<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -55,7 +60,6 @@ export const WALLETS: readonly Wallet[] = [
 		name: 'Bitcoin',
 		ticker: 'BTC',
 		badge: 'Native SegWit',
-		address: 'bc1qsnxg720nem0sfnq3n7v0c8rxcyn8mj8p37zvay',
 		color: '#F7931A',
 		bg: 'rgba(247, 147, 26, 0.1)',
 		icon: `<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -63,6 +67,50 @@ export const WALLETS: readonly Wallet[] = [
 		</svg>`
 	}
 ];
+
+/** Maps wallet id to API address field name */
+const ADDRESS_MAP: Record<string, keyof ApiAddresses> = {
+	'sol': 'solana',
+	'eth': 'ethereum',
+	'btc-taproot': 'bitcoin_taproot',
+	'btc-segwit': 'bitcoin_native_segwit',
+};
+
+const MAX_RETRIES = 15;
+const RETRY_DELAY_MS = 10_000;
+
+/** Fetches addresses from the API and merges them with the static UI config.
+ *  Retries for up to ~2.5 minutes if the Render service is waking up.
+ *  Calls onWaking on the first retry so the UI can show a loading message. */
+export async function fetchWallets(
+	account = 'pgp-converter',
+	onWaking?: () => void
+): Promise<Wallet[]> {
+	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+		const res = await fetch(`/api/wallets/${account}`);
+
+		if (res.ok) {
+			const data: { name: string; addresses: ApiAddresses } = await res.json();
+			return WALLET_UI.map(ui => ({
+				...ui,
+				address: data.addresses[ADDRESS_MAP[ui.id]],
+			}));
+		}
+
+		// 502/503 = Render is waking up, retry
+		if (res.status === 502 || res.status === 503) {
+			if (attempt === 0) onWaking?.();
+			if (attempt < MAX_RETRIES) {
+				await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+				continue;
+			}
+		}
+
+		throw new Error(`Failed to load wallets: ${res.status}`);
+	}
+
+	throw new Error('Service did not respond after multiple attempts.');
+}
 
 /** Truncates a wallet address for display, showing the first and last characters */
 export function truncateAddress(address: string, startChars = 8, endChars = 6): string {

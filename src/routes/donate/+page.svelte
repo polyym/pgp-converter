@@ -1,19 +1,23 @@
 <script lang="ts">
   import { NavBar, PageHeader, PageFooter } from '$lib/components';
   import { COPY_FEEDBACK_MS } from '$lib/constants';
-  import { WALLETS, truncateAddress, generateQrDataUrls } from '$lib/donations';
+  import { fetchWallets, truncateAddress, generateQrDataUrls } from '$lib/donations';
+  import type { Wallet } from '$lib/donations';
   import { onMount, onDestroy } from 'svelte';
 
   let isTouchDevice = $state(false);
   let copiedAddress = $state<string | null>(null);
   let qrDataUrls = $state<Record<string, string>>({});
+  let wallets = $state<Wallet[]>([]);
+  let loading = $state(true);
+  let waking = $state(false);
+  let error = $state('');
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function copyAddress(address: string) {
     try {
       await navigator.clipboard.writeText(address);
     } catch {
-      // Clipboard API unavailable; fail silently
       return;
     }
     if (copyTimer) clearTimeout(copyTimer);
@@ -23,7 +27,14 @@
 
   onMount(async () => {
     isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    qrDataUrls = await generateQrDataUrls(WALLETS);
+    try {
+      wallets = await fetchWallets('pgp-converter', () => { waking = true; });
+      waking = false;
+      qrDataUrls = await generateQrDataUrls(wallets);
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to load wallet addresses.';
+    }
+    loading = false;
   });
 
   onDestroy(() => {
@@ -66,64 +77,70 @@
     <section class="section">
       <h2>Donate with Crypto</h2>
       <div class="wallets">
-        {#each WALLETS as wallet (wallet.id)}
-          <div class="wallet-card">
-            <div class="wallet-header">
-              <div class="wallet-icon" style="background: {wallet.bg}; color: {wallet.color}">
-                {@html wallet.icon}
-              </div>
-              <div class="wallet-title">
-                <span class="wallet-name">{wallet.name}</span>
-                {#if wallet.badge}
-                  <span class="wallet-badge">{wallet.badge}</span>
-                {/if}
-              </div>
-              <span class="wallet-ticker">{wallet.ticker}</span>
-            </div>
-
-            <div class="wallet-body">
-              <div class="address-row">
-                <code class="address" title={wallet.address}>
-                  <span class="address-full">{wallet.address}</span>
-                  <span class="address-short">{truncateAddress(wallet.address)}</span>
-                </code>
-                <button
-                  class="copy-btn"
-                  class:copied={copiedAddress === wallet.address}
-                  onclick={() => copyAddress(wallet.address)}
-                  aria-label="Copy {wallet.name} address"
-                >
-                  {#if copiedAddress === wallet.address}
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                    <span>Copied</span>
-                  {:else}
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                    </svg>
-                    <span>Copy</span>
+        {#if error}
+          <div class="info-box"><p>{error}</p></div>
+        {:else if loading}
+          <p class="loading-text">{waking ? 'Loading wallet details, this may take a moment...' : 'Loading wallet details...'}</p>
+        {:else}
+          {#each wallets as wallet (wallet.id)}
+            <div class="wallet-card">
+              <div class="wallet-header">
+                <div class="wallet-icon" style="background: {wallet.bg}; color: {wallet.color}">
+                  {@html wallet.icon}
+                </div>
+                <div class="wallet-title">
+                  <span class="wallet-name">{wallet.name}</span>
+                  {#if wallet.badge}
+                    <span class="wallet-badge">{wallet.badge}</span>
                   {/if}
-                </button>
+                </div>
+                <span class="wallet-ticker">{wallet.ticker}</span>
               </div>
 
-              <div class="qr-wrapper">
-                {#if qrDataUrls[wallet.id]}
-                  <img
-                    src={qrDataUrls[wallet.id]}
-                    alt="QR code for {wallet.name}{wallet.badge ? ` (${wallet.badge})` : ''} address"
-                    class="qr-img"
-                    width="140"
-                    height="140"
-                  />
-                {:else}
-                  <div class="qr-spinner" aria-label="Loading QR code"></div>
-                {/if}
+              <div class="wallet-body">
+                <div class="address-row">
+                  <code class="address" title={wallet.address}>
+                    <span class="address-full">{wallet.address}</span>
+                    <span class="address-short">{truncateAddress(wallet.address)}</span>
+                  </code>
+                  <button
+                    class="copy-btn"
+                    class:copied={copiedAddress === wallet.address}
+                    onclick={() => copyAddress(wallet.address)}
+                    aria-label="Copy {wallet.name} address"
+                  >
+                    {#if copiedAddress === wallet.address}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      <span>Copied</span>
+                    {:else}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                      <span>Copy</span>
+                    {/if}
+                  </button>
+                </div>
+
+                <div class="qr-wrapper">
+                  {#if qrDataUrls[wallet.id]}
+                    <img
+                      src={qrDataUrls[wallet.id]}
+                      alt="QR code for {wallet.name}{wallet.badge ? ` (${wallet.badge})` : ''} address"
+                      class="qr-img"
+                      width="140"
+                      height="140"
+                    />
+                  {:else}
+                    <div class="qr-spinner" aria-label="Loading QR code"></div>
+                  {/if}
+                </div>
               </div>
             </div>
-          </div>
-        {/each}
+          {/each}
+        {/if}
       </div>
     </section>
 
@@ -171,6 +188,13 @@
   }
   .info-box p { font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin: 0 0 10px; }
   .info-box p:last-child { margin-bottom: 0; }
+
+  .loading-text {
+    font-size: 14px;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 24px 0;
+  }
 
   .wallets {
     display: flex;
