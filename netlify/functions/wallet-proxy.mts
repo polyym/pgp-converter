@@ -11,7 +11,6 @@ export default async (req: Request, context: Context) => {
     const res = await fetch(`${API_URL}${apiPath}`, {
       headers: {
         'X-API-Key': API_KEY!,
-        'Origin': req.headers.get('origin') || '',
       },
     });
 
