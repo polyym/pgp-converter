@@ -1,4 +1,5 @@
 import { readPrivateKey, decryptKey, readMessage, decrypt } from 'openpgp';
+import { getUserFriendlyError } from './errors';
 
 export interface DecryptionResult {
 	success: boolean;
@@ -34,13 +35,14 @@ export async function decryptMessage(
 
 		return {
 			success: true,
-			data: decryptedMessage.data as string
+			data: String(decryptedMessage.data)
 		};
-	} catch (e) {
+	} catch (e: unknown) {
 		console.error(e);
+		const message = e instanceof Error ? e.message : String(e);
 		return {
 			success: false,
-			error: `Error decrypting message: ${(e as Error).message}`
+			error: getUserFriendlyError(message, 'decrypt')
 		};
 	}
 }

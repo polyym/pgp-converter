@@ -1,10 +1,6 @@
 # PGP Converter
 
-PGP Converter is a web-based tool that enables users to encrypt and decrypt text, as well as generate PGP key pairs, using the PGP (Pretty Good Privacy) protocol. The application is built with Node.js, SvelteKit, Vite and Tailwind CSS, and utilises the OpenPGP.js library to handle all cryptographic operations.
-
-<p align="center">
-  <img src="https://www.pandasecurity.com/en/mediacenter/src/uploads/2023/03/pgp-encryption-process.png" alt="PGP Process">
-</p>
+PGP Converter is a web-based tool that enables users to encrypt and decrypt text, as well as generate PGP key pairs, using the PGP (Pretty Good Privacy) protocol. The application is built with SvelteKit and Vite, and utilises the OpenPGP.js library to handle all cryptographic operations.
 
 **Website**: https://pgp-converter.com
 
@@ -19,6 +15,7 @@ PGP Converter is a web-based tool that enables users to encrypt and decrypt text
 - [Technology Stack](#technology-stack)
 - [Building and Running Locally](#building-and-running-locally)
 - [Contributions](#contributions)
+- [License](#license)
 
 ## Key Features
 
@@ -28,14 +25,15 @@ PGP Converter offers:
 - **Decrypt Messages**: Unlock encrypted messages with your private key and passphrase
 - **Generate Key Pairs**: Create new ECC or RSA key pairs with customisable settings
 - **Export Keys**: Download generated keys as `.asc` or `.txt` files
-- **Help Documentation**: In-app guide explaining PGP concepts and best practices
+- **About & Documentation**: In-app guide explaining PGP concepts, security best practices, and hosting transparency
 - **Keyboard Shortcuts**: Quick actions for power users
 - **Responsive Design**: Works seamlessly on desktop, tablet, and mobile devices
+- **Crypto Donations**: Support the project with Solana, Ethereum, or Bitcoin
 - **Open Source**: Full transparency with source code available for inspection
 
 ## How It Works
 
-All encryption, decryption, and key generation happens entirely in your browser using the [OpenPGP.js](https://openpgpjs.org/) library. No data is transmitted to any server — the processing is between you, your browser, and OpenPGP.js.
+All encryption, decryption, and key generation happens entirely in your browser using the [OpenPGP.js](https://openpgpjs.org/) library. No data is transmitted to any server; the processing is between you, your browser, and OpenPGP.js.
 
 This means:
 - Your private keys never leave your device
@@ -50,16 +48,31 @@ The website is built using SvelteKit with Svelte 5 runes. Here's a brief overvie
 ```
 src/
 ├── lib/
+│   ├── components/      # Shared UI components (NavBar, Toast, etc.)
+│   ├── constants.ts     # Shared constants and configuration
+│   ├── errors.ts        # User-friendly error mapping
+│   ├── donation-banner.ts # Donation banner cooldown logic
+│   ├── donations.ts     # Wallet config and QR code generation
 │   ├── encryption.ts    # Message encryption module
 │   ├── decryption.ts    # Message decryption module
 │   └── keygen.ts        # Key pair generation module
 ├── routes/
 │   ├── +page.svelte     # Homepage
+│   ├── +error.svelte    # Error page
 │   ├── encrypt/         # Encryption page
 │   ├── decrypt/         # Decryption page
 │   ├── generate/        # Key generation page
-│   └── help/            # Help and documentation page
+│   ├── about/           # About, privacy, and documentation page
+│   ├── help/            # Redirect to /about
+│   ├── donate/          # Crypto donation page
+│   └── sitemap.xml/     # Dynamic XML sitemap
+├── app.css              # Global shared styles
 └── app.html             # App shell
+
+static/
+├── pgp_key_icon.png     # Favicon
+├── robots.txt           # Search engine crawl directives
+└── archive/             # Previous favicon versions
 ```
 
 ## Security
@@ -71,6 +84,7 @@ Security is paramount for PGP Converter:
 - **Open Source**: The complete source code is available on GitHub for inspection
 - **Modern Cryptography**: Uses OpenPGP.js v6 with support for modern ECC curves (Curve25519, NIST P-256/384/521) and RSA (2048-4096 bits)
 - **Secure Defaults**: ECC with Curve25519 is recommended for optimal security and performance
+- **No Tracking**: No cookies, no client-side tracking scripts, no personal data collection
 
 ### Security Considerations
 
@@ -82,24 +96,26 @@ As noted in the [OpenPGP.js documentation](https://docs.openpgpjs.org/), web-hos
 
 ### Security Best Practices
 
-- Protect your private key — never share it with anyone
+- Protect your private key; never share it with anyone
 - Use a strong, unique passphrase to protect your private key
 - Verify public keys through a trusted channel before encrypting
 - Keep secure backups of your key pair
 
 ## Technology Stack
 
-- **Runtime**: Node.js v24.0.0+
+- **Runtime**: Node.js v22.0.0+
 - **Framework**: SvelteKit 2.x with Svelte 5
-- **Build Tool**: Vite 6.x
-- **Styling**: Tailwind CSS 3.x
+- **Build Tool**: Vite 8.x
+- **Styling**: Hand-written CSS with custom properties
 - **Cryptography**: OpenPGP.js 6.x
-- **TypeScript**: Full type safety throughout
+- **QR Codes**: qrcode (for donation wallet addresses)
+- **Testing**: Vitest 4.x
+- **TypeScript**: 6.x with strict mode
 - **Deployment**: Netlify adapter included
 
 ## Building and Running Locally
 
-To build and run PGP Converter locally, ensure that you have Node.js v24.0.0 or later installed on your machine.
+To build and run PGP Converter locally, ensure that you have Node.js v22.0.0 or later installed on your machine.
 
 ### Project Setup
 
@@ -120,6 +136,8 @@ You can open the application in a new browser tab with `npm run dev -- --open`.
 | `npm run build` | Build for production |
 | `npm run preview` | Preview production build locally |
 | `npm run check` | Run TypeScript and Svelte checks |
+| `npm test` | Run unit tests |
+| `npm run test:watch` | Run tests in watch mode |
 
 ### Building for Production
 
@@ -135,9 +153,16 @@ You can preview the production build with `npm run preview`.
 
 ## Contributions
 
-Contributions are always welcome. Please fork the repository and create a pull request with your changes.
+Contributions are welcome. Please fork the repository and create a pull request with your changes.
+
+All contributors must sign the [Contributor License Agreement (CLA)](https://github.com/polyym/pgp-converter/blob/main/CONTRIBUTING.md) before their pull request can be merged. The CLA bot will prompt you automatically on your first PR.
 
 When contributing, please ensure:
+- All tests pass (`npm test`)
 - All TypeScript checks pass (`npm run check`)
 - The build completes successfully (`npm run build`)
 - You follow existing code style and conventions
+
+## License
+
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-or-later).

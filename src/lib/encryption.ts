@@ -1,4 +1,5 @@
 import { readKey, encrypt, createMessage } from 'openpgp';
+import { getUserFriendlyError } from './errors';
 
 export interface EncryptionResult {
 	success: boolean;
@@ -27,13 +28,14 @@ export async function encryptMessage(
 
 		return {
 			success: true,
-			data: encryptedMessage as string
+			data: String(encryptedMessage)
 		};
-	} catch (e) {
+	} catch (e: unknown) {
 		console.error(e);
+		const message = e instanceof Error ? e.message : String(e);
 		return {
 			success: false,
-			error: `Error encrypting message: ${(e as Error).message}`
+			error: getUserFriendlyError(message, 'encrypt')
 		};
 	}
 }
