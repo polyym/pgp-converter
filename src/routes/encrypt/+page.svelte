@@ -1,7 +1,7 @@
 <script lang="ts">
   import { encryptMessage } from '$lib/encryption';
   import { LOADING_DELAY_MS, SUCCESS_TOAST_MS, ERROR_TOAST_MS, COPY_FEEDBACK_MS, COPY_ERROR_MS } from '$lib/constants';
-  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner } from '$lib/components';
+  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner, SEO } from '$lib/components';
   import { isDonationBannerAllowed, dismissDonationBanner } from '$lib/donation-banner';
   import { onMount } from 'svelte';
 
@@ -103,57 +103,21 @@
   });
 </script>
 
-<svelte:head>
-  <title>PGP Encrypt Message Online - Free Browser-Based Encryption Tool</title>
-  <meta name="description" content="Encrypt messages with PGP directly in your browser. Paste a public key and plaintext to generate a secure PGP-encrypted message. No data leaves your device." />
-  <meta name="keywords" content="pgp encrypt online, pgp encrypt browser, encrypt message with public key online, how to encrypt a message with pgp online, free pgp encryption online, pgp encrypt no install, client side pgp encryption" />
-  <meta property="og:title" content="PGP Encrypt Message Online - Free Browser-Based Encryption Tool" />
-  <meta property="og:description" content="Encrypt messages with PGP directly in your browser. Paste a public key and plaintext to generate a secure PGP-encrypted message." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://pgp-converter.com/encrypt" />
-  <meta property="og:site_name" content="PGP Converter" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="PGP Encrypt Message Online - Free Browser-Based Tool" />
-  <meta name="twitter:description" content="Encrypt messages with PGP directly in your browser. No data leaves your device." />
-  <link rel="canonical" href="https://pgp-converter.com/encrypt" />
-  {@html `<script type="application/ld+json">${JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "How do I encrypt a message with PGP?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Paste your plaintext message and the recipient's PGP public key into the fields, then click Encrypt. The encrypted output can only be read by the person who holds the matching private key."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Do I need the recipient's private key to encrypt?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "No. You only need the recipient's public key to encrypt a message. The recipient then uses their own private key and passphrase to decrypt it."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Is my data sent to a server during encryption?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "No. All encryption happens entirely in your browser using the OpenPGP.js library. No messages, keys, or passphrases are ever transmitted to any server."
-        }
-      }
-    ]
-  })}</script>`}
-</svelte:head>
+<SEO
+  title="PGP Encrypt Message Online: Free Browser-Based Encryption Tool"
+  description="Encrypt messages with PGP directly in your browser. Paste a public key and plaintext to generate a secure PGP-encrypted message. No data leaves your device."
+  path="/encrypt"
+/>
 
 <div class="app">
-  <NavBar currentPage="encrypt" {isTouchDevice} onToggleShortcuts={() => showShortcuts = !showShortcuts} />
+  <NavBar currentPage="encrypt" />
   <ShortcutsModal show={showShortcuts} {shortcuts} onClose={() => showShortcuts = false} />
 
   <main class="main">
-    <PageHeader title="Encrypt">
+    <PageHeader
+      title="Encrypt a PGP Message"
+      onShortcutsClick={isTouchDevice ? undefined : () => showShortcuts = !showShortcuts}
+    >
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -216,6 +180,22 @@
       </div>
     </div>
 
+    <details class="explainer">
+      <summary>
+        How to encrypt a PGP message
+        <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </summary>
+      <p>Encrypting a message with PGP is a one-way door: once encrypted with a public key, only the matching private key can read it. Even if the ciphertext is intercepted in transit, it stays unreadable without that key.</p>
+      <ol>
+        <li><strong>Paste the recipient's public key.</strong> This is their public half of the PGP keypair, typically shared on a keyserver, website, or directly with you.</li>
+        <li><strong>Paste your plaintext message.</strong> Anything you want only the recipient to read.</li>
+        <li><strong>Encrypt.</strong> The output is an armored PGP message beginning with <code>-----BEGIN PGP MESSAGE-----</code>. Send it through any channel (email, chat, SMS), and only the holder of the matching private key can decrypt it.</li>
+      </ol>
+      <p>All encryption happens locally via OpenPGP.js. Your plaintext and the public key never leave this browser.</p>
+    </details>
+
     <PageFooter />
   </main>
 
@@ -266,5 +246,58 @@
     .main {
       max-width: 720px;
     }
+  }
+
+  .explainer {
+    margin: 32px 0 0;
+    padding: 16px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .explainer summary {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .explainer summary::-webkit-details-marker { display: none; }
+  .explainer .chevron {
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+  }
+  .explainer[open] .chevron { transform: rotate(90deg); }
+  .explainer[open] summary { margin-bottom: 10px; }
+  .explainer p {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+  }
+  .explainer p:last-child { margin: 0; }
+  .explainer ol {
+    margin: 0 0 10px;
+    padding-left: 20px;
+  }
+  .explainer li {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .explainer strong { color: var(--text); font-weight: 500; }
+  .explainer code {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    background: var(--surface-2);
+    padding: 1px 4px;
+    border-radius: 4px;
   }
 </style>

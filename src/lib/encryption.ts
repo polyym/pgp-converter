@@ -31,7 +31,7 @@ export async function encryptMessage(
 			data: String(encryptedMessage)
 		};
 	} catch (e: unknown) {
-		console.error(e);
+		if (import.meta.env.DEV) console.error(e);
 		const message = e instanceof Error ? e.message : String(e);
 		return {
 			success: false,

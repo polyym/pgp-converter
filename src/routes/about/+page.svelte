@@ -1,90 +1,51 @@
 <script lang="ts">
-  import { NavBar, PageHeader, PageFooter } from '$lib/components';
-  import { onMount } from 'svelte';
-
-  let isTouchDevice = $state(false);
-
-  onMount(() => {
-    isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  });
+  import { NavBar, PageHeader, PageFooter, SEO } from '$lib/components';
 </script>
 
-<svelte:head>
-  <title>About PGP Converter: Privacy, Security &amp; How PGP Works</title>
-  <meta name="description" content="Learn about PGP Converter, how it keeps your data private, and how PGP encryption works. Hosted on Netlify, no cookies, no tracking scripts, fully open source." />
-  <meta name="keywords" content="pgp converter about, how pgp works, pgp encryption explained, pgp public key private key, what is pgp, pgp security, client side encryption, open source pgp tool" />
-  <meta property="og:title" content="About PGP Converter: Privacy, Security & How PGP Works" />
-  <meta property="og:description" content="Learn about PGP Converter, how it keeps your data private, and how PGP encryption works. Fully open source, no tracking." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://pgp-converter.com/about" />
-  <meta property="og:site_name" content="PGP Converter" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="About PGP Converter: Privacy, Security & How PGP Works" />
-  <meta name="twitter:description" content="Learn about PGP Converter, how it keeps your data private, and how PGP encryption works." />
-  <link rel="canonical" href="https://pgp-converter.com/about" />
-  {@html `<script type="application/ld+json">${JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "What is PGP encryption?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "PGP (Pretty Good Privacy) uses public-key cryptography. Every user has a public key (shared freely for others to encrypt messages to you) and a private key (kept secret to decrypt messages). Only the matching private key can decrypt a message encrypted with the public key."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Is PGP Converter safe to use?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes. All encryption, decryption, and key generation happens entirely in your browser using the OpenPGP.js library. No data is transmitted to any server. Your private keys and messages never leave your device."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What key types does PGP Converter support?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "PGP Converter supports ECC keys (Curve25519, NIST P-256, P-384, P-521) and RSA keys (2048, 3072, or 4096 bits). ECC with Curve25519 is recommended for optimal security and performance."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Does PGP Converter track its users?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "No. PGP Converter sets no cookies, runs no client-side tracking scripts, and collects no personal data. The site is hosted on Netlify, which provides basic server-side analytics (page views, unique visitors, top locations) through its standard logs. These metrics are never shared with anyone."
-        }
-      }
-    ]
-  })}</script>`}
-</svelte:head>
+<SEO
+  title="About PGP Converter: Privacy, Security &amp; How PGP Works"
+  description="Learn about PGP Converter, how it keeps your data private, and how PGP encryption works. Hosted on Netlify, no cookies, no tracking scripts, fully open source."
+  path="/about"
+/>
 
 <div class="app">
-  <NavBar currentPage="about" showShortcutsToggle={false} {isTouchDevice} />
+  <NavBar currentPage="about" />
 
   <main class="main">
-    <PageHeader title="About" iconClass="about">
+    <PageHeader title="About PGP Converter" iconClass="about">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
       </svg>
     </PageHeader>
 
-    <section class="section">
+    <nav class="toc" aria-label="On this page">
+      <p class="toc-title">On this page</p>
+      <div class="toc-grid">
+        <a href="#about-this-app" class="toc-link">About This App</a>
+        <a href="#hosting-privacy" class="toc-link">Hosting &amp; Privacy</a>
+        <a href="#how-pgp-works" class="toc-link">How PGP Works</a>
+        <a href="#using-this-app" class="toc-link">Using This App</a>
+        <a href="#security-best-practices" class="toc-link">Security Best Practices</a>
+        <a href="#threat-model" class="toc-link">Threat Model</a>
+        <a href="#verifying-this-deployment" class="toc-link">Verifying This Deployment</a>
+        <a href="#reporting-issues" class="toc-link">Reporting Issues</a>
+        <a href="#useful-resources" class="toc-link">Useful Resources</a>
+      </div>
+    </nav>
+
+    <section class="section" id="about-this-app">
       <h2>About This App</h2>
-      <p>PGP Converter is a free, open-source tool for encrypting and decrypting messages using PGP (Pretty Good Privacy). It has been free, ad-free, and open source since its launch in May 2023. All cryptographic operations run entirely in your browser; no keys, messages, or passphrases are ever sent to any server.</p>
+      <p>PGP Converter is a free, open-source tool for encrypting and decrypting messages using PGP (Pretty Good Privacy). It has been free, ad-free, and open source since its launch in May 2023. No sponsors, no affiliate links, no paid placements; the project is supported solely by optional donations, and donors receive nothing in return. All cryptographic operations run entirely in your browser; no keys, messages, or passphrases are ever sent to any server.</p>
       <p>This means:</p>
       <ul>
         <li>Your private keys never leave your device</li>
         <li>Your messages are never transmitted over the network</li>
-        <li>The only external request the app makes is to fetch up-to-date donation wallet addresses on the donate page — no user data is involved</li>
+        <li>The only external request the app makes is to fetch up-to-date donation wallet addresses on the donate page, and no user data is involved</li>
         <li>You can verify the source code on <a href="https://github.com/polyym/pgp-converter" target="_blank" rel="noopener noreferrer">GitHub</a></li>
       </ul>
     </section>
 
-    <section class="section">
+    <section class="section" id="hosting-privacy">
       <h2>Hosting &amp; Privacy</h2>
       <div class="info-box">
         <p>PGP Converter is hosted on <a href="https://www.netlify.com/" target="_blank" rel="noopener noreferrer">Netlify</a>. Basic server-side analytics are enabled through Netlify's standard logs, giving us aggregate metrics like page views, unique visitors, and top locations. This data is never shared with anyone.</p>
@@ -93,12 +54,14 @@
           <li>No cookies are set</li>
           <li>No client-side tracking scripts are loaded</li>
           <li>No third-party code runs on this site besides <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js</a> and a private API used solely to retrieve donation wallet addresses</li>
-          <li>No personal data is collected, stored, or transmitted by the application</li>
+          <li>No personal data, user accounts, databases, or per-user logs; beyond the aggregate Netlify metrics above, nothing about you or your activity is retained</li>
+          <li>Because user data is never collected or stored, it cannot be produced in response to a subpoena; we simply do not have it</li>
         </ul>
+        <p><strong>Prefer to verify this independently?</strong> You don't have to take our word for it. Routing your traffic through a trustworthy VPN hides your IP address and approximate location from the aggregate analytics described above; however, a VPN shifts trust to the VPN provider rather than removing it and does not provide anonymity on its own. For genuine anonymity, use <a href="https://www.torproject.org/" target="_blank" rel="noopener noreferrer">Tor Browser</a>, which is purpose-built for it. <a href="https://www.privacyguides.org/" target="_blank" rel="noopener noreferrer">Privacy Guides</a> maintains vetted recommendations for both.</p>
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" id="how-pgp-works">
       <h2>How PGP Works</h2>
       <p>PGP (Pretty Good Privacy) uses a system called <strong>public-key cryptography</strong>. Here's how it works:</p>
 
@@ -131,7 +94,7 @@
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" id="using-this-app">
       <h2>Using This App</h2>
 
       <div class="feature-card">
@@ -176,7 +139,7 @@
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" id="security-best-practices">
       <h2>Security Best Practices</h2>
       <div class="tips">
         <div class="tip">
@@ -210,20 +173,56 @@
       </div>
     </section>
 
-    <section class="section">
-      <h2>Security Considerations</h2>
-      <div class="info-box">
-        <p>As noted in the <a href="https://docs.openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js documentation</a>, web-hosted cryptographic applications provide a different security model compared to installable applications. With web apps, users trust the server to deliver the correct code each time.</p>
-        <p>For maximum security in sensitive contexts:</p>
+    <section class="section" id="threat-model">
+      <h2>Threat Model</h2>
+      <p>Every security tool has a scope. Here is what this one does and does not protect you from.</p>
+
+      <div class="concept">
+        <h3>What this tool is designed to protect against</h3>
         <ul>
-          <li>Verify the <a href="https://github.com/polyym/pgp-converter" target="_blank" rel="noopener noreferrer">source code</a> matches what is deployed</li>
-          <li>Use browser developer tools to confirm no network requests are made during crypto operations</li>
-          <li>For high-security needs, consider running locally or using dedicated PGP software</li>
+          <li>Passive network eavesdroppers reading your messages in transit</li>
+          <li>Tampering of ciphertext in transit: OpenPGP v6 uses authenticated encryption (AEAD), which detects and rejects modified messages before revealing plaintext</li>
+          <li>Server-side key theft, because there is no server-side key storage</li>
+          <li>Server-side logging of your inputs, because there is no server-side processing</li>
+          <li>Cryptanalysis of the underlying ciphers with current classical computing power: Curve25519 provides around 128-bit security, and RSA at 3072+ bits remains unbroken against known attacks</li>
+          <li>Accidental transmission of plaintext when you intended to encrypt</li>
+        </ul>
+      </div>
+
+      <div class="concept">
+        <h3>What this tool does not protect against</h3>
+        <ul>
+          <li><strong>A compromised deployment.</strong> If an attacker gained control of this site's hosting or build pipeline, they could serve tampered JavaScript that exfiltrates your keys. This is the inherent limitation of any web-based cryptographic tool, and the reason we recommend a local PGP client for high-stakes use.</li>
+          <li><strong>Endpoint compromise.</strong> If your device has a keylogger, malware, or a compromised browser extension, nothing done in-browser can save you.</li>
+          <li><strong>Metadata leakage.</strong> PGP encrypts message content, but not the email subject line, sender or recipient addresses, or the timestamp. Who talked to whom and when remains visible to anyone with access to the headers.</li>
+          <li><strong>Loss of forward secrecy.</strong> PGP does not provide forward secrecy. If your private key is ever compromised, every past message encrypted to that key can be decrypted.</li>
+          <li><strong>High-value targeted adversaries.</strong> For journalistic sources, legal material, long-term archives, or any threat model at that level, use <a href="https://gnupg.org/" target="_blank" rel="noopener noreferrer">GnuPG</a> locally or a desktop PGP mail client.</li>
         </ul>
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" id="verifying-this-deployment">
+      <h2>Verifying This Deployment</h2>
+      <div class="info-box">
+        <p>As noted in the <a href="https://docs.openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js documentation</a>, web-hosted cryptographic applications provide a different security model compared to installable applications. With web apps, users trust the server to deliver the correct code each time.</p>
+        <p><strong>What:</strong> Every production deploy is built and signed by GitHub Actions using a short-lived <a href="https://www.sigstore.dev/" target="_blank" rel="noopener noreferrer">Sigstore</a>-issued certificate. The attestation links each deployed file to a specific commit and workflow run, and is recorded in Sigstore's public transparency log.</p>
+        <p><strong>Why:</strong> A web app's security depends on the deployed JavaScript matching the reviewed source code; attestation makes this a check you can run, not a promise you have to take on faith.</p>
+        <p><strong>How to verify:</strong> Install the <a href="https://cli.github.com/" target="_blank" rel="noopener noreferrer">GitHub CLI</a> and run:</p>
+        <pre class="verify-cmd"><code>gh attestation verify &lt;file&gt; --repo polyym/pgp-converter</code></pre>
+        <p>For additional assurance:</p>
+        <ul>
+          <li>Use browser developer tools to confirm no unexpected network requests are made during crypto operations</li>
+          <li>For high-security needs, consider running locally or using dedicated PGP software like <a href="https://gnupg.org/" target="_blank" rel="noopener noreferrer">GnuPG</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="reporting-issues">
+      <h2>Reporting Issues</h2>
+      <p>Found a bug, have a suggestion, or want to report a security issue? Please open an issue on <a href="https://github.com/polyym/pgp-converter/issues" target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
+    </section>
+
+    <section class="section" id="useful-resources">
       <h2>Useful Resources</h2>
       <div class="resources">
         <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer" class="resource">
@@ -244,13 +243,22 @@
             <span>Official OpenPGP standard documentation</span>
           </div>
         </a>
-        <a href="https://emailselfdefense.fsf.org/" target="_blank" rel="noopener noreferrer" class="resource">
+        <a href="https://ssd.eff.org/" target="_blank" rel="noopener noreferrer" class="resource">
           <div class="resource-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </div>
           <div class="resource-content">
-            <strong>Email Self-Defense</strong>
-            <span>FSF's guide to email encryption</span>
+            <strong>Surveillance Self-Defense</strong>
+            <span>EFF's guide to digital security and privacy</span>
+          </div>
+        </a>
+        <a href="https://www.privacyguides.org/" target="_blank" rel="noopener noreferrer" class="resource">
+          <div class="resource-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </div>
+          <div class="resource-content">
+            <strong>Privacy Guides</strong>
+            <span>Independent recommendations for privacy tools</span>
           </div>
         </a>
         <a href="https://github.com/polyym/pgp-converter" target="_blank" rel="noopener noreferrer" class="resource">
@@ -298,7 +306,41 @@
     margin-bottom: 32px;
   }
 
-  .section { margin-bottom: 40px; }
+  .section { margin-bottom: 40px; scroll-margin-top: 80px; }
+
+  .toc {
+    margin-bottom: 40px;
+    padding: 16px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .toc-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 12px;
+  }
+  .toc-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px 16px;
+  }
+  .toc-link {
+    font-size: 14px;
+    color: var(--text);
+    text-decoration: none;
+    padding: 2px 0;
+    transition: color 0.15s ease;
+  }
+  .toc-link:hover {
+    color: var(--info);
+  }
+  @media (max-width: 500px) {
+    .toc-grid { grid-template-columns: 1fr; }
+  }
   .section h2 { font-size: 18px; font-weight: 600; margin: 0 0 16px; color: var(--text); }
   .section p { font-size: 15px; line-height: 1.7; color: var(--text-secondary); margin: 0 0 12px; }
   .section ul, .section ol { margin: 0 0 16px; padding-left: 24px; }
@@ -400,6 +442,20 @@
   .resource-content { flex: 1; }
   .resource-content strong { display: block; font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
   .resource-content span { font-size: 13px; color: var(--text-secondary); }
+
+  .verify-cmd {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 0 0 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .verify-cmd code { font-family: inherit; }
 
   @media (max-width: 380px) {
     .app :global(h1) { font-size: 18px; }

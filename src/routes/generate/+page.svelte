@@ -1,7 +1,7 @@
 <script lang="ts">
   import { generateKeyPair, downloadKey } from '$lib/keygen';
   import { SUCCESS_TOAST_MS, ERROR_TOAST_MS, COPY_FEEDBACK_MS, COPY_ERROR_MS, MIN_PASSPHRASE_LENGTH } from '$lib/constants';
-  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner } from '$lib/components';
+  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner, SEO } from '$lib/components';
   import { isDonationBannerAllowed, dismissDonationBanner } from '$lib/donation-banner';
   import { onMount } from 'svelte';
 
@@ -153,57 +153,22 @@
   });
 </script>
 
-<svelte:head>
-  <title>Generate PGP Key Pair Online - Free ECC &amp; RSA Key Generator</title>
-  <meta name="description" content="Generate PGP key pairs in your browser. Choose ECC (Curve25519) or RSA (up to 4096-bit), set a passphrase, and download your public and private keys instantly." />
-  <meta name="keywords" content="pgp key generator online, generate pgp key pair online, pgp keygen online, free pgp key generator, create pgp keys browser, ecc key generator, rsa key generator online" />
-  <meta property="og:title" content="Generate PGP Key Pair Online - Free ECC & RSA Key Generator" />
-  <meta property="og:description" content="Generate PGP key pairs in your browser. Choose ECC or RSA, set a passphrase, and download your public and private keys instantly." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://pgp-converter.com/generate" />
-  <meta property="og:site_name" content="PGP Converter" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Generate PGP Key Pair Online - Free ECC & RSA Generator" />
-  <meta name="twitter:description" content="Generate PGP key pairs in your browser. Choose ECC or RSA, download your keys instantly." />
-  <link rel="canonical" href="https://pgp-converter.com/generate" />
-  {@html `<script type="application/ld+json">${JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "How do I generate a PGP key pair?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Enter your name, email, and a strong passphrase (at least 8 characters), choose ECC or RSA as the key type, then click Generate. Your public and private keys will appear and can be downloaded as .asc files."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What is the difference between ECC and RSA keys?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "ECC (Elliptic Curve Cryptography) keys are smaller and faster while providing equivalent security to much larger RSA keys. Curve25519 is recommended for most users. RSA is more widely supported by older software but requires larger key sizes (4096 bits recommended)."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Is my private key sent to a server?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "No. All key generation happens entirely in your browser using the OpenPGP.js library. Your private key, passphrase, and personal details are never transmitted to any server."
-        }
-      }
-    ]
-  })}</script>`}
-</svelte:head>
+<SEO
+  title="Generate PGP Key Pair Online: Free ECC &amp; RSA Key Generator"
+  description="Generate PGP key pairs in your browser. Choose ECC (Curve25519) or RSA (up to 4096-bit), set a passphrase, and download your public and private keys instantly."
+  path="/generate"
+/>
 
 <div class="app">
-  <NavBar currentPage="generate" {isTouchDevice} onToggleShortcuts={() => showShortcuts = !showShortcuts} />
+  <NavBar currentPage="generate" />
   <ShortcutsModal show={showShortcuts} {shortcuts} onClose={() => showShortcuts = false} />
 
   <main class="main">
-    <PageHeader title="Generate Keys" iconClass="generate">
+    <PageHeader
+      title="Generate a PGP Key Pair"
+      iconClass="generate"
+      onShortcutsClick={isTouchDevice ? undefined : () => showShortcuts = !showShortcuts}
+    >
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
       </svg>
@@ -327,6 +292,28 @@
       </svg>
       <p><strong>Important:</strong> Keep your private key and passphrase safe. Never share your private key with anyone. If you lose your passphrase, you will not be able to decrypt messages.</p>
     </div>
+
+    <details class="explainer">
+      <summary>
+        How to generate a PGP key pair
+        <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </summary>
+      <p>A key pair has two halves: a public key for others to encrypt messages to you, and a private key for you to decrypt them.</p>
+      <ol>
+        <li><strong>Fill in your name and email.</strong> These become part of the key's user ID; they're embedded in the public key and visible to anyone you share it with.</li>
+        <li><strong>Choose a strong passphrase.</strong> This encrypts the private key at rest. You'll enter it every time you decrypt. Use at least 8 characters; longer is better.</li>
+        <li><strong>Pick an algorithm.</strong>
+          <ul>
+            <li><strong>ECC (Curve25519)</strong>: recommended. Small keys, fast, modern cryptography. Supported by all modern PGP clients.</li>
+            <li><strong>RSA (2048 / 3072 / 4096 bits)</strong>: traditional, widely compatible with older tools. Slower key generation, larger keys. Use 4096 bits for long-term use.</li>
+          </ul>
+        </li>
+        <li><strong>Generate.</strong> The key pair appears in the output. Copy the public key to share; store the private key somewhere safe.</li>
+      </ol>
+      <p>Randomness comes from the browser's cryptographically secure random number generator. Nothing leaves your device.</p>
+    </details>
 
     <PageFooter />
   </main>
@@ -514,6 +501,52 @@
   .warning-box svg { flex-shrink: 0; color: var(--warning); margin-top: 2px; }
   .warning-box p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
   .warning-box strong { color: var(--warning); }
+
+  .explainer {
+    margin: 32px 0 0;
+    padding: 16px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .explainer summary {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .explainer summary::-webkit-details-marker { display: none; }
+  .explainer .chevron {
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+  }
+  .explainer[open] .chevron { transform: rotate(90deg); }
+  .explainer[open] summary { margin-bottom: 10px; }
+  .explainer p {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+  }
+  .explainer p:last-child { margin: 0; }
+  .explainer ol,
+  .explainer ul {
+    margin: 0 0 10px;
+    padding-left: 20px;
+  }
+  .explainer li {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .explainer strong { color: var(--text); font-weight: 500; }
 
   @media (prefers-reduced-motion: reduce) {
     .action-btn:active,

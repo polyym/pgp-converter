@@ -1,0 +1,68 @@
+# Builds, attests, and deploys the site.
+#
+# On push to main:  runs tests → builds → signs the build output with
+#                   Sigstore via GitHub's OIDC → deploys to Netlify prod.
+# On pull_request:  runs tests → builds → deploys a preview URL to Netlify.
+#
+# Anyone can verify a deployed file with:
+#   gh attestation verify <file-from-built-site> --repo polyym/pgp-converter
+#
+# Required GitHub repo secrets:
+#   NETLIFY_AUTH_TOKEN: personal access token from Netlify user settings
+#   NETLIFY_SITE_ID:    Project ID from Netlify Project configuration → General
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write        # mint OIDC token for Sigstore
+  attestations: write    # write attestation to GitHub
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Attest build provenance
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest@v4
+        with:
+          subject-path: 'build/**/*'
+
+      - name: Deploy preview
+        if: github.event_name == 'pull_request'
+        run: npx netlify-cli@latest deploy --dir=build --message="PR #${{ github.event.pull_request.number }} @ ${{ github.sha }}"
+        env:
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+
+      - name: Deploy to production
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: npx netlify-cli@latest deploy --prod --dir=build --message="Commit ${{ github.sha }}"
+        env:
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}

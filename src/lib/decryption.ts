@@ -38,7 +38,7 @@ export async function decryptMessage(
 			data: String(decryptedMessage.data)
 		};
 	} catch (e: unknown) {
-		console.error(e);
+		if (import.meta.env.DEV) console.error(e);
 		const message = e instanceof Error ? e.message : String(e);
 		return {
 			success: false,

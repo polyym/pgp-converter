@@ -1,20 +1,15 @@
 <script lang="ts">
   import { version } from '../../package.json';
+  import { SEO } from '$lib/components';
 </script>
 
+<SEO
+  title="PGP Converter: Free Online PGP Encryption, Decryption &amp; Key Generator"
+  description="Free, open-source PGP tool. Encrypt and decrypt messages, generate ECC or RSA key pairs, all in your browser. No data is sent to any server."
+  path="/"
+/>
+
 <svelte:head>
-  <title>PGP Converter - Free Online PGP Encryption, Decryption &amp; Key Generator</title>
-  <meta name="description" content="Free, open-source PGP tool. Encrypt and decrypt messages, generate ECC or RSA key pairs, all in your browser. No data is sent to any server." />
-  <meta name="keywords" content="pgp encrypt online, pgp decrypt online, pgp key generator online, online pgp tool, pgp encryption decryption online, free pgp encryption online, client side pgp, pgp encrypt no install, encrypt message with public key online, OpenPGP, privacy, cryptography, open source" />
-  <meta property="og:title" content="PGP Converter - Free Online PGP Encryption, Decryption & Key Generator" />
-  <meta property="og:description" content="Free, open-source PGP tool. Encrypt and decrypt messages, generate key pairs, all in your browser. No data leaves your device." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://pgp-converter.com" />
-  <meta property="og:site_name" content="PGP Converter" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="PGP Converter - Free Online PGP Encryption & Decryption Tool" />
-  <meta name="twitter:description" content="Encrypt, decrypt, and generate PGP keys in your browser. Free, open-source, and fully client-side." />
-  <link rel="canonical" href="https://pgp-converter.com" />
   {@html `<script type="application/ld+json">${JSON.stringify({
     "@context": "https://schema.org",
     "@type": "WebApplication",
@@ -25,8 +20,7 @@
     "operatingSystem": "Any",
     "offers": {
       "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
+      "price": "0"
     },
     "browserRequirements": "Requires a modern web browser with JavaScript enabled",
     "featureList": [
@@ -43,7 +37,7 @@
       "url": "https://pgp-converter.com/about"
     },
     "isAccessibleForFree": true,
-    "inLanguage": "en"
+    "inLanguage": "en-GB"
   })}</script>`}
 </svelte:head>
 
@@ -70,7 +64,7 @@
     <!-- How it works -->
     <div class="info-box">
       <h3>How it works</h3>
-      <p>All encryption and decryption happens entirely in your browser using the <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js</a> library. No data is transmitted to any server - the processing is between you, your browser, and OpenPGP.js.</p>
+      <p>All encryption and decryption happens entirely in your browser using the <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js</a> library. No data is transmitted to any server; the processing is between you, your browser, and OpenPGP.js.</p>
     </div>
 
     <!-- Action Cards -->

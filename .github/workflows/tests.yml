@@ -1,0 +1,46 @@
+# Runs the unit test suite, type check, and production build on every push to
+# main and every pull request. Intended as the canonical validation workflow
+# and the status check to require for branch protection on main.
+#
+# Tests also run inline as a step in deploy.yml; the duplication is deliberate
+# so neither workflow can skip the other's validation. On push to main both
+# workflows fire in parallel; on pull_request only this workflow runs (the
+# deploy workflow's preview job also runs, but keeps its own tests inline for
+# the same reason).
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Type check
+        run: npm run check
+
+      - name: Production build
+        run: npm run build

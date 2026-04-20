@@ -18,7 +18,7 @@ interface ApiAddresses {
 	bitcoin_native_segwit: string;
 }
 
-/** Static UI config for each chain — everything except the address */
+/** Static UI config for each chain; everything except the address */
 const WALLET_UI: Omit<Wallet, 'address'>[] = [
 	{
 		id: 'sol',
@@ -118,7 +118,7 @@ export function truncateAddress(address: string, startChars = 8, endChars = 6): 
 }
 
 /** Returns QR code foreground and background colours based on the user's colour scheme */
-export function getQrColors(): { dark: string; light: string } {
+function getQrColors(): { dark: string; light: string } {
 	const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 	return isDark
 		? { dark: '#ffffff', light: '#1a1a1a' }
@@ -141,7 +141,7 @@ export async function generateQrDataUrls(
 	results.forEach((result, i) => {
 		if (result.status === 'fulfilled') {
 			urls[wallets[i].id] = result.value;
-		} else {
+		} else if (import.meta.env.DEV) {
 			console.error(`QR generation failed for ${wallets[i].name}:`, result.reason);
 		}
 	});

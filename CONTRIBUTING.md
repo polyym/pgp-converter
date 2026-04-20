@@ -22,6 +22,8 @@ You retain copyright ownership of your contributions, but the licence you grant 
    - `npm run build` (production build succeeds)
 6. Open a pull request against `main`
 
+The `Tests` GitHub Actions workflow runs these same checks automatically on every pull request and will block the merge if any fail.
+
 ## Code style
 
 - Follow existing patterns in the codebase
@@ -30,6 +32,10 @@ You retain copyright ownership of your contributions, but the licence you grant 
 - Add JSDoc to all exported functions
 - Use British English in user-facing text
 - Do not use em dashes; use semicolons or commas instead
+
+## Reporting bugs and security issues
+
+Bug reports, feature suggestions, and security disclosures all go through [GitHub Issues](https://github.com/polyym/pgp-converter/issues). For security-relevant findings, please include clear reproduction steps and, where relevant, the affected commit or deploy.
 
 ## Questions
 

@@ -2,15 +2,9 @@
   type Page = 'encrypt' | 'decrypt' | 'generate' | 'about' | 'donate';
 
   let {
-    currentPage,
-    showShortcutsToggle = true,
-    isTouchDevice = false,
-    onToggleShortcuts
+    currentPage
   }: {
     currentPage: Page;
-    showShortcutsToggle?: boolean;
-    isTouchDevice?: boolean;
-    onToggleShortcuts?: () => void;
   } = $props();
 
   const navItems = [
@@ -53,10 +47,5 @@
         <span class="nav-label">{item.label}</span>
       </a>
     {/each}
-    {#if showShortcutsToggle && !isTouchDevice && onToggleShortcuts}
-      <button class="nav-link shortcut-toggle" onclick={onToggleShortcuts} aria-label="Show keyboard shortcuts">
-        <kbd>?</kbd>
-      </button>
-    {/if}
   </div>
 </nav>

@@ -4,3 +4,4 @@ export { default as Toast } from './Toast.svelte';
 export { default as PageFooter } from './PageFooter.svelte';
 export { default as PageHeader } from './PageHeader.svelte';
 export { default as DonationBanner } from './DonationBanner.svelte';
+export { default as SEO } from './SEO.svelte';

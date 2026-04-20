@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { NavBar, PageHeader, PageFooter } from '$lib/components';
+  import { NavBar, PageHeader, PageFooter, SEO } from '$lib/components';
   import { COPY_FEEDBACK_MS } from '$lib/constants';
   import { fetchWallets, truncateAddress, generateQrDataUrls } from '$lib/donations';
   import type { Wallet } from '$lib/donations';
   import { onMount, onDestroy } from 'svelte';
 
-  let isTouchDevice = $state(false);
   let copiedAddress = $state<string | null>(null);
   let qrDataUrls = $state<Record<string, string>>({});
   let wallets = $state<Wallet[]>([]);
@@ -13,6 +12,15 @@
   let waking = $state(false);
   let error = $state('');
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const loadingCoins = [
+    { name: 'Solana', color: '#9945FF' },
+    { name: 'Ethereum', color: '#627EEA' },
+    { name: 'Bitcoin', color: '#F7931A' }
+  ];
+  let loadingCoinIndex = $state(0);
+  const loadingCoin = $derived(loadingCoins[loadingCoinIndex]);
+  let loadingCycleTimer: ReturnType<typeof setInterval> | null = null;
 
   async function copyAddress(address: string) {
     try {
@@ -26,7 +34,9 @@
   }
 
   onMount(async () => {
-    isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    loadingCycleTimer = setInterval(() => {
+      loadingCoinIndex = (loadingCoinIndex + 1) % loadingCoins.length;
+    }, 2000);
     try {
       wallets = await fetchWallets('pgp-converter', () => { waking = true; });
       waking = false;
@@ -34,34 +44,30 @@
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load wallet addresses.';
     }
+    if (loadingCycleTimer) {
+      clearInterval(loadingCycleTimer);
+      loadingCycleTimer = null;
+    }
     loading = false;
   });
 
   onDestroy(() => {
     if (copyTimer) clearTimeout(copyTimer);
+    if (loadingCycleTimer) clearInterval(loadingCycleTimer);
   });
 </script>
 
-<svelte:head>
-  <title>Donate to PGP Converter - Support Free Open-Source Encryption</title>
-  <meta name="description" content="Support PGP Converter, a free and open-source browser-based PGP encryption tool. Donate with Solana, Ethereum, or Bitcoin. No accounts required." />
-  <meta name="keywords" content="pgp converter donate, support open source pgp, donate crypto, donate solana, donate ethereum, donate bitcoin, support free encryption tool" />
-  <meta property="og:title" content="Donate to PGP Converter - Support Free Open-Source Encryption" />
-  <meta property="og:description" content="Support PGP Converter, a free and open-source PGP encryption tool. Donate with crypto, no accounts required." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://pgp-converter.com/donate" />
-  <meta property="og:site_name" content="PGP Converter" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Donate to PGP Converter - Support Free Encryption" />
-  <meta name="twitter:description" content="Support PGP Converter with a crypto donation. No accounts, no personal data required." />
-  <link rel="canonical" href="https://pgp-converter.com/donate" />
-</svelte:head>
+<SEO
+  title="Donate to PGP Converter: Support Free Open-Source Encryption"
+  description="Support PGP Converter, a free and open-source browser-based PGP encryption tool. Donate with Solana, Ethereum, or Bitcoin. No accounts required."
+  path="/donate"
+/>
 
 <div class="app">
-  <NavBar currentPage="donate" showShortcutsToggle={false} {isTouchDevice} />
+  <NavBar currentPage="donate" />
 
   <main class="main">
-    <PageHeader title="Support This Project" iconClass="donate">
+    <PageHeader title="Support PGP Converter" iconClass="donate">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
       </svg>
@@ -80,7 +86,23 @@
         {#if error}
           <div class="info-box"><p>{error}</p></div>
         {:else if loading}
-          <p class="loading-text">{waking ? 'Loading wallet details, this may take a moment...' : 'Loading wallet details...'}</p>
+          <div class="wallet-loading" role="status" aria-label="Loading wallet addresses">
+            <div class="wallet-loading-spinner" aria-hidden="true"></div>
+            <div class="wallet-loading-coin" aria-hidden="true">
+              {#key loadingCoin.name}
+                <span class="wallet-loading-coin-name" style="color: {loadingCoin.color}">
+                  {loadingCoin.name}
+                </span>
+              {/key}
+            </div>
+            <p class="wallet-loading-subtitle">
+              {#if waking}
+                Fetching wallet addresses, this may take a moment...
+              {:else}
+                Fetching wallet addresses...
+              {/if}
+            </p>
+          </div>
         {:else}
           {#each wallets as wallet (wallet.id)}
             <div class="wallet-card">
@@ -189,11 +211,49 @@
   .info-box p { font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin: 0 0 10px; }
   .info-box p:last-child { margin-bottom: 0; }
 
-  .loading-text {
-    font-size: 14px;
+  .wallet-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 32px 0;
+  }
+  .wallet-loading-spinner {
+    width: 32px;
+    height: 32px;
+    border: 2.5px solid var(--border);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .wallet-loading-coin {
+    height: 24px;
+    min-width: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .wallet-loading-coin-name {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    animation: coin-fade-in 0.3s ease;
+  }
+  .wallet-loading-subtitle {
+    font-size: 13px;
     color: var(--text-secondary);
     text-align: center;
-    padding: 24px 0;
+    margin: 0;
+    max-width: 320px;
+    line-height: 1.5;
+  }
+  @keyframes coin-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wallet-loading-spinner { animation-duration: 2.5s; }
+    .wallet-loading-coin-name { animation: none; }
   }
 
   .wallets {

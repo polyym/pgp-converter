@@ -1,4 +1,10 @@
+export const prerender = true;
+
 const SITE_URL = 'https://pgp-converter.com';
+
+// Evaluated at build time; with prerendering enabled, this reflects the
+// deploy timestamp. Crawlers use it to prioritise recrawls.
+const LAST_MOD = new Date().toISOString();
 
 const pages = [
 	{ path: '/', priority: '1.0', changefreq: 'monthly' },
@@ -15,6 +21,7 @@ export async function GET() {
 			(page) => `
   <url>
     <loc>${SITE_URL}${page.path}</loc>
+    <lastmod>${LAST_MOD}</lastmod>
     <changefreq>${page.changefreq}</changefreq>
     <priority>${page.priority}</priority>
   </url>`

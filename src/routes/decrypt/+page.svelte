@@ -1,7 +1,7 @@
 <script lang="ts">
   import { decryptMessage } from '$lib/decryption';
   import { LOADING_DELAY_MS, SUCCESS_TOAST_MS, ERROR_TOAST_MS, COPY_FEEDBACK_MS, COPY_ERROR_MS } from '$lib/constants';
-  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner } from '$lib/components';
+  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner, SEO } from '$lib/components';
   import { isDonationBannerAllowed, dismissDonationBanner } from '$lib/donation-banner';
   import { onMount } from 'svelte';
 
@@ -105,57 +105,21 @@
   });
 </script>
 
-<svelte:head>
-  <title>PGP Decrypt Message Online - Free Browser-Based Decryption Tool</title>
-  <meta name="description" content="Decrypt PGP-encrypted messages in your browser. Paste the ciphertext, your private key, and passphrase to reveal the original message. Fully client-side." />
-  <meta name="keywords" content="pgp decrypt online, pgp decrypt message online free, pgp decryption online, decrypt pgp message browser, client side pgp decryption, free pgp decryption, pgp decrypt no install" />
-  <meta property="og:title" content="PGP Decrypt Message Online - Free Browser-Based Decryption Tool" />
-  <meta property="og:description" content="Decrypt PGP-encrypted messages in your browser. Paste the ciphertext, your private key, and passphrase to reveal the original message." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://pgp-converter.com/decrypt" />
-  <meta property="og:site_name" content="PGP Converter" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="PGP Decrypt Message Online - Free Browser-Based Tool" />
-  <meta name="twitter:description" content="Decrypt PGP-encrypted messages in your browser. Fully client-side, no data leaves your device." />
-  <link rel="canonical" href="https://pgp-converter.com/decrypt" />
-  {@html `<script type="application/ld+json">${JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "How do I decrypt a PGP message?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Paste the PGP-encrypted ciphertext, your private key, and your passphrase into the fields, then click Decrypt. The original plaintext message will appear in the output."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Why does PGP decryption fail?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Decryption typically fails for three reasons: the passphrase is incorrect, the message was encrypted with a different public key, or the encrypted text was not copied in full. Double-check all three inputs and try again."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Can I decrypt without a passphrase?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Only if your private key was generated without a passphrase. Most PGP keys are passphrase-protected, in which case the passphrase is required to unlock the private key before decryption can proceed."
-        }
-      }
-    ]
-  })}</script>`}
-</svelte:head>
+<SEO
+  title="PGP Decrypt Message Online: Free Browser-Based Decryption Tool"
+  description="Decrypt PGP-encrypted messages in your browser. Paste the ciphertext, your private key, and passphrase to reveal the original message. Fully client-side."
+  path="/decrypt"
+/>
 
 <div class="app">
-  <NavBar currentPage="decrypt" {isTouchDevice} onToggleShortcuts={() => showShortcuts = !showShortcuts} />
+  <NavBar currentPage="decrypt" />
   <ShortcutsModal show={showShortcuts} {shortcuts} onClose={() => showShortcuts = false} />
 
   <main class="main">
-    <PageHeader title="Decrypt">
+    <PageHeader
+      title="Decrypt a PGP Message"
+      onShortcutsClick={isTouchDevice ? undefined : () => showShortcuts = !showShortcuts}
+    >
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
         <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
@@ -229,6 +193,23 @@
       </div>
     </div>
 
+    <details class="explainer">
+      <summary>
+        How to decrypt a PGP message
+        <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </summary>
+      <p>Decryption uses your private key and passphrase to unlock a message that was encrypted for you. Without all three inputs correct, the plaintext stays sealed.</p>
+      <ol>
+        <li><strong>Paste the encrypted message.</strong> It begins with <code>-----BEGIN PGP MESSAGE-----</code>. Copy the whole block including header and footer.</li>
+        <li><strong>Paste your private key.</strong> This is the secret half of your keypair; never share it with anyone.</li>
+        <li><strong>Enter your passphrase.</strong> The one you set when generating the key.</li>
+        <li><strong>Decrypt.</strong> The original plaintext appears in the output panel.</li>
+      </ol>
+      <p>If the passphrase is wrong, the private key doesn't match the message, or the ciphertext was truncated, you'll see a specific error rather than a partial result. Your private key, passphrase, and decrypted message never leave this browser.</p>
+    </details>
+
     <PageFooter />
   </main>
 
@@ -273,6 +254,59 @@
     padding: 12px 20px 40px;
     padding-left: calc(20px + var(--safe-left));
     padding-right: calc(20px + var(--safe-right));
+  }
+
+  .explainer {
+    margin: 32px 0 0;
+    padding: 16px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .explainer summary {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .explainer summary::-webkit-details-marker { display: none; }
+  .explainer .chevron {
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+  }
+  .explainer[open] .chevron { transform: rotate(90deg); }
+  .explainer[open] summary { margin-bottom: 10px; }
+  .explainer p {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+  }
+  .explainer p:last-child { margin: 0; }
+  .explainer ol {
+    margin: 0 0 10px;
+    padding-left: 20px;
+  }
+  .explainer li {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .explainer strong { color: var(--text); font-weight: 500; }
+  .explainer code {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    background: var(--surface-2);
+    padding: 1px 4px;
+    border-radius: 4px;
   }
 
   @media (min-width: 768px) {
