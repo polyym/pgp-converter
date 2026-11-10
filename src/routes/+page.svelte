@@ -139,26 +139,8 @@
 </div>
 
 <style>
+  /* Colours, fonts and safe-area values come from the shared tokens in app.css */
   .app {
-    --bg: #09090b;
-    --surface: #0f0f12;
-    --surface-2: #16161a;
-    --border: #1f1f24;
-    --border-hover: #2a2a30;
-    --text: #fafafa;
-    --text-secondary: #71717a;
-    --text-dim: #3f3f46;
-    --accent: #fff;
-    --success: #22c55e;
-    --error: #ef4444;
-    --font: 'Inter', -apple-system, sans-serif;
-    --mono: 'IBM Plex Mono', monospace;
-
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-left: env(safe-area-inset-left, 0px);
-    --safe-right: env(safe-area-inset-right, 0px);
-
     min-height: 100vh;
     min-height: 100dvh;
     background: var(--bg);

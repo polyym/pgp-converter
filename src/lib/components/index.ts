@@ -5,3 +5,4 @@ export { default as PageFooter } from './PageFooter.svelte';
 export { default as PageHeader } from './PageHeader.svelte';
 export { default as DonationBanner } from './DonationBanner.svelte';
 export { default as SEO } from './SEO.svelte';
+export { default as PassphraseInput } from './PassphraseInput.svelte';

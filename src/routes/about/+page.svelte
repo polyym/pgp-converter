@@ -51,13 +51,13 @@
         <p>PGP Converter is hosted on <a href="https://www.netlify.com/" target="_blank" rel="noopener noreferrer">Netlify</a>. Basic server-side analytics are enabled through Netlify's standard logs, giving us aggregate metrics like page views, unique visitors, and top locations. This data is never shared with anyone.</p>
         <p>Beyond that:</p>
         <ul>
-          <li>No cookies are set</li>
+          <li>No cookies are set. One value is kept in your browser's local storage: the time you last dismissed the donation banner, so that it stays hidden for a day. The page also remembers your scroll position in session storage, which the browser clears when you close the tab. Neither leaves your device</li>
           <li>No client-side tracking scripts are loaded</li>
-          <li>No third-party code runs on this site besides <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js</a> and a private API used solely to retrieve donation wallet addresses</li>
-          <li>No personal data, user accounts, databases, or per-user logs; beyond the aggregate Netlify metrics above, nothing about you or your activity is retained</li>
-          <li>Because user data is never collected or stored, it cannot be produced in response to a subpoena; we simply do not have it</li>
+          <li>No code is loaded from other sites. The app is built from open-source libraries (<a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js</a> for the cryptography, Svelte for the interface, and qrcode for the donation QR codes), all bundled into the signed build and served from this domain. The only outside service involved is a private API used solely to retrieve donation wallet addresses on the donate page</li>
+          <li>No personal data, user accounts, databases, or per-user logs are kept by this project; beyond the aggregate Netlify metrics above, nothing about you or your activity is retained by us</li>
+          <li>Because your keys, messages, and passphrases never reach a server, there is nothing of that kind to produce in response to a subpoena. Netlify, as the host, may keep standard access logs (such as IP addresses and the pages requested) under its own retention policy</li>
         </ul>
-        <p><strong>Prefer to verify this independently?</strong> You don't have to take our word for it. Routing your traffic through a trustworthy VPN hides your IP address and approximate location from the aggregate analytics described above; however, a VPN shifts trust to the VPN provider rather than removing it and does not provide anonymity on its own. For genuine anonymity, use <a href="https://www.torproject.org/" target="_blank" rel="noopener noreferrer">Tor Browser</a>, which is purpose-built for it. <a href="https://www.privacyguides.org/" target="_blank" rel="noopener noreferrer">Privacy Guides</a> maintains vetted recommendations for both.</p>
+        <p><strong>Prefer not to rely on this?</strong> You don't have to take our word for it. Routing your traffic through a trustworthy VPN hides your IP address and approximate location from the analytics and access logs described above; however, a VPN shifts trust to the VPN provider rather than removing it and does not provide anonymity on its own. For genuine anonymity, use <a href="https://www.torproject.org/" target="_blank" rel="noopener noreferrer">Tor Browser</a>, which is purpose-built for it. <a href="https://www.privacyguides.org/" target="_blank" rel="noopener noreferrer">Privacy Guides</a> maintains vetted recommendations for both.</p>
       </div>
     </section>
 
@@ -119,7 +119,7 @@
         </div>
         <div class="feature-content">
           <h3>Encrypt Messages</h3>
-          <p>Enter your message and the recipient's public key. The encrypted output can only be read by the person who has the corresponding private key.</p>
+          <p>Enter your message and the recipient's public key. The page shows whose key it is and its fingerprint, and you can paste several keys to write to several people. The encrypted output can only be read by someone who has a corresponding private key.</p>
           <a href="/encrypt" class="feature-link">Go to Encrypt →</a>
         </div>
       </div>
@@ -160,7 +160,7 @@
           <div class="tip-icon">✅</div>
           <div class="tip-content">
             <strong>Verify public keys</strong>
-            <p>Before encrypting, confirm you have the correct public key through a trusted channel.</p>
+            <p>Before encrypting, compare the fingerprint shown on the Encrypt page with one the owner gives you through a trusted channel.</p>
           </div>
         </div>
         <div class="tip">
@@ -181,11 +181,11 @@
         <h3>What this tool is designed to protect against</h3>
         <ul>
           <li>Passive network eavesdroppers reading your messages in transit</li>
-          <li>Tampering of ciphertext in transit: OpenPGP v6 uses authenticated encryption (AEAD), which detects and rejects modified messages before revealing plaintext</li>
+          <li>Corruption or alteration of a ciphertext in transit: every message carries an integrity check, so a modified message is rejected instead of being decrypted into something misleading. This does not tell you who sent it; see below</li>
           <li>Server-side key theft, because there is no server-side key storage</li>
           <li>Server-side logging of your inputs, because there is no server-side processing</li>
           <li>Cryptanalysis of the underlying ciphers with current classical computing power: Curve25519 provides around 128-bit security, and RSA at 3072+ bits remains unbroken against known attacks</li>
-          <li>Accidental transmission of plaintext when you intended to encrypt</li>
+          <li>Exposure of your plaintext on its way to be encrypted: encryption happens in your browser, so the readable message is never sent over the network by this app</li>
         </ul>
       </div>
 
@@ -193,6 +193,7 @@
         <h3>What this tool does not protect against</h3>
         <ul>
           <li><strong>A compromised deployment.</strong> If an attacker gained control of this site's hosting or build pipeline, they could serve tampered JavaScript that exfiltrates your keys. This is the inherent limitation of any web-based cryptographic tool, and the reason we recommend a local PGP client for high-stakes use.</li>
+          <li><strong>Forged senders.</strong> Anyone who has your public key can encrypt a message to you and claim to be someone else, or replace a message with one of their own. This app does not create or verify digital signatures, so a decrypted message tells you what it says, not who wrote it. Confirm anything important through another channel, or use a PGP client that verifies signatures.</li>
           <li><strong>Endpoint compromise.</strong> If your device has a keylogger, malware, or a compromised browser extension, nothing done in-browser can save you.</li>
           <li><strong>Metadata leakage.</strong> PGP encrypts message content, but not the email subject line, sender or recipient addresses, or the timestamp. Who talked to whom and when remains visible to anyone with access to the headers.</li>
           <li><strong>Loss of forward secrecy.</strong> PGP does not provide forward secrecy. If your private key is ever compromised, every past message encrypted to that key can be decrypted.</li>
@@ -207,8 +208,10 @@
         <p>As noted in the <a href="https://docs.openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js documentation</a>, web-hosted cryptographic applications provide a different security model compared to installable applications. With web apps, users trust the server to deliver the correct code each time.</p>
         <p><strong>What:</strong> Every production deploy is built and signed by GitHub Actions using a short-lived <a href="https://www.sigstore.dev/" target="_blank" rel="noopener noreferrer">Sigstore</a>-issued certificate. The attestation links each deployed file to a specific commit and workflow run, and is recorded in Sigstore's public transparency log.</p>
         <p><strong>Why:</strong> A web app's security depends on the deployed JavaScript matching the reviewed source code; attestation makes this a check you can run, not a promise you have to take on faith.</p>
-        <p><strong>How to verify:</strong> Install the <a href="https://cli.github.com/" target="_blank" rel="noopener noreferrer">GitHub CLI</a> and run:</p>
-        <pre class="verify-cmd"><code>gh attestation verify &lt;file&gt; --repo polyym/pgp-converter</code></pre>
+        <p><strong>How to verify:</strong> Install the <a href="https://cli.github.com/" target="_blank" rel="noopener noreferrer">GitHub CLI</a>, download a file that this site serves, and check it against its attestation. For example:</p>
+        <pre class="verify-cmd"><code>curl -O https://pgp-converter.com/_app/version.json
+gh attestation verify version.json --repo polyym/pgp-converter</code></pre>
+        <p>A successful check confirms that the file was produced by the official GitHub Actions workflow from this repository and has not been changed since. The same check works for any other file the site serves.</p>
         <p>For additional assurance:</p>
         <ul>
           <li>Use browser developer tools to confirm no unexpected network requests are made during crypto operations</li>
@@ -219,7 +222,8 @@
 
     <section class="section" id="reporting-issues">
       <h2>Reporting Issues</h2>
-      <p>Found a bug, have a suggestion, or want to report a security issue? Please open an issue on <a href="https://github.com/polyym/pgp-converter/issues" target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
+      <p>Found a bug or have a suggestion? Please open an issue on <a href="https://github.com/polyym/pgp-converter/issues" target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
+      <p>Found a security vulnerability? Please do not post it in a public issue. Report it privately through <a href="https://github.com/polyym/pgp-converter/security/advisories/new" target="_blank" rel="noopener noreferrer">GitHub's private vulnerability reporting</a>, so that a fix can be ready before the details are public.</p>
     </section>
 
     <section class="section" id="useful-resources">
@@ -306,7 +310,8 @@
     margin-bottom: 32px;
   }
 
-  .section { margin-bottom: 40px; scroll-margin-top: 80px; }
+  /* Jumps from "On this page" stop just below the pinned navigation, whatever its height */
+  .section { margin-bottom: 40px; scroll-margin-top: calc(var(--nav-height, 76px) + 12px); }
 
   .toc {
     margin-bottom: 40px;

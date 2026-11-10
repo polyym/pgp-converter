@@ -1,105 +1,105 @@
 <script lang="ts">
   import { encryptMessage } from '$lib/encryption';
-  import { LOADING_DELAY_MS, SUCCESS_TOAST_MS, ERROR_TOAST_MS, COPY_FEEDBACK_MS, COPY_ERROR_MS } from '$lib/constants';
+  import { inspectPublicKeys, type KeyInfo } from '$lib/keys';
+  import { createFeedback } from '$lib/feedback.svelte';
+  import { createToolPage, copyText } from '$lib/tool-page.svelte';
+  import { LOADING_DELAY_MS, COPY_FEEDBACK_MS, COPY_ERROR_MS, KEY_INSPECT_DELAY_MS } from '$lib/constants';
   import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner, SEO } from '$lib/components';
-  import { isDonationBannerAllowed, dismissDonationBanner } from '$lib/donation-banner';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
+  let outputElement = $state<HTMLElement>();
   let plaintext = $state('');
   let publicKey = $state('');
   let encrypted = $state('');
-  let errorMessage = $state('');
+  let recipients = $state<KeyInfo[]>([]);
   let isLoading = $state(false);
   let copySuccess = $state(false);
-  let encryptSuccess = $state(false);
-  let showShortcuts = $state(false);
-  let isTouchDevice = $state(false);
-  let showDonationBanner = $state(false);
+  let inspectId = 0;
+
+  const feedback = createFeedback();
+  const tool = createToolPage({
+    submitLabel: 'Encrypt message',
+    onSubmit: handleEncrypt,
+    onCopy: copyToClipboard,
+    canCopy: () => !!encrypted,
+    onClear: clearAll,
+    canClear: () => !!(plaintext || publicKey || encrypted)
+  });
 
   const isValid = $derived(plaintext.trim().length > 0 && publicKey.trim().length > 0);
 
-  const shortcuts = [
-    { label: 'Encrypt message', keys: ['⌘', '↵'] },
-    { label: 'Copy result', keys: ['⌘', '⇧', 'C'] },
-    { label: 'Clear all', keys: ['Esc'] },
-    { label: 'Toggle shortcuts', keys: ['?'] }
-  ];
+  // Show whose key has been pasted, shortly after the user stops typing
+  $effect(() => {
+    const text = publicKey;
+    const id = ++inspectId;
+    if (!text.trim()) {
+      recipients = [];
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const keys = await inspectPublicKeys(text);
+      if (id === inspectId) recipients = keys;
+    }, KEY_INSPECT_DELAY_MS);
+    return () => clearTimeout(timer);
+  });
 
   async function handleEncrypt() {
     if (!isValid || isLoading) return;
 
+    // A result that arrives after the form was cleared must not reappear
+    const isCurrent = tool.startRun();
     isLoading = true;
-    encryptSuccess = false;
-    errorMessage = '';
+    feedback.clear();
 
     await new Promise(resolve => setTimeout(resolve, LOADING_DELAY_MS));
+    if (!isCurrent()) return;
 
     const result = await encryptMessage(plaintext, publicKey);
+    if (!isCurrent()) return;
 
     if (result.success && result.data) {
       encrypted = result.data;
-      errorMessage = '';
-      encryptSuccess = true;
-      setTimeout(() => encryptSuccess = false, SUCCESS_TOAST_MS);
-      if (isDonationBannerAllowed()) showDonationBanner = true;
+      feedback.showSuccess('Encrypted');
+      tool.offerDonation();
     } else {
-      errorMessage = result.error || 'Encryption failed';
       encrypted = '';
-      setTimeout(() => errorMessage = '', ERROR_TOAST_MS);
+      feedback.showError(result.error || 'Encryption failed');
     }
     isLoading = false;
+
+    if (encrypted) {
+      await tick();
+      tool.revealResult(outputElement);
+    }
   }
 
   async function copyToClipboard() {
     if (!encrypted) return;
 
-    try {
-      await navigator.clipboard.writeText(encrypted);
+    if (await copyText(encrypted)) {
       copySuccess = true;
       setTimeout(() => copySuccess = false, COPY_FEEDBACK_MS);
-    } catch {
-      errorMessage = 'Failed to copy';
-      setTimeout(() => errorMessage = '', COPY_ERROR_MS);
+    } else {
+      feedback.showError('Failed to copy', COPY_ERROR_MS);
     }
   }
 
   function clearAll() {
+    tool.cancelRuns();
+    isLoading = false;
     plaintext = '';
     publicKey = '';
     encrypted = '';
-    errorMessage = '';
-  }
-
-  function handleDismissDonation() {
-    showDonationBanner = false;
-    dismissDonationBanner();
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    const target = e.target as HTMLElement;
-
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      handleEncrypt();
-    }
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'c' || e.key === 'C') && encrypted) {
-      e.preventDefault();
-      copyToClipboard();
-    }
-    if (e.key === 'Escape' && (plaintext || publicKey || encrypted)) {
-      e.preventDefault();
-      clearAll();
-    }
-    if (e.key === '?' && target.tagName !== 'TEXTAREA') {
-      e.preventDefault();
-      showShortcuts = !showShortcuts;
-    }
+    recipients = [];
+    feedback.clear();
   }
 
   onMount(() => {
-    isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    document.addEventListener('keydown', handleKeydown);
-    return () => document.removeEventListener('keydown', handleKeydown);
+    const stopShortcuts = tool.mount();
+    return () => {
+      stopShortcuts();
+      feedback.clear();
+    };
   });
 </script>
 
@@ -111,12 +111,12 @@
 
 <div class="app">
   <NavBar currentPage="encrypt" />
-  <ShortcutsModal show={showShortcuts} {shortcuts} onClose={() => showShortcuts = false} />
+  <ShortcutsModal show={tool.showShortcuts} shortcuts={tool.shortcuts} onClose={tool.closeShortcuts} />
 
   <main class="main">
     <PageHeader
       title="Encrypt a PGP Message"
-      onShortcutsClick={isTouchDevice ? undefined : () => showShortcuts = !showShortcuts}
+      onShortcutsClick={tool.hintsVisible ? tool.toggleShortcuts : undefined}
     >
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -124,8 +124,8 @@
       </svg>
     </PageHeader>
 
-    <Toast type="success" message="Encrypted" show={encryptSuccess} />
-    <Toast type="error" message={errorMessage} show={!!errorMessage} />
+    <Toast type="success" message={feedback.success} show={!!feedback.success} />
+    <Toast type="error" message={feedback.error} show={!!feedback.error} />
 
     <div class="fields">
       <div class="field">
@@ -135,6 +135,9 @@
           bind:value={plaintext}
           placeholder="Enter message..."
           rows="4"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="off"
         ></textarea>
       </div>
 
@@ -146,11 +149,42 @@
           placeholder="Paste public key..."
           rows="4"
           class="mono"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="off"
         ></textarea>
+
+        {#if recipients.length}
+          <div class="recipients" role="status">
+            <p class="recipients-title">
+              {recipients.length === 1 ? 'Encrypting to' : `Encrypting to ${recipients.length} keys`}
+            </p>
+            <ul>
+              {#each recipients as key (key.fingerprint)}
+                <li class:problem={!!key.problem}>
+                  <span class="recipient-name">{key.userIDs.join(', ') || 'Key with no name'}</span>
+                  <span class="recipient-meta">{key.algorithm}, created {key.created}</span>
+                  <code class="recipient-fingerprint">{key.fingerprint}</code>
+                  {#if key.problem}
+                    <span class="recipient-problem">{key.problem}</span>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+            <p class="recipients-hint">Confirm the fingerprint with the recipient through another channel before you rely on this key.</p>
+          </div>
+        {/if}
       </div>
     </div>
 
-    <div class="output" class:has-content={encrypted}>
+    <div
+      class="output"
+      class:has-content={encrypted}
+      bind:this={outputElement}
+      tabindex="-1"
+      role="region"
+      aria-label="Encrypted message"
+    >
       <div class="output-header">
         <span>Output</span>
         {#if encrypted}
@@ -166,7 +200,7 @@
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
               </svg>
               Copy
-              {#if !isTouchDevice}<kbd>⌘⇧C</kbd>{/if}
+              {#if tool.hintsVisible}<kbd>{tool.keys.copyHint}</kbd>{/if}
             {/if}
           </button>
         {/if}
@@ -189,17 +223,17 @@
       </summary>
       <p>Encrypting a message with PGP is a one-way door: once encrypted with a public key, only the matching private key can read it. Even if the ciphertext is intercepted in transit, it stays unreadable without that key.</p>
       <ol>
-        <li><strong>Paste the recipient's public key.</strong> This is their public half of the PGP keypair, typically shared on a keyserver, website, or directly with you.</li>
+        <li><strong>Paste the recipient's public key.</strong> This is their public half of the PGP keypair, typically shared on a keyserver, website, or directly with you. The page shows whose key it is and its fingerprint, so you can check it is the right one. To write to several people, paste their public keys one after another.</li>
         <li><strong>Paste your plaintext message.</strong> Anything you want only the recipient to read.</li>
         <li><strong>Encrypt.</strong> The output is an armored PGP message beginning with <code>-----BEGIN PGP MESSAGE-----</code>. Send it through any channel (email, chat, SMS), and only the holder of the matching private key can decrypt it.</li>
       </ol>
-      <p>All encryption happens locally via OpenPGP.js. Your plaintext and the public key never leave this browser.</p>
+      <p>All encryption happens locally via OpenPGP.js. Your plaintext and the public key never leave this browser. The message is not signed, so the recipient cannot prove from the message alone that it came from you.</p>
     </details>
 
     <PageFooter />
   </main>
 
-  <DonationBanner show={showDonationBanner} onDismiss={handleDismissDonation} />
+  <DonationBanner show={tool.showDonationBanner} onDismiss={tool.dismissDonation} />
 
   <div class="bottom-actions">
     <div class="bottom-actions-inner">
@@ -210,7 +244,7 @@
             <line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
           Clear
-          {#if !isTouchDevice}<kbd>Esc</kbd>{/if}
+          {#if tool.hintsVisible}<kbd>Esc</kbd>{/if}
         </button>
       {/if}
       <button
@@ -227,7 +261,7 @@
           </svg>
         {/if}
         Encrypt
-        {#if !isTouchDevice}<kbd>⌘↵</kbd>{/if}
+        {#if tool.hintsVisible}<kbd>{tool.keys.submitHint}</kbd>{/if}
       </button>
     </div>
   </div>
@@ -248,56 +282,60 @@
     }
   }
 
-  .explainer {
-    margin: 32px 0 0;
-    padding: 16px 18px;
+  .recipients {
+    padding: 12px 14px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
   }
-  .explainer summary {
-    font-size: 15px;
+  .recipients-title {
+    margin: 0 0 8px;
+    font-size: 12px;
     font-weight: 600;
-    color: var(--text);
-    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+  }
+  .recipients ul {
     list-style: none;
+    margin: 0;
+    padding: 0;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
     gap: 10px;
   }
-  .explainer summary::-webkit-details-marker { display: none; }
-  .explainer .chevron {
-    color: var(--text-secondary);
-    transition: transform 0.2s ease;
-    flex-shrink: 0;
+  .recipients li {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
-  .explainer[open] .chevron { transform: rotate(90deg); }
-  .explainer[open] summary { margin-bottom: 10px; }
-  .explainer p {
+  .recipient-name {
     font-size: 14px;
-    line-height: 1.7;
+    font-weight: 500;
+    color: var(--text);
+    overflow-wrap: anywhere;
+  }
+  .recipient-meta {
+    font-size: 12px;
     color: var(--text-secondary);
-    margin: 0 0 10px;
   }
-  .explainer p:last-child { margin: 0; }
-  .explainer ol {
-    margin: 0 0 10px;
-    padding-left: 20px;
-  }
-  .explainer li {
-    font-size: 14px;
-    line-height: 1.7;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-  }
-  .explainer strong { color: var(--text); font-weight: 500; }
-  .explainer code {
+  .recipient-fingerprint {
     font-family: var(--mono);
     font-size: 12px;
-    color: var(--text);
-    background: var(--surface-2);
-    padding: 1px 4px;
-    border-radius: 4px;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+  }
+  .recipient-problem {
+    font-size: 13px;
+    color: var(--error);
+  }
+  .recipients li.problem .recipient-name {
+    color: var(--error);
+  }
+  .recipients-hint {
+    margin: 10px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
   }
 </style>

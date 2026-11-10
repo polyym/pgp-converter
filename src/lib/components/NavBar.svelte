@@ -35,13 +35,24 @@
   ];
 
   const filteredItems = $derived(navItems.filter(item => item.page !== currentPage));
+
+  let height = $state(0);
+
+  // The bar is pinned to the top and can grow (a second row on a very narrow
+  // screen, a notch inset). Publishing its real height lets anchor jumps and
+  // floating messages stop below it instead of underneath it.
+  $effect(() => {
+    if (height) document.documentElement.style.setProperty('--nav-height', `${height}px`);
+  });
 </script>
 
-<nav class="nav">
-  <div class="nav-group">
+<nav class="nav" aria-label="Main" bind:offsetHeight={height}>
+  <!-- "crowded" marks the pages that list all four destinations (About, Donate) -->
+  <div class="nav-group" class:crowded={filteredItems.length > 3}>
     {#each filteredItems as item}
-      <a href={item.href} class="nav-link">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <!-- The text label is hidden on narrow screens, so the link carries its own name -->
+      <a href={item.href} class="nav-link" aria-label={item.label}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
           {@html item.icon}
         </svg>
         <span class="nav-label">{item.label}</span>

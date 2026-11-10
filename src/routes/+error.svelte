@@ -18,13 +18,13 @@
 				Something went wrong
 			{/if}
 		</h1>
+		<!-- SvelteKit always supplies its own short message ("Not Found", "Internal Error"),
+		     so the text here is chosen by status instead of falling back to it -->
 		<p>
-			{#if page.error?.message}
-				{page.error.message}
-			{:else if page.status === 404}
+			{#if page.status === 404}
 				The page you're looking for doesn't exist.
 			{:else}
-				An unexpected error occurred.
+				An unexpected error occurred. Please try again.
 			{/if}
 		</p>
 		<a href="/" class="home-btn">Go Home</a>
@@ -66,7 +66,7 @@
 	}
 
 	p {
-		color: var(--text-secondary, #71717a);
+		color: var(--text-secondary, #9494a0);
 		margin: 0 0 32px;
 		font-size: 15px;
 		line-height: 1.5;

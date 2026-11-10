@@ -31,9 +31,12 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
 
+      # npm install, not npm ci: npm ci refuses to run when it judges the lockfile
+      # incomplete, which npm's handling of other platforms' optional packages can
+      # cause. With the lockfile in sync, this installs the same pinned versions.
       - run: npm install --no-audit --no-fund
 
       - name: Run unit tests

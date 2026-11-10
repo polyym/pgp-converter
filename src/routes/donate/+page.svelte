@@ -1,17 +1,20 @@
 <script lang="ts">
   import { NavBar, PageHeader, PageFooter, SEO } from '$lib/components';
   import { COPY_FEEDBACK_MS } from '$lib/constants';
-  import { fetchWallets, truncateAddress, generateQrDataUrls } from '$lib/donations';
+  import { fetchWallets, truncateAddress, generateQrDataUrls, WALLET_LOAD_ERROR } from '$lib/donations';
   import type { Wallet } from '$lib/donations';
   import { onMount, onDestroy } from 'svelte';
 
   let copiedAddress = $state<string | null>(null);
   let qrDataUrls = $state<Record<string, string>>({});
+  let qrReady = $state(false);
   let wallets = $state<Wallet[]>([]);
   let loading = $state(true);
   let waking = $state(false);
   let error = $state('');
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
+  // Cancels the request and its retries when the visitor leaves or tries again
+  let controller: AbortController | null = null;
 
   const loadingCoins = [
     { name: 'Solana', color: '#9945FF' },
@@ -33,27 +36,54 @@
     copyTimer = setTimeout(() => { copiedAddress = null; }, COPY_FEEDBACK_MS);
   }
 
-  onMount(async () => {
-    loadingCycleTimer = setInterval(() => {
-      loadingCoinIndex = (loadingCoinIndex + 1) % loadingCoins.length;
-    }, 2000);
-    try {
-      wallets = await fetchWallets('pgp-converter', () => { waking = true; });
-      waking = false;
-      qrDataUrls = await generateQrDataUrls(wallets);
-    } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load wallet addresses.';
-    }
+  function stopLoadingCycle() {
     if (loadingCycleTimer) {
       clearInterval(loadingCycleTimer);
       loadingCycleTimer = null;
     }
-    loading = false;
+  }
+
+  async function loadWallets() {
+    controller?.abort();
+    controller = new AbortController();
+    const { signal } = controller;
+
+    loading = true;
+    waking = false;
+    error = '';
+    qrReady = false;
+    stopLoadingCycle();
+    loadingCycleTimer = setInterval(() => {
+      loadingCoinIndex = (loadingCoinIndex + 1) % loadingCoins.length;
+    }, 2000);
+
+    try {
+      const loaded = await fetchWallets({ signal, onWaking: () => { waking = true; } });
+      if (signal.aborted) return;
+      wallets = loaded;
+      loading = false;
+      stopLoadingCycle();
+      // A failed QR code must never hide an address that loaded fine
+      const urls = await generateQrDataUrls(loaded).catch(() => ({}));
+      if (signal.aborted) return;
+      qrDataUrls = urls;
+      qrReady = true;
+    } catch {
+      if (signal.aborted) return;
+      error = WALLET_LOAD_ERROR;
+      loading = false;
+      stopLoadingCycle();
+    }
+  }
+
+  onMount(() => {
+    loadWallets();
   });
 
   onDestroy(() => {
+    controller?.abort();
     if (copyTimer) clearTimeout(copyTimer);
-    if (loadingCycleTimer) clearInterval(loadingCycleTimer);
+    stopLoadingCycle();
   });
 </script>
 
@@ -84,7 +114,10 @@
       <h2>Donate with Crypto</h2>
       <div class="wallets">
         {#if error}
-          <div class="info-box"><p>{error}</p></div>
+          <div class="info-box" role="alert">
+            <p>{error}</p>
+            <button class="retry-btn" onclick={loadWallets}>Try again</button>
+          </div>
         {:else if loading}
           <div class="wallet-loading" role="status" aria-label="Loading wallet addresses">
             <div class="wallet-loading-spinner" aria-hidden="true"></div>
@@ -155,8 +188,10 @@
                       width="140"
                       height="140"
                     />
-                  {:else}
+                  {:else if !qrReady}
                     <div class="qr-spinner" aria-label="Loading QR code"></div>
+                  {:else}
+                    <span class="qr-missing">QR code unavailable. Use the address above.</span>
                   {/if}
                 </div>
               </div>
@@ -403,6 +438,30 @@
   .qr-img {
     display: block;
     border-radius: 4px;
+  }
+
+  .qr-missing {
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+
+  .retry-btn {
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+
+  .retry-btn:hover {
+    border-color: var(--border-hover);
   }
 
   .qr-spinner {

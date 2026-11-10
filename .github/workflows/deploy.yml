@@ -1,11 +1,23 @@
 # Builds, attests, and deploys the site.
 #
 # On push to main:  runs tests → builds → signs the build output with
-#                   Sigstore via GitHub's OIDC → deploys to Netlify prod.
+#                   Sigstore via GitHub's OIDC → deploys that exact output to
+#                   Netlify prod → checks the live site serves the signed files.
 # On pull_request:  runs tests → builds → deploys a preview URL to Netlify.
 #
 # Anyone can verify a deployed file with:
 #   gh attestation verify <file-from-built-site> --repo polyym/pgp-converter
+#
+# The attestation only means something if the signed files are the ones that go
+# live, so two things matter here:
+#   1. The Netlify CLI rebuilds the project by default. --no-build makes it
+#      upload build/ exactly as it is.
+#   2. Netlify must not build the site itself. The Netlify project has no
+#      repository linked (Project configuration → Developer settings →
+#      Continuous deployment), so every deploy comes from this workflow. If
+#      one is ever linked, Netlify will publish its own unsigned build over
+#      the signed one.
+# The final step of the production job fails if the live site differs from build/.
 #
 # Required GitHub repo secrets:
 #   NETLIFY_AUTH_TOKEN: personal access token from Netlify user settings
@@ -19,24 +31,64 @@ on:
   pull_request:
     branches: [main]
 
+# Each job asks for what it needs; previews get no signing permissions
 permissions:
   contents: read
-  id-token: write        # mint OIDC token for Sigstore
-  attestations: write    # write attestation to GitHub
 
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # Pinned so that a new CLI release cannot change what gets deployed, or run
+  # with the deploy token, without a reviewed change to this file
+  NETLIFY_CLI_VERSION: 27.16.3
+
 jobs:
-  deploy:
+  preview:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
+          cache: npm
+
+      # npm install, not npm ci: npm ci refuses to run when it judges the lockfile
+      # incomplete, which npm's handling of other platforms' optional packages can
+      # cause. With the lockfile in sync, this installs the same pinned versions.
+      - run: npm install --no-audit --no-fund
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy preview
+        # Written as a block: in a one-line YAML value, " #" starts a comment and
+        # would cut the command off at the pull request number
+        run: |
+          npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --no-build --dir=build --message="PR #${{ github.event.pull_request.number }} @ ${{ github.sha }}"
+        env:
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+
+  production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write        # mint OIDC token for Sigstore
+      attestations: write    # write attestation to GitHub
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
           cache: npm
 
       - run: npm install --no-audit --no-fund
@@ -48,21 +100,15 @@ jobs:
         run: npm run build
 
       - name: Attest build provenance
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/attest@v4
         with:
           subject-path: 'build/**/*'
 
-      - name: Deploy preview
-        if: github.event_name == 'pull_request'
-        run: npx netlify-cli@latest deploy --dir=build --message="PR #${{ github.event.pull_request.number }} @ ${{ github.sha }}"
+      - name: Deploy to production
+        run: npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --prod --no-build --dir=build --message="Commit ${{ github.sha }}"
         env:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
 
-      - name: Deploy to production
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: npx netlify-cli@latest deploy --prod --dir=build --message="Commit ${{ github.sha }}"
-        env:
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      - name: Check the live site matches the signed build
+        run: node scripts/verify-deploy.mjs https://pgp-converter.com build

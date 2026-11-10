@@ -6,10 +6,21 @@
     show: boolean;
     onDismiss: () => void;
   } = $props();
+
+  let height = $state(0);
+  const GAP_PX = 12;
+
+  // The banner floats over the bottom of the page. Tell the page how much room it
+  // takes, so the last of the content can still be scrolled clear of it.
+  $effect(() => {
+    if (!show) return;
+    document.documentElement.style.setProperty('--banner-space', `${height + GAP_PX}px`);
+    return () => document.documentElement.style.removeProperty('--banner-space');
+  });
 </script>
 
 {#if show}
-  <div class="donation-banner">
+  <div class="donation-banner" bind:clientHeight={height}>
     <div class="donation-banner-inner">
       <p class="donation-text">
         <strong>Enjoying PGP Converter?</strong> It's free, ad-free, and your data never leaves your browser. If it's been useful, any donation is genuinely appreciated.

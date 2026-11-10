@@ -22,9 +22,9 @@ PGP Converter is a web-based tool that enables users to encrypt and decrypt text
 
 PGP Converter offers:
 
-- **Encrypt Messages**: Secure your messages using a recipient's public key
+- **Encrypt Messages**: Secure your messages using one or more recipients' public keys; the app shows whose key each one is and its fingerprint before you encrypt
 - **Decrypt Messages**: Unlock encrypted messages with your private key and passphrase
-- **Generate Key Pairs**: Create new ECC or RSA key pairs with customisable settings
+- **Generate Key Pairs**: Create new ECC or RSA key pairs with customisable settings, in formats that GnuPG and other mainstream clients can import
 - **Export Keys**: Download generated keys as `.asc` or `.txt` files
 - **About & Documentation**: In-app guide explaining PGP concepts, security best practices, and hosting transparency
 - **Keyboard Shortcuts**: Quick actions for power users
@@ -49,20 +49,28 @@ The website is built using SvelteKit with Svelte 5 runes and ships as a fully pr
 ```
 .github/
 └── workflows/
-    ├── deploy.yml        # CI: build, test, sign with Sigstore, deploy to Netlify
+    ├── deploy.yml        # CI: build, test, sign with Sigstore, deploy to Netlify, check the live site
     └── tests.yml         # CI: unit tests, type check, and production build
 
 netlify/
 └── functions/
-    └── wallet-proxy.mts  # Serverless proxy for wallet address API
+    └── wallet-proxy.mts  # Serverless proxy for this project's wallet addresses
+
+scripts/
+└── verify-deploy.mjs     # Compares the live site with the signed build after a deploy
 
 src/
 ├── lib/
 │   ├── components/       # Shared UI components (NavBar, Toast, SEO, etc.)
 │   ├── constants.ts      # Shared constants and configuration
 │   ├── errors.ts         # User-friendly error mapping
+│   ├── armor.ts          # Clean-up of pasted PGP blocks (indentation, email quoting)
+│   ├── keys.ts           # Reading public keys and describing them (identity, fingerprint)
+│   ├── feedback.svelte.ts # Success and error message state for the tool pages
+│   ├── tool-page.svelte.ts # Behaviour shared by the encrypt, decrypt and generate pages
+│   ├── shortcuts.ts      # Shortcut labels for the user's keyboard (Ctrl or Command)
 │   ├── donation-banner.ts # Donation banner cooldown logic
-│   ├── donations.ts      # Wallet API fetch, UI config, and QR code generation
+│   ├── donations.ts      # Wallet API fetch, address validation, and QR code generation
 │   ├── encryption.ts     # Message encryption module
 │   ├── decryption.ts     # Message decryption module
 │   └── keygen.ts         # Key pair generation module
@@ -102,7 +110,7 @@ Security is paramount for PGP Converter:
 - **Modern Cryptography**: Uses OpenPGP.js v6 with support for modern ECC curves (Curve25519, NIST P-256/384/521) and RSA (2048-4096 bits)
 - **Secure Defaults**: ECC with Curve25519 is recommended for optimal security and performance
 - **No Tracking**: No cookies, no client-side tracking scripts, no personal data collection
-- **Attested Builds**: Every production deploy is built in GitHub Actions and signed with a short-lived Sigstore-issued certificate. Attestations are recorded in Sigstore's public transparency log and can be verified against any file served from the live site (see below).
+- **Attested Builds**: Every production deploy is built in GitHub Actions and signed with a short-lived Sigstore-issued certificate. Attestations are recorded in Sigstore's public transparency log and can be verified against any file served from the live site (see below). The deploy workflow uploads the signed files unchanged and then fails if the live site serves anything else.
 
 ### Security Considerations
 
@@ -117,34 +125,38 @@ As noted in the [OpenPGP.js documentation](https://docs.openpgpjs.org/), web-hos
 - Using browser developer tools to inspect network requests (you'll see none are made during crypto operations)
 - For high-security needs, running the application locally or using dedicated PGP software such as [GnuPG](https://gnupg.org/)
 
+PGP Converter does not create or verify digital signatures. A decrypted message tells you what it says, not who wrote it; if a message carries a signature, the app says so and that it was not checked. The full threat model is on the [About page](https://pgp-converter.com/about#threat-model).
+
 ### Security Best Practices
 
 - Protect your private key; never share it with anyone
 - Use a strong, unique passphrase to protect your private key
-- Verify public keys through a trusted channel before encrypting
+- Verify public keys through a trusted channel before encrypting, by comparing the fingerprint the app shows with one the owner gives you
 - Keep secure backups of your key pair
 
 ### Reporting Security Issues
 
-Please open an issue on [GitHub](https://github.com/polyym/pgp-converter/issues) for bug reports, feature suggestions, and security disclosures.
+Please do not report security vulnerabilities in public issues. Report them privately as described in [SECURITY.md](./SECURITY.md).
+
+Bug reports without a security impact, and feature suggestions, are welcome as [GitHub issues](https://github.com/polyym/pgp-converter/issues).
 
 ## Technology Stack
 
-- **Runtime**: Node.js v22.0.0+
+- **Runtime**: Node.js v26.0.0+
 - **Framework**: SvelteKit 2.x with Svelte 5 (runes)
 - **Build Tool**: Vite 8.x
 - **Styling**: Hand-written CSS with custom properties; self-hosted IBM Plex Mono and Inter
 - **Cryptography**: OpenPGP.js 6.x
 - **QR Codes**: qrcode (for donation wallet addresses)
-- **Testing**: Vitest 4.x
+- **Testing**: Vitest 4.x, including a round trip through a real GnuPG where one is installed
 - **TypeScript**: 6.x with strict mode
 - **Serverless**: Netlify Functions v2 (wallet address proxy)
-- **CI / Deployment**: GitHub Actions builds, tests, and deploys via the Netlify CLI on every push to `main`. All public routes are prerendered as static HTML
+- **CI / Deployment**: GitHub Actions builds, tests, and deploys via a pinned version of the Netlify CLI on every push to `main`. All public routes are prerendered as static HTML
 - **Build Attestations**: `actions/attest@v4` signs each production build using Sigstore and auto-generates a SLSA build provenance attestation; the result is recorded in Rekor's public transparency log and verifiable with `gh attestation verify`
 
 ## Building and Running Locally
 
-To build and run PGP Converter locally, ensure that you have Node.js v22.0.0 or later installed on your machine.
+To build and run PGP Converter locally, ensure that you have Node.js v26.0.0 or later installed on your machine.
 
 ### Project Setup
 
@@ -178,7 +190,9 @@ npm run build
 
 The build output under `build/` contains fully prerendered HTML for every public route plus static assets; the Netlify function for the wallet-address proxy is bundled separately under `.netlify/functions-internal/`. You can preview the production build with `npm run preview`.
 
-Production deploys run through `.github/workflows/deploy.yml`: pushes to `main` trigger a build, run the test suite, sign the build output with Sigstore via `actions/attest@v4`, and deploy to Netlify using the Netlify CLI. Pull requests trigger a preview deploy without an attestation.
+Production deploys run through `.github/workflows/deploy.yml`: pushes to `main` trigger a build, run the test suite, sign the build output with Sigstore via `actions/attest@v4`, and deploy that exact output to Netlify using the Netlify CLI with `--no-build`. A final step, `scripts/verify-deploy.mjs`, downloads every file from the live site and fails the workflow if any differs from the signed build. Pull requests trigger a preview deploy without an attestation.
+
+The Netlify project has no repository linked, so Netlify never builds the site itself and every deploy comes from this workflow. Linking one would let Netlify publish its own unsigned build over the signed one.
 
 ### Verifying a Deployed Build
 

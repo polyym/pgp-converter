@@ -106,15 +106,21 @@ html {
   html { scroll-behavior: auto; }
 }
 
-.app {
+/* Design tokens. Defined once on the root so every page, including the error
+   page, uses the same values. */
+:root {
   --bg: #09090b;
   --surface: #0f0f12;
   --surface-2: #16161a;
   --border: #1f1f24;
   --border-hover: #2a2a30;
   --text: #fafafa;
-  --text-secondary: #71717a;
-  --text-dim: #3f3f46;
+  /* Both greys keep at least 4.5:1 contrast against --bg, --surface and
+     --surface-2 (WCAG AA for text). Check any change against all three. */
+  --text-secondary: #9494a0;
+  --text-dim: #80808a;
+  /* Border of a focused field; at least 3:1 against the field around it */
+  --focus: #9494a0;
   --accent: #fff;
   --success: #22c55e;
   --error: #ef4444;
@@ -128,14 +134,17 @@ html {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+}
 
+.app {
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg);
   font-family: var(--font);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
-  padding-bottom: 100px;
+  /* Room for the fixed action bar, plus the donation banner while it is showing */
+  padding-bottom: calc(100px + var(--banner-space, 0px));
 }
 
 /* Navigation */
@@ -152,6 +161,8 @@ html {
 
 .nav-group {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 6px;
 }
 
@@ -183,6 +194,14 @@ html {
 .nav-link:active {
   background: var(--surface-2);
   transform: scale(0.98);
+}
+
+/* Four destinations with icons do not fit on one row of a phone. The labels
+   are what tell them apart, so the icons give way and the bar stays one row. */
+@media (max-width: 460px) {
+  .nav-group.crowded .nav-link svg {
+    display: none;
+  }
 }
 
 .shortcut-toggle {
@@ -272,17 +291,31 @@ html {
   color: var(--text);
 }
 
-/* Toast */
+/* Toast. Pinned below the navigation so it stays visible wherever the page is
+   scrolled, and so showing it never pushes the content around. */
 .toast {
+  position: fixed;
+  top: calc(var(--nav-height, calc(76px + var(--safe-top))) + 8px);
+  left: calc(20px + var(--safe-left));
+  right: calc(20px + var(--safe-right));
+  z-index: 70;
   display: flex;
   align-items: center;
   gap: 8px;
+  width: fit-content;
+  max-width: 480px;
+  margin: 0 auto;
   padding: 12px 16px;
-  margin-bottom: 20px;
   font-size: 14px;
   font-weight: 500;
+  line-height: 1.4;
   border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   animation: fadeIn 0.2s ease;
+}
+
+.toast svg {
+  flex-shrink: 0;
 }
 
 @keyframes fadeIn {
@@ -290,16 +323,30 @@ html {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* The tint sits on an opaque surface so page content does not show through */
 .toast.success {
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: linear-gradient(rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.1)), var(--surface);
+  border: 1px solid rgba(34, 197, 94, 0.3);
   color: var(--success);
 }
 
 .toast.error {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: linear-gradient(rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.1)), var(--surface);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   color: var(--error);
+}
+
+/* Visually hidden, still announced by screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Fields */
@@ -356,12 +403,14 @@ html {
   border-color: var(--border-hover);
 }
 
+/* The transparent outline becomes visible in forced-colours (high contrast) modes */
 .fields textarea:focus,
 .fields input[type="password"]:focus,
 .fields input[type="text"]:focus,
 .fields input[type="email"]:focus {
-  outline: none;
-  border-color: #3f3f46;
+  outline: 2px solid transparent;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
 }
 
 .fields textarea.mono {
@@ -380,6 +429,13 @@ html {
 
 .output.has-content {
   border-color: rgba(34, 197, 94, 0.3);
+}
+
+/* A result that is scrolled into view stops below the navigation and the
+   success message, not underneath them */
+.output,
+.keys-output {
+  scroll-margin-top: calc(var(--nav-height, calc(76px + var(--safe-top))) + 64px);
 }
 
 .output-header {
@@ -423,7 +479,7 @@ html {
 .copy-btn kbd {
   font-family: var(--font);
   font-size: 10px;
-  opacity: 0.5;
+  color: var(--text-dim);
   background: none;
   border: none;
   padding: 0;
@@ -442,7 +498,9 @@ html {
   font-size: 13px;
   line-height: 1.7;
   color: var(--success);
-  word-break: break-all;
+  /* Wrap at spaces where there are any, and break a long unbroken run (such as
+     a line of ciphertext) only when it would otherwise overflow */
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
@@ -450,6 +508,20 @@ html {
   display: block;
   font-size: 14px;
   color: var(--text-dim);
+}
+
+.output-note {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.output-note strong {
+  color: var(--warning);
+  font-weight: 600;
 }
 
 /* Bottom Sticky Actions */
@@ -494,13 +566,21 @@ html {
 .btn kbd {
   font-family: var(--font);
   font-size: 11px;
-  opacity: 0.5;
   margin-left: 4px;
   background: none;
   border: none;
   padding: 0;
   min-width: auto;
   height: auto;
+}
+
+/* Shortcut hints are quieter than the label but still readable on their button */
+.btn.primary kbd {
+  color: #52525b;
+}
+
+.btn.secondary kbd {
+  color: var(--text-dim);
 }
 
 .btn.primary {
@@ -537,6 +617,83 @@ html {
 .btn.secondary:active {
   background: var(--surface-2);
   transform: scale(0.98);
+}
+
+/* "How to" explainer on the encrypt, decrypt and generate pages */
+.explainer {
+  margin: 32px 0 0;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.explainer summary {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.explainer summary::-webkit-details-marker {
+  display: none;
+}
+
+.explainer .chevron {
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.explainer[open] .chevron {
+  transform: rotate(90deg);
+}
+
+.explainer[open] summary {
+  margin-bottom: 10px;
+}
+
+.explainer p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+}
+
+.explainer p:last-child {
+  margin: 0;
+}
+
+.explainer ol,
+.explainer ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+
+.explainer li {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.explainer strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.explainer code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface-2);
+  padding: 1px 4px;
+  border-radius: 4px;
 }
 
 /* Spinner */
@@ -691,12 +848,10 @@ kbd {
 
 /* Responsive - Small Phones */
 @media (max-width: 380px) {
-  .nav-label {
-    display: none;
-  }
-
+  /* The labels stay: the icons alone (a closed and an open padlock) are too
+     alike to tell Encrypt from Decrypt. Tighter padding makes room for them. */
   .nav-link {
-    padding: 8px 12px;
+    padding: 8px 10px;
   }
 
   .header-text h1 {
@@ -744,7 +899,7 @@ kbd {
 /* Landscape mobile */
 @media (max-height: 500px) and (orientation: landscape) {
   .app {
-    padding-bottom: 80px;
+    padding-bottom: calc(80px + var(--banner-space, 0px));
   }
 
   .header {

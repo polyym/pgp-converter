@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readKey, readPrivateKey, decryptKey } from 'openpgp';
 import { generateKeyPair } from './keygen';
+import { formatFingerprint } from './keys';
 
 const validOptions = {
 	name: 'Test User',
@@ -17,6 +19,47 @@ describe('generateKeyPair', () => {
 		expect(result.data).toBeDefined();
 		expect(result.data!.publicKey).toContain('-----BEGIN PGP PUBLIC KEY BLOCK-----');
 		expect(result.data!.privateKey).toContain('-----BEGIN PGP PRIVATE KEY BLOCK-----');
+	}, 15000);
+
+	it('should generate Curve25519 keys in the format GnuPG can import', async () => {
+		const result = await generateKeyPair(validOptions);
+		const key = await readKey({ armoredKey: result.data!.publicKey });
+
+		// The newer 'ed25519' / 'x25519' encoding is rejected by GnuPG 2.4
+		expect(key.getAlgorithmInfo()).toMatchObject({ algorithm: 'eddsaLegacy', curve: 'ed25519Legacy' });
+		expect(key.subkeys[0].getAlgorithmInfo()).toMatchObject({ algorithm: 'ecdh', curve: 'curve25519Legacy' });
+	}, 15000);
+
+	it('should use the same format when no curve is given', async () => {
+		const result = await generateKeyPair({ ...validOptions, curve: undefined });
+		const key = await readKey({ armoredKey: result.data!.publicKey });
+
+		expect(key.getAlgorithmInfo().algorithm).toBe('eddsaLegacy');
+	}, 15000);
+
+	it('should generate a NIST P-256 key pair', async () => {
+		const result = await generateKeyPair({ ...validOptions, curve: 'nistP256' });
+		const key = await readKey({ armoredKey: result.data!.publicKey });
+
+		expect(key.getAlgorithmInfo()).toMatchObject({ algorithm: 'ecdsa', curve: 'nistP256' });
+	}, 15000);
+
+	it('should lock the private key with the passphrase', async () => {
+		const result = await generateKeyPair(validOptions);
+		const key = await readPrivateKey({ armoredKey: result.data!.privateKey });
+
+		expect(key.isDecrypted()).toBe(false);
+		expect(key.getKeys().every((part) => !part.keyPacket.isDecrypted())).toBe(true);
+		await expect(decryptKey({ privateKey: key, passphrase: 'not the passphrase' })).rejects.toThrow();
+		await expect(decryptKey({ privateKey: key, passphrase: validOptions.passphrase })).resolves.toBeDefined();
+	}, 15000);
+
+	it('should return the fingerprint of the new key', async () => {
+		const result = await generateKeyPair(validOptions);
+		const key = await readKey({ armoredKey: result.data!.publicKey });
+
+		expect(result.data!.fingerprint).toMatch(/^([0-9A-F]{4} ){9}[0-9A-F]{4}$/);
+		expect(result.data!.fingerprint).toBe(formatFingerprint(key.getFingerprint()));
 	}, 15000);
 
 	it('should generate an RSA key pair', async () => {

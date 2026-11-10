@@ -9,8 +9,10 @@ export function isDonationBannerAllowed(): boolean {
 	try {
 		const dismissed = localStorage.getItem(DONATION_STORAGE_KEY);
 		if (!dismissed) return true;
-		const elapsed = Date.now() - Number(dismissed);
-		return elapsed >= DONATION_COOLDOWN_MS;
+		const dismissedAt = Number(dismissed);
+		// A value that is not a timestamp must not hide the banner for ever
+		if (!Number.isFinite(dismissedAt)) return true;
+		return Date.now() - dismissedAt >= DONATION_COOLDOWN_MS;
 	} catch {
 		// localStorage unavailable (e.g. private browsing); allow banner
 		return true;

@@ -1,24 +1,66 @@
-type ErrorContext = 'encrypt' | 'decrypt' | 'keygen';
+export type ErrorContext = 'encrypt' | 'decrypt' | 'keygen';
+
+/**
+ * The step of an operation that failed. OpenPGP.js reports the same error for
+ * a malformed key and a malformed message, so the step is what tells us which
+ * input to point the user at.
+ */
+export type ErrorStage = 'public-key' | 'private-key' | 'passphrase' | 'message' | 'operation';
 
 interface ErrorMapping {
 	pattern: RegExp;
 	message: string;
-	contexts?: ErrorContext[];
+	contexts?: readonly ErrorContext[];
+	stages?: readonly ErrorStage[];
 }
+
+const ARMOR_ERROR = /misformed armored text|ascii armor integrity check failed|could not find armored text/i;
+
+const INVALID_PUBLIC_KEY =
+	'The public key appears to be invalid or incomplete. Check that you copied the whole key, including the BEGIN and END lines.';
+const INVALID_PRIVATE_KEY =
+	'The private key appears to be invalid or incomplete. Check that you copied the whole key, including the BEGIN and END lines.';
+const INVALID_MESSAGE =
+	'The encrypted message appears to be invalid or incomplete. Check that you copied the whole message, including the BEGIN and END lines.';
+const UNLOCK_FAILED = 'Could not unlock your private key. Please check your passphrase and try again.';
+const GENERIC_ERROR = 'Something went wrong. Please check your inputs and try again.';
 
 const errorMappings: readonly ErrorMapping[] = [
 	{
-		pattern: /misformed armored text|ascii armor integrity check failed|could not find armored text/i,
+		pattern: /armored text not of type message/i,
+		message: "This doesn't appear to be a PGP message. Paste the encrypted message, which begins with -----BEGIN PGP MESSAGE-----.",
+		contexts: ['decrypt']
+	},
+	{
+		pattern: /not a valid.*private key|armored text not of type.*private/i,
+		message: "This doesn't appear to be a valid PGP private key. Make sure you're using your private key, not a public key or a message.",
+		contexts: ['decrypt']
+	},
+	{
+		pattern: /not a valid.*public key|armored text not of type.*(public|key)/i,
+		message: "This doesn't appear to be a valid PGP public key. Make sure you're using the recipient's public key, not a message.",
+		contexts: ['encrypt']
+	},
+	{ pattern: ARMOR_ERROR, message: INVALID_PUBLIC_KEY, stages: ['public-key'] },
+	{ pattern: ARMOR_ERROR, message: INVALID_PRIVATE_KEY, stages: ['private-key'] },
+	{ pattern: ARMOR_ERROR, message: INVALID_MESSAGE, stages: ['message'] },
+	{
+		pattern: ARMOR_ERROR,
 		message: 'The key you provided appears to be invalid or corrupted. Please check that you copied the entire key, including the header and footer lines.'
 	},
 	{
-		pattern: /incorrect key passphrase|error decrypting private key/i,
+		pattern: /incorrect key passphrase/i,
 		message: 'Incorrect passphrase. Please check your passphrase and try again.',
 		contexts: ['decrypt']
 	},
 	{
-		pattern: /session key decryption failed|no matching private key/i,
+		pattern: /session key decryption failed|no matching private key|no decryption key packets found/i,
 		message: 'This message was not encrypted with the private key you provided.',
+		contexts: ['decrypt']
+	},
+	{
+		pattern: /modification detected|authentication tag mismatch|unexpected end of packet/i,
+		message: 'The encrypted message is incomplete or has been altered. Copy the whole message again and retry.',
 		contexts: ['decrypt']
 	},
 	{
@@ -27,14 +69,19 @@ const errorMappings: readonly ErrorMapping[] = [
 		contexts: ['decrypt']
 	},
 	{
-		pattern: /not a valid.*public key|armored text not of type.*public/i,
-		message: "This doesn't appear to be a valid PGP public key. Make sure you're using the public key, not the private key.",
+		pattern: /expired/i,
+		message: 'This public key has expired. Ask the recipient for an up-to-date key.',
 		contexts: ['encrypt']
 	},
 	{
-		pattern: /not a valid.*private key|armored text not of type.*private/i,
-		message: "This doesn't appear to be a valid PGP private key. Make sure you're using the private key, not the public key.",
-		contexts: ['decrypt']
+		pattern: /revoked/i,
+		message: 'This public key has been revoked by its owner. Ask the recipient for their current key.',
+		contexts: ['encrypt']
+	},
+	{
+		pattern: /could not find valid encryption key/i,
+		message: 'This public key cannot be used for encryption. Ask the recipient for a key that supports it.',
+		contexts: ['encrypt']
 	},
 	{
 		pattern: /invalid enum value|invalid curve|unsupported curve/i,
@@ -43,16 +90,26 @@ const errorMappings: readonly ErrorMapping[] = [
 	}
 ];
 
+/** What to say when no specific mapping matches, based on the input being processed */
+const stageFallbacks: Partial<Record<ErrorStage, string>> = {
+	'public-key': INVALID_PUBLIC_KEY,
+	'private-key': INVALID_PRIVATE_KEY,
+	message: INVALID_MESSAGE,
+	passphrase: UNLOCK_FAILED
+};
+
 /**
  * Maps a raw OpenPGP.js error message to a user-friendly string
  * @param rawMessage - The raw error message from the library
  * @param context - The operation context (encrypt, decrypt, or keygen)
+ * @param stage - The step that failed, used to name the input that caused the error
  * @returns A plain-language error message suitable for display
  */
-export function getUserFriendlyError(rawMessage: string, context: ErrorContext): string {
+export function getUserFriendlyError(rawMessage: string, context: ErrorContext, stage?: ErrorStage): string {
 	for (const mapping of errorMappings) {
 		if (mapping.contexts && !mapping.contexts.includes(context)) continue;
+		if (mapping.stages && (!stage || !mapping.stages.includes(stage))) continue;
 		if (mapping.pattern.test(rawMessage)) return mapping.message;
 	}
-	return 'Something went wrong. Please check your inputs and try again.';
+	return (stage && stageFallbacks[stage]) ?? GENERIC_ERROR;
 }

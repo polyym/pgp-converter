@@ -1,10 +1,12 @@
 <script lang="ts">
   import { generateKeyPair, downloadKey } from '$lib/keygen';
-  import { SUCCESS_TOAST_MS, ERROR_TOAST_MS, COPY_FEEDBACK_MS, COPY_ERROR_MS, MIN_PASSPHRASE_LENGTH } from '$lib/constants';
-  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner, SEO } from '$lib/components';
-  import { isDonationBannerAllowed, dismissDonationBanner } from '$lib/donation-banner';
-  import { onMount } from 'svelte';
+  import { createFeedback } from '$lib/feedback.svelte';
+  import { createToolPage, copyText } from '$lib/tool-page.svelte';
+  import { COPY_FEEDBACK_MS, COPY_ERROR_MS, MIN_PASSPHRASE_LENGTH, CLEAR_CONFIRM_MS } from '$lib/constants';
+  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner, SEO, PassphraseInput } from '$lib/components';
+  import { onMount, tick } from 'svelte';
 
+  let keysElement = $state<HTMLElement>();
   let name = $state('');
   let email = $state('');
   let passphrase = $state('');
@@ -15,14 +17,21 @@
 
   let publicKey = $state('');
   let privateKey = $state('');
-  let errorMessage = $state('');
+  let fingerprint = $state('');
   let isLoading = $state(false);
-  let generateSuccess = $state(false);
   let copyPublicSuccess = $state(false);
   let copyPrivateSuccess = $state(false);
-  let showShortcuts = $state(false);
-  let isTouchDevice = $state(false);
-  let showDonationBanner = $state(false);
+  // True while Clear is armed and waiting for a second press
+  let confirmingClear = $state(false);
+  let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const feedback = createFeedback();
+  const tool = createToolPage({
+    submitLabel: 'Generate keys',
+    onSubmit: handleGenerate,
+    onClear: requestClear,
+    canClear: () => !!(name || email || passphrase || publicKey)
+  });
 
   const isValid = $derived(
     name.trim().length > 0 &&
@@ -33,18 +42,13 @@
 
   const passphraseMatch = $derived(passphrase === confirmPassphrase || confirmPassphrase === '');
 
-  const shortcuts = [
-    { label: 'Generate keys', keys: ['⌘', '↵'] },
-    { label: 'Clear all', keys: ['Esc'] },
-    { label: 'Toggle shortcuts', keys: ['?'] }
-  ];
-
   async function handleGenerate() {
     if (!isValid || isLoading) return;
 
+    // Keys from a generation that was cleared while it ran must not reappear
+    const isCurrent = tool.startRun();
     isLoading = true;
-    generateSuccess = false;
-    errorMessage = '';
+    feedback.clear();
 
     const result = await generateKeyPair({
       name,
@@ -54,44 +58,45 @@
       curve: keyType === 'ecc' ? curve : undefined,
       rsaBits: keyType === 'rsa' ? rsaBits : undefined
     });
+    if (!isCurrent()) return;
 
     if (result.success && result.data) {
       publicKey = result.data.publicKey;
       privateKey = result.data.privateKey;
-      errorMessage = '';
-      generateSuccess = true;
-      setTimeout(() => generateSuccess = false, SUCCESS_TOAST_MS);
-      if (isDonationBannerAllowed()) showDonationBanner = true;
+      fingerprint = result.data.fingerprint;
+      feedback.showSuccess('Keys generated');
+      tool.offerDonation();
     } else {
-      errorMessage = result.error || 'Key generation failed';
       publicKey = '';
       privateKey = '';
-      setTimeout(() => errorMessage = '', ERROR_TOAST_MS);
+      fingerprint = '';
+      feedback.showError(result.error || 'Key generation failed');
     }
     isLoading = false;
+
+    if (privateKey) {
+      await tick();
+      tool.revealResult(keysElement);
+    }
   }
 
   async function copyPublicKey() {
     if (!publicKey) return;
-    try {
-      await navigator.clipboard.writeText(publicKey);
+    if (await copyText(publicKey)) {
       copyPublicSuccess = true;
       setTimeout(() => copyPublicSuccess = false, COPY_FEEDBACK_MS);
-    } catch {
-      errorMessage = 'Failed to copy';
-      setTimeout(() => errorMessage = '', COPY_ERROR_MS);
+    } else {
+      feedback.showError('Failed to copy', COPY_ERROR_MS);
     }
   }
 
   async function copyPrivateKey() {
     if (!privateKey) return;
-    try {
-      await navigator.clipboard.writeText(privateKey);
+    if (await copyText(privateKey)) {
       copyPrivateSuccess = true;
       setTimeout(() => copyPrivateSuccess = false, COPY_FEEDBACK_MS);
-    } catch {
-      errorMessage = 'Failed to copy';
-      setTimeout(() => errorMessage = '', COPY_ERROR_MS);
+    } else {
+      feedback.showError('Failed to copy', COPY_ERROR_MS);
     }
   }
 
@@ -115,41 +120,38 @@
   }
 
   function clearAll() {
+    tool.cancelRuns();
+    isLoading = false;
+    clearTimeout(confirmTimer);
+    confirmingClear = false;
     name = '';
     email = '';
     passphrase = '';
     confirmPassphrase = '';
     publicKey = '';
     privateKey = '';
-    errorMessage = '';
+    fingerprint = '';
+    feedback.clear();
   }
 
-  function handleDismissDonation() {
-    showDonationBanner = false;
-    dismissDonationBanner();
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    const target = e.target as HTMLElement;
-
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      handleGenerate();
+  // Generated keys cannot be recovered once cleared, so while keys are on screen
+  // the first press of Clear (or Esc) only arms it and a second press confirms.
+  function requestClear() {
+    if (privateKey && !confirmingClear) {
+      confirmingClear = true;
+      confirmTimer = setTimeout(() => confirmingClear = false, CLEAR_CONFIRM_MS);
+      return;
     }
-    if (e.key === 'Escape' && (name || email || passphrase || publicKey)) {
-      e.preventDefault();
-      clearAll();
-    }
-    if (e.key === '?' && target.tagName !== 'TEXTAREA' && target.tagName !== 'INPUT') {
-      e.preventDefault();
-      showShortcuts = !showShortcuts;
-    }
+    clearAll();
   }
 
   onMount(() => {
-    isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    document.addEventListener('keydown', handleKeydown);
-    return () => document.removeEventListener('keydown', handleKeydown);
+    const stopShortcuts = tool.mount();
+    return () => {
+      stopShortcuts();
+      clearTimeout(confirmTimer);
+      feedback.clear();
+    };
   });
 </script>
 
@@ -161,27 +163,27 @@
 
 <div class="app">
   <NavBar currentPage="generate" />
-  <ShortcutsModal show={showShortcuts} {shortcuts} onClose={() => showShortcuts = false} />
+  <ShortcutsModal show={tool.showShortcuts} shortcuts={tool.shortcuts} onClose={tool.closeShortcuts} />
 
   <main class="main">
     <PageHeader
       title="Generate a PGP Key Pair"
       iconClass="generate"
-      onShortcutsClick={isTouchDevice ? undefined : () => showShortcuts = !showShortcuts}
+      onShortcutsClick={tool.hintsVisible ? tool.toggleShortcuts : undefined}
     >
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
       </svg>
     </PageHeader>
 
-    <Toast type="success" message="Keys generated" show={generateSuccess} />
-    <Toast type="error" message={errorMessage} show={!!errorMessage} />
+    <Toast type="success" message={feedback.success} show={!!feedback.success} />
+    <Toast type="error" message={feedback.error} show={!!feedback.error} />
 
     <div class="fields">
       <div class="field-row">
         <div class="field">
           <label for="name">Name</label>
-          <input type="text" id="name" bind:value={name} placeholder="Your name..." />
+          <input type="text" id="name" bind:value={name} placeholder="Your name..." spellcheck="false" />
         </div>
         <div class="field">
           <label for="email">Email</label>
@@ -192,14 +194,14 @@
       <div class="field-row">
         <div class="field">
           <label for="passphrase">Passphrase</label>
-          <input type="password" id="passphrase" bind:value={passphrase} placeholder="Min {MIN_PASSPHRASE_LENGTH} characters..." />
+          <PassphraseInput id="passphrase" bind:value={passphrase} placeholder="Min {MIN_PASSPHRASE_LENGTH} characters..." autocomplete="new-password" />
           {#if passphrase && passphrase.length < MIN_PASSPHRASE_LENGTH}
             <span class="field-hint error">Must be at least {MIN_PASSPHRASE_LENGTH} characters</span>
           {/if}
         </div>
         <div class="field">
           <label for="confirmPassphrase">Confirm Passphrase</label>
-          <input type="password" id="confirmPassphrase" bind:value={confirmPassphrase} placeholder="Confirm passphrase..." class:error={!passphraseMatch} />
+          <PassphraseInput id="confirmPassphrase" bind:value={confirmPassphrase} placeholder="Confirm passphrase..." invalid={!passphraseMatch} autocomplete="new-password" />
           {#if !passphraseMatch}
             <span class="field-hint error">Passphrases do not match</span>
           {/if}
@@ -238,20 +240,29 @@
     </div>
 
     {#if publicKey && privateKey}
-      <div class="keys-output">
+      <div class="keys-output" bind:this={keysElement} tabindex="-1" role="region" aria-label="Generated keys">
+        <div class="fingerprint">
+          <span class="fingerprint-label">Fingerprint</span>
+          <code>{fingerprint}</code>
+          <p>A short identifier for this key pair. Give it to people along with your public key, so they can check they are encrypting to the right key.</p>
+        </div>
+
         <div class="key-section">
           <div class="key-header">
             <span class="key-label public">Public Key</span>
             <div class="key-actions">
-              <button class="action-btn" onclick={copyPublicKey} aria-label="Copy public key">
+              <button class="action-btn" onclick={copyPublicKey} aria-label={copyPublicSuccess ? 'Copied public key' : 'Copy public key'}>
                 {#if copyPublicSuccess}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  Copied
                 {:else}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Copy
                 {/if}
               </button>
               <button class="action-btn" onclick={downloadPublicKey} aria-label="Download public key">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download
               </button>
             </div>
           </div>
@@ -262,15 +273,18 @@
           <div class="key-header">
             <span class="key-label private">Private Key</span>
             <div class="key-actions">
-              <button class="action-btn" onclick={copyPrivateKey} aria-label="Copy private key">
+              <button class="action-btn" onclick={copyPrivateKey} aria-label={copyPrivateSuccess ? 'Copied private key' : 'Copy private key'}>
                 {#if copyPrivateSuccess}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  Copied
                 {:else}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Copy
                 {/if}
               </button>
               <button class="action-btn" onclick={downloadPrivateKey} aria-label="Download private key">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download
               </button>
             </div>
           </div>
@@ -306,11 +320,11 @@
         <li><strong>Choose a strong passphrase.</strong> This encrypts the private key at rest. You'll enter it every time you decrypt. Use at least 8 characters; longer is better.</li>
         <li><strong>Pick an algorithm.</strong>
           <ul>
-            <li><strong>ECC (Curve25519)</strong>: recommended. Small keys, fast, modern cryptography. Supported by all modern PGP clients.</li>
+            <li><strong>ECC (Curve25519)</strong>: recommended. Small keys, fast, modern cryptography. Generated in the format that GnuPG and other mainstream PGP clients read.</li>
             <li><strong>RSA (2048 / 3072 / 4096 bits)</strong>: traditional, widely compatible with older tools. Slower key generation, larger keys. Use 4096 bits for long-term use.</li>
           </ul>
         </li>
-        <li><strong>Generate.</strong> The key pair appears in the output. Copy the public key to share; store the private key somewhere safe.</li>
+        <li><strong>Generate.</strong> The key pair appears in the output. Copy the public key to share; store the private key somewhere safe before you leave or clear the page, because it cannot be shown again.</li>
       </ol>
       <p>Randomness comes from the browser's cryptographically secure random number generator. Nothing leaves your device.</p>
     </details>
@@ -318,19 +332,22 @@
     <PageFooter />
   </main>
 
-  <DonationBanner show={showDonationBanner} onDismiss={handleDismissDonation} />
+  <DonationBanner show={tool.showDonationBanner} onDismiss={tool.dismissDonation} />
 
   <div class="bottom-actions">
     <div class="bottom-actions-inner">
       {#if name || email || passphrase || publicKey}
-        <button class="btn secondary" onclick={clearAll}>
+        <button class="btn secondary" class:confirming={confirmingClear} onclick={requestClear}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
-          Clear
-          {#if !isTouchDevice}<kbd>Esc</kbd>{/if}
+          {confirmingClear ? 'Delete keys?' : 'Clear'}
+          {#if tool.hintsVisible}<kbd>Esc</kbd>{/if}
         </button>
+        <span class="sr-only" role="status">
+          {confirmingClear ? 'Press Clear again to delete the generated keys. They cannot be recovered.' : ''}
+        </span>
       {/if}
       <button
         class="btn primary"
@@ -345,7 +362,7 @@
           </svg>
         {/if}
         Generate
-        {#if !isTouchDevice}<kbd>⌘↵</kbd>{/if}
+        {#if tool.hintsVisible}<kbd>{tool.keys.submitHint}</kbd>{/if}
       </button>
     </div>
   </div>
@@ -401,13 +418,17 @@
 
   input::placeholder { color: var(--text-dim); }
   input:hover, select:hover { border-color: var(--border-hover); }
-  input:focus, select:focus { outline: none; border-color: #3f3f46; }
-  input.error { border-color: var(--error); }
+  /* The transparent outline becomes visible in forced-colours (high contrast) modes */
+  input:focus, select:focus {
+    outline: 2px solid transparent;
+    border-color: var(--focus);
+    box-shadow: 0 0 0 1px var(--focus);
+  }
 
   select {
     cursor: pointer;
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239494a0' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 12px center;
     padding-right: 40px;
@@ -418,6 +439,21 @@
 
   .keys-output { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
 
+  .fingerprint {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .fingerprint-label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+  .fingerprint code { font-family: var(--mono); font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+  .fingerprint p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+
+  .btn.secondary.confirming { color: var(--error); border-color: var(--error); }
+
   .key-section {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -427,8 +463,10 @@
 
   .key-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
   }
@@ -443,8 +481,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 12px;
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -501,52 +543,6 @@
   .warning-box svg { flex-shrink: 0; color: var(--warning); margin-top: 2px; }
   .warning-box p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
   .warning-box strong { color: var(--warning); }
-
-  .explainer {
-    margin: 32px 0 0;
-    padding: 16px 18px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-  }
-  .explainer summary {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text);
-    cursor: pointer;
-    list-style: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-  .explainer summary::-webkit-details-marker { display: none; }
-  .explainer .chevron {
-    color: var(--text-secondary);
-    transition: transform 0.2s ease;
-    flex-shrink: 0;
-  }
-  .explainer[open] .chevron { transform: rotate(90deg); }
-  .explainer[open] summary { margin-bottom: 10px; }
-  .explainer p {
-    font-size: 14px;
-    line-height: 1.7;
-    color: var(--text-secondary);
-    margin: 0 0 10px;
-  }
-  .explainer p:last-child { margin: 0; }
-  .explainer ol,
-  .explainer ul {
-    margin: 0 0 10px;
-    padding-left: 20px;
-  }
-  .explainer li {
-    font-size: 14px;
-    line-height: 1.7;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-  }
-  .explainer strong { color: var(--text); font-weight: 500; }
 
   @media (prefers-reduced-motion: reduce) {
     .action-btn:active,

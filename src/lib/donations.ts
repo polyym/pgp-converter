@@ -76,40 +76,110 @@ const ADDRESS_MAP: Record<string, keyof ApiAddresses> = {
 	'btc-segwit': 'bitcoin_native_segwit',
 };
 
+/** Shape checks for each chain. They reject missing, truncated or garbled values
+ *  before anything is shown to a donor; they are not checksum validation. */
+const ADDRESS_FORMATS: Record<keyof ApiAddresses, RegExp> = {
+	solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+	ethereum: /^0x[0-9a-fA-F]{40}$/,
+	bitcoin_taproot: /^bc1p[02-9ac-hj-np-z]{58}$/,
+	bitcoin_native_segwit: /^bc1q(?:[02-9ac-hj-np-z]{38}|[02-9ac-hj-np-z]{58})$/,
+};
+
+/** The proxy is locked to this project's own wallet record */
+const WALLETS_ENDPOINT = '/api/wallets/pgp-converter';
+
 const MAX_RETRIES = 15;
 const RETRY_DELAY_MS = 10_000;
 
-/** Fetches addresses from the API and merges them with the static UI config.
- *  Retries for up to ~2.5 minutes if the Render service is waking up.
- *  Calls onWaking on the first retry so the UI can show a loading message. */
+/** The one message donors see when addresses cannot be shown; internal errors stay internal */
+export const WALLET_LOAD_ERROR =
+	'Wallet addresses could not be loaded right now. Please try again in a few minutes.';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+/** Waits for the given time, or rejects as soon as the signal is aborted */
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(signal.reason);
+			return;
+		}
+		const onAbort = () => {
+			clearTimeout(timer);
+			reject(signal?.reason);
+		};
+		const timer = setTimeout(() => {
+			signal?.removeEventListener('abort', onAbort);
+			resolve();
+		}, ms);
+		signal?.addEventListener('abort', onAbort, { once: true });
+	});
+}
+
+/**
+ * Turns an API response into the wallets to display.
+ * A wallet is included only if its address is present and has the expected
+ * shape for its chain, so one bad value never hides the others.
+ * @param data - The parsed JSON body returned by the wallet API
+ * @returns The wallets whose addresses passed validation, in display order
+ */
+export function parseWallets(data: unknown): Wallet[] {
+	const addresses = isRecord(data) && isRecord(data.addresses) ? data.addresses : {};
+	const wallets: Wallet[] = [];
+	for (const ui of WALLET_UI) {
+		const field = ADDRESS_MAP[ui.id];
+		const address = addresses[field];
+		if (typeof address === 'string' && ADDRESS_FORMATS[field].test(address)) {
+			wallets.push({ ...ui, address });
+		}
+	}
+	return wallets;
+}
+
+/**
+ * Fetches addresses from the API and merges them with the static UI config.
+ * Retries for up to ~2.5 minutes if the Render service is waking up, and stops
+ * at once when the signal is aborted (for example when the visitor leaves the page).
+ * @param options - signal cancels the request and any pending retries; onWaking is
+ *   called on the first retry so the UI can show a loading message
+ * @returns The wallets with valid addresses
+ * @throws An Error carrying WALLET_LOAD_ERROR if no valid address could be loaded
+ */
 export async function fetchWallets(
-	account = 'pgp-converter',
-	onWaking?: () => void
+	options: { signal?: AbortSignal; onWaking?: () => void } = {}
 ): Promise<Wallet[]> {
+	const { signal, onWaking } = options;
+
 	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-		const res = await fetch(`/api/wallets/${account}`);
+		let res: Response;
+		try {
+			res = await fetch(WALLETS_ENDPOINT, { signal });
+		} catch (e: unknown) {
+			if (signal?.aborted) throw e;
+			throw new Error(WALLET_LOAD_ERROR);
+		}
 
 		if (res.ok) {
-			const data: { name: string; addresses: ApiAddresses } = await res.json();
-			return WALLET_UI.map(ui => ({
-				...ui,
-				address: data.addresses[ADDRESS_MAP[ui.id]],
-			}));
+			const data: unknown = await res.json().catch(() => null);
+			const wallets = parseWallets(data);
+			if (wallets.length === 0) throw new Error(WALLET_LOAD_ERROR);
+			return wallets;
 		}
 
-		// 502/503 = Render is waking up, retry
-		if (res.status === 502 || res.status === 503) {
+		// 502/503/504 = Render is waking up, retry
+		const isWaking = res.status === 502 || res.status === 503 || res.status === 504;
+		if (isWaking && attempt < MAX_RETRIES) {
 			if (attempt === 0) onWaking?.();
-			if (attempt < MAX_RETRIES) {
-				await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
-				continue;
-			}
+			await wait(RETRY_DELAY_MS, signal);
+			continue;
 		}
 
-		throw new Error(`Failed to load wallets: ${res.status}`);
+		throw new Error(WALLET_LOAD_ERROR);
 	}
 
-	throw new Error('Service did not respond after multiple attempts.');
+	throw new Error(WALLET_LOAD_ERROR);
 }
 
 /** Truncates a wallet address for display, showing the first and last characters */
@@ -117,24 +187,25 @@ export function truncateAddress(address: string, startChars = 8, endChars = 6): 
 	return address.slice(0, startChars) + '\u2026' + address.slice(-endChars);
 }
 
-/** Returns QR code foreground and background colours based on the user's colour scheme */
-function getQrColors(): { dark: string; light: string } {
-	const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-	return isDark
-		? { dark: '#ffffff', light: '#1a1a1a' }
-		: { dark: '#111111', light: '#ffffff' };
-}
+/** Dark modules on a light background, whatever the colour scheme. Inverted
+ *  codes look better on a dark page but many wallet scanners cannot read them. */
+const QR_COLORS = { dark: '#111111', light: '#ffffff' };
 
-/** Generates QR code data URLs for each wallet address */
+/**
+ * Generates QR code data URLs for each wallet address
+ * @param wallets - The wallets to generate codes for
+ * @returns Data URLs keyed by wallet id; a wallet whose code failed is left out
+ */
 export async function generateQrDataUrls(
 	wallets: readonly Wallet[]
 ): Promise<Record<string, string>> {
-	const colors = getQrColors();
 	const urls: Record<string, string> = {};
 
+	// The async wrapper turns a synchronous throw for one wallet into a rejection,
+	// so the others are still generated
 	const results = await Promise.allSettled(
-		wallets.map(wallet =>
-			QRCode.toDataURL(wallet.address, { width: 160, margin: 2, color: colors })
+		wallets.map(async wallet =>
+			QRCode.toDataURL(wallet.address, { width: 160, margin: 2, color: QR_COLORS })
 		)
 	);
 

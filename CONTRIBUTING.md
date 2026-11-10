@@ -35,7 +35,9 @@ The `Tests` GitHub Actions workflow runs these same checks automatically on ever
 
 ## Reporting bugs and security issues
 
-Bug reports, feature suggestions, and security disclosures all go through [GitHub Issues](https://github.com/polyym/pgp-converter/issues). For security-relevant findings, please include clear reproduction steps and, where relevant, the affected commit or deploy.
+Bug reports and feature suggestions go through [GitHub Issues](https://github.com/polyym/pgp-converter/issues).
+
+Security vulnerabilities must not be reported in public issues. Report them privately as described in [SECURITY.md](./SECURITY.md), with clear reproduction steps and, where relevant, the affected commit or deploy.
 
 ## Questions
 

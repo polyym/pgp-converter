@@ -1,10 +1,13 @@
 import { generateKey } from 'openpgp';
 import { getUserFriendlyError } from './errors';
 import { MIN_PASSPHRASE_LENGTH, EMAIL_REGEX } from './constants';
+import { formatFingerprint } from './keys';
 
 export interface KeyPair {
 	publicKey: string;
 	privateKey: string;
+	/** Fingerprint of the new key, formatted for comparing by eye */
+	fingerprint: string;
 }
 
 export interface KeyGenResult {
@@ -54,40 +57,35 @@ export async function generateKeyPair(options: KeyGenOptions): Promise<KeyGenRes
 
 		const userIDs = [{ name: name.trim(), email: email.trim() }];
 
-		let result: { privateKey: string; publicKey: string };
+		// OpenPGP.js offers two encodings of Curve25519 keys. Its 'curve25519' type writes
+		// the newer one, which GnuPG 2.4 and other widely used clients cannot import. The
+		// legacy encoding is the same cryptography in the format those clients expect, and
+		// it is what GnuPG itself generates by default.
+		const eccCurve = !curve || curve === 'curve25519' ? 'curve25519Legacy' : curve;
 
-		if (keyType === 'ecc') {
-			if (!curve || curve === 'curve25519') {
-				result = await generateKey({
-					type: 'curve25519',
-					userIDs,
-					passphrase,
-					format: 'armored'
-				});
-			} else {
-				result = await generateKey({
-					type: 'ecc',
-					curve,
-					userIDs,
-					passphrase,
-					format: 'armored'
-				});
-			}
-		} else {
-			result = await generateKey({
-				type: 'rsa',
-				rsaBits: rsaBits || 4096,
-				userIDs,
-				passphrase,
-				format: 'armored'
-			});
-		}
+		const generated =
+			keyType === 'ecc'
+				? await generateKey({
+						type: 'ecc',
+						curve: eccCurve,
+						userIDs,
+						passphrase,
+						format: 'object'
+					})
+				: await generateKey({
+						type: 'rsa',
+						rsaBits: rsaBits || 4096,
+						userIDs,
+						passphrase,
+						format: 'object'
+					});
 
 		return {
 			success: true,
 			data: {
-				publicKey: result.publicKey,
-				privateKey: result.privateKey
+				publicKey: generated.publicKey.armor(),
+				privateKey: generated.privateKey.armor(),
+				fingerprint: formatFingerprint(generated.publicKey.getFingerprint())
 			}
 		};
 	} catch (e: unknown) {
