@@ -215,9 +215,9 @@ To create a production version of the application:
 npm run build
 ```
 
-The build output under `build/` contains fully prerendered HTML for every public route plus static assets; the Netlify function for the wallet-address proxy is bundled separately under `.netlify/functions-internal/`. You can preview the production build with `npm run preview`.
+The build output under `build/` contains fully prerendered HTML for every public route plus static assets. Two Netlify functions are deployed alongside it: the wallet-address proxy in `netlify/functions/`, served at `/.netlify/functions/wallet-proxy`, and a function that renders the "not found" page, which the build writes to `.netlify/functions-internal/`. You can preview the production build with `npm run preview`.
 
-Production deploys run through `.github/workflows/deploy.yml`: pushes to `main` trigger a build, run the test suite, sign the build output with Sigstore via `actions/attest@v4`, and deploy that exact output to Netlify using the Netlify CLI with `--no-build`. A final step, `scripts/verify-deploy.mjs`, downloads every file from the live site and fails the workflow if any differs from the signed build. Pull requests trigger a preview deploy without an attestation.
+Production deploys run through `.github/workflows/deploy.yml`: pushes to `main` trigger a build, run the test suite, sign the build output with Sigstore via `actions/attest@v4`, and deploy that exact output to Netlify using the Netlify CLI with `--no-build`. A final step, `scripts/verify-deploy.mjs`, downloads every file from the live site and fails the workflow if any differs from the signed build or if the wallet proxy cannot be reached. Pull requests trigger a preview deploy without an attestation.
 
 The Netlify project has no repository linked, so Netlify never builds the site itself and every deploy comes from this workflow. Linking one would let Netlify publish its own unsigned build over the signed one.
 

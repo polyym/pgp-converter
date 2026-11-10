@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { parseWallets, fetchWallets, generateQrDataUrls, truncateAddress, WALLET_LOAD_ERROR } from './donations';
 
 // Correctly shaped but made-up addresses
@@ -58,7 +60,19 @@ describe('fetchWallets', () => {
 		const wallets = await fetchWallets();
 		expect(wallets).toHaveLength(4);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		expect(fetchMock.mock.calls[0][0]).toBe('/api/wallets/pgp-converter');
+		expect(fetchMock.mock.calls[0][0]).toBe('/.netlify/functions/wallet-proxy');
+	});
+
+	it('should ask for a function that exists, at its default address', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ addresses }));
+		vi.stubGlobal('fetch', fetchMock);
+		await fetchWallets();
+
+		// Netlify serves netlify/functions/<name>.mts at /.netlify/functions/<name>.
+		// Renaming the file without changing the address here would break the donate page.
+		const match = /^\/\.netlify\/functions\/([a-z0-9-]+)$/.exec(String(fetchMock.mock.calls[0][0]));
+		expect(match).not.toBeNull();
+		expect(existsSync(resolve('netlify', 'functions', `${match![1]}.mts`))).toBe(true);
 	});
 
 	it('should retry while the service is waking and report it once', async () => {

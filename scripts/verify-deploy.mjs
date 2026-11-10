@@ -18,8 +18,9 @@ if (!origin) {
 
 // Netlify reads these as configuration and does not serve them
 const NOT_SERVED = new Set(['_headers', '_redirects']);
-// The wallet proxy is a function, not a file, so it is checked for presence only
-const FUNCTION_PATH = '/api/wallets/pgp-converter';
+// The wallet proxy is a function, not a file, so it is checked for presence only.
+// This is its default address; src/lib/donations.ts asks for the same one.
+const FUNCTION_PATH = '/.netlify/functions/wallet-proxy';
 // A new deploy can take a moment to reach every CDN node
 const ATTEMPTS = 6;
 const RETRY_DELAY_MS = 10_000;
@@ -62,8 +63,9 @@ async function findMismatches(files) {
 }
 
 /**
- * Checks that the wallet proxy function was deployed. Only a 404 proves it is
- * missing: the request then fell through to the site's "not found" page. Any
+ * Checks that the wallet proxy function can be reached. Only a 404 proves it
+ * cannot: the request then fell through to a "not found" page, because the
+ * function was not deployed or something else answers at its address. Any
  * other answer came from the function, even an error while its upstream is
  * asleep or down, so those are reported without failing the deploy.
  */
@@ -74,7 +76,11 @@ async function checkFunction() {
 			signal: AbortSignal.timeout(FUNCTION_TIMEOUT_MS)
 		});
 		if (res.status === 404) {
-			return { missing: `${FUNCTION_PATH} answered HTTP 404: the wallet proxy function was not deployed.` };
+			return {
+				missing:
+					`${FUNCTION_PATH} answered HTTP 404: the wallet proxy function cannot be reached, so the donate page ` +
+					'cannot show addresses. Either it was not deployed or something else answers at its address.'
+			};
 		}
 		if (res.ok) return { note: 'Wallet proxy function is deployed.' };
 		return { note: `Wallet proxy function is deployed, but answered HTTP ${res.status}; its upstream may be asleep or down.` };

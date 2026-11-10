@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import handler, { config } from '../../netlify/functions/wallet-proxy.mjs';
+import * as walletProxy from '../../netlify/functions/wallet-proxy.mjs';
+
+const handler = walletProxy.default;
+const DEFAULT_ADDRESS = '/.netlify/functions/wallet-proxy';
 
 const API_URL = 'https://wallets.example';
 const upstreamBody = {
@@ -18,7 +21,7 @@ function upstream(body: unknown, status = 200): Response {
 	return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
 }
 
-const request = (path = '/api/wallets/pgp-converter', method = 'GET') =>
+const request = (path = DEFAULT_ADDRESS, method = 'GET') =>
 	new Request(`https://pgp-converter.com${path}`, { method });
 
 beforeEach(() => {
@@ -32,16 +35,19 @@ afterEach(() => {
 });
 
 describe('wallet proxy', () => {
-	it('should be routed for this project only', () => {
-		expect(config.path).toBe('/api/wallets/pgp-converter');
+	it('should keep its default address by declaring no custom path', () => {
+		// A custom path is shadowed by the page-rendering function's "/*" when the
+		// site is deployed with --no-build; see the note in the function's file
+		const { config } = walletProxy as { config?: { path?: unknown } };
+		expect(config?.path).toBeUndefined();
 	});
 
 	it('should always read the same upstream record, whatever was requested', async () => {
 		const fetchMock = vi.fn().mockResolvedValue(upstream(upstreamBody));
 		vi.stubGlobal('fetch', fetchMock);
 
-		await handler(request('/api/wallets/someone-else'));
-		await handler(request('/api/wallets'));
+		await handler(request(`${DEFAULT_ADDRESS}/someone-else`));
+		await handler(request(`${DEFAULT_ADDRESS}?account=someone-else`));
 
 		for (const call of fetchMock.mock.calls) {
 			expect(call[0]).toBe(`${API_URL}/v1/wallets/pgp-converter`);
@@ -79,7 +85,7 @@ describe('wallet proxy', () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal('fetch', fetchMock);
 
-		const res = await handler(request('/api/wallets/pgp-converter', 'POST'));
+		const res = await handler(request(DEFAULT_ADDRESS, 'POST'));
 		expect(res.status).toBe(405);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});

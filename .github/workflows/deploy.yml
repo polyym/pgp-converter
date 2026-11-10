@@ -19,6 +19,14 @@
 #      the signed one.
 # The final step of the production job fails if the live site differs from build/.
 #
+# A consequence of --no-build: the CLI packages the functions itself and gives
+# them all the same routing priority, where Netlify's build step would rank the
+# project's own functions above generated ones. The page-rendering function that
+# the SvelteKit adapter generates claims every path except /.netlify/*, so a
+# function in netlify/functions must be reached at its default address
+# (/.netlify/functions/<name>), not at a custom path. The final step also fails
+# if the wallet proxy cannot be reached.
+#
 # Required GitHub repo secrets:
 #   NETLIFY_AUTH_TOKEN: personal access token from Netlify user settings
 #   NETLIFY_SITE_ID:    Project ID from Netlify Project configuration → General

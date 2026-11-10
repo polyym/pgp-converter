@@ -85,8 +85,11 @@ const ADDRESS_FORMATS: Record<keyof ApiAddresses, RegExp> = {
 	bitcoin_native_segwit: /^bc1q(?:[02-9ac-hj-np-z]{38}|[02-9ac-hj-np-z]{58})$/,
 };
 
-/** The proxy is locked to this project's own wallet record */
-const WALLETS_ENDPOINT = '/api/wallets/pgp-converter';
+/** The wallet proxy function at its default Netlify address: /.netlify/functions/
+ *  followed by the name of its file in netlify/functions. The proxy is locked to
+ *  this project's own wallet record. See the note in that file before moving it
+ *  to a custom path. */
+const WALLETS_ENDPOINT = '/.netlify/functions/wallet-proxy';
 
 const MAX_RETRIES = 15;
 const RETRY_DELAY_MS = 10_000;

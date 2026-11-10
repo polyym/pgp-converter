@@ -1,4 +1,12 @@
-import type { Config } from '@netlify/functions';
+// This function is served at its default address, /.netlify/functions/wallet-proxy,
+// and deliberately declares no custom `path`.
+//
+// The page-rendering function that SvelteKit's Netlify adapter generates claims
+// every path ("/*") except "/.netlify/*". The site is deployed with
+// `netlify deploy --no-build`, where the Netlify CLI packages both functions
+// itself and gives them the same routing priority, and at equal priority the
+// catch-all wins: a custom path here is never reached. That is what took the
+// donate page down in v3.3.1. The default address belongs to this function alone.
 
 /** The only upstream record this site may read; the proxy cannot be pointed anywhere else */
 const ACCOUNT = 'pgp-converter';
@@ -85,8 +93,4 @@ export default async (req: Request): Promise<Response> => {
     // Timed out or unreachable: treat as waking so the page retries
     return errorResponse('Service unavailable', 503);
   }
-};
-
-export const config: Config = {
-  path: '/api/wallets/pgp-converter',
 };
