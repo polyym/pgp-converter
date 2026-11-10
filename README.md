@@ -12,6 +12,7 @@ PGP Converter is a web-based tool that enables users to encrypt and decrypt text
 - [How It Works](#how-it-works)
 - [Website Structure](#website-structure)
 - [Security](#security)
+- [Known Issues](#known-issues)
 - [Technology Stack](#technology-stack)
 - [Building and Running Locally](#building-and-running-locally)
 - [Releases](#releases)
@@ -139,6 +140,32 @@ PGP Converter does not create or verify digital signatures. A decrypted message 
 Please do not report security vulnerabilities in public issues. Report them privately as described in [SECURITY.md](./SECURITY.md).
 
 Bug reports without a security impact, and feature suggestions, are welcome as [GitHub issues](https://github.com/polyym/pgp-converter/issues).
+
+## Known Issues
+
+### GnuPG on Ubuntu 26.04 cannot import Curve25519 private keys
+
+On Ubuntu 26.04, `gpg --import` refuses a Curve25519 private key with `Bad secret key`, and the key cannot then be used to decrypt. In scripts that import with `--batch`, the import appears to succeed and GnuPG instead answers `Bad passphrase` when the key is first used, even though the passphrase is correct. This was confirmed in November 2026.
+
+The fault is in libgcrypt 1.12.0, the cryptography library GnuPG uses on that system, and it is fixed in libgcrypt 1.12.1. It affects every Curve25519 private key that is imported, including ones GnuPG generated itself and exported, so the key file is not damaged: the same file imports normally into a GnuPG built on another libgcrypt version. NIST P-256 and RSA keys are not affected, and neither is encrypting to someone's Curve25519 public key.
+
+To find out whether your system is affected, run `gpg --version`; the second line names the libgcrypt version. If it is `1.12.0`, you can:
+
+- generate a **NIST P-256** or **RSA** key on the Generate page instead of the default Curve25519, or
+- keep the Curve25519 key and import it into GnuPG once libgcrypt has been updated to 1.12.1 or later. Until then PGP Converter can still decrypt with it, since it does not use libgcrypt.
+
+### GnuPG warns about "preferences for unavailable algorithms" on import
+
+When you import a private key generated here, GnuPG 2.4 prints a warning like this and suggests that you update your preferences:
+
+```
+gpg: WARNING: key 0123456789ABCDEF contains preferences for unavailable
+algorithms on these user IDs:
+gpg:          "Your Name <you@example.com>": preference for digest algorithm 14
+gpg:          "Your Name <you@example.com>": preference for digest algorithm 12
+```
+
+The key has been imported and works, so the warning can be ignored. Algorithms 12 and 14 are the SHA-3 hashes. OpenPGP.js lists them in every new key as hashes its owner accepts, after SHA-512 and SHA-256, and GnuPG 2.4 does not implement them; it passes over the entries it does not know. If GnuPG offers to update the preferences, you can decline.
 
 ## Technology Stack
 

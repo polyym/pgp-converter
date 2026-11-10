@@ -25,7 +25,13 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 by name, not ubuntu-latest. The GnuPG round-trip test needs a
+    # GnuPG that works, and Ubuntu 26.04 ships libgcrypt 1.12.0, with which GnuPG
+    # cannot use any imported Curve25519 secret key, its own included (fixed
+    # upstream in libgcrypt 1.12.1). On 26.04 the test would skip the default key
+    # type with a warning instead of checking it. Move to a newer image once it
+    # carries libgcrypt 1.12.1 or later; deploy.yml uses the same image.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
 

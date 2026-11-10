@@ -47,7 +47,8 @@ env:
 jobs:
   preview:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: see the note on the job in tests.yml
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
 
@@ -78,7 +79,8 @@ jobs:
 
   production:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: see the note on the job in tests.yml
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write        # mint OIDC token for Sigstore
