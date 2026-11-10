@@ -2,6 +2,9 @@
 # main and every pull request. Intended as the canonical validation workflow
 # and the status check to require for branch protection on main.
 #
+# It can also be started by hand: Actions → Tests → Run workflow. That runs the
+# checks on the chosen branch without pushing or deploying anything.
+#
 # Tests also run inline as a step in deploy.yml; the duplication is deliberate
 # so neither workflow can skip the other's validation. On push to main both
 # workflows fire in parallel; on pull_request only this workflow runs (the
@@ -15,6 +18,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Adds the "Run workflow" button on the Actions page
+  workflow_dispatch:
 
 permissions:
   contents: read

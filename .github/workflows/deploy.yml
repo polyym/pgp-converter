@@ -78,9 +78,17 @@ jobs:
 
       - name: Deploy preview
         # Written as a block: in a one-line YAML value, " #" starts a comment and
-        # would cut the command off at the pull request number
+        # would cut the command off at the pull request number.
+        # Up to three attempts, for the reason given on the production deploy step.
         run: |
-          npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --no-build --dir=build --message="PR #${{ github.event.pull_request.number }} @ ${{ github.sha }}"
+          for attempt in 1 2 3; do
+            if npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --no-build --dir=build --message="PR #${{ github.event.pull_request.number }} @ ${{ github.sha }}"; then
+              exit 0
+            fi
+            echo "::warning::Deploy attempt $attempt of 3 failed"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
+          done
+          exit 1
         env:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
@@ -115,7 +123,20 @@ jobs:
           subject-path: 'build/**/*'
 
       - name: Deploy to production
-        run: npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --prod --no-build --dir=build --message="Commit ${{ github.sha }}"
+        # Up to three attempts, 20 and then 40 seconds apart. The CLI's first calls
+        # to Netlify's API can fail for a moment, and it then reports "Project not
+        # found" whatever the real cause was. Uploading the same files a second
+        # time is harmless, so trying again is safe. Each failed attempt leaves a
+        # warning on the run, so a deploy that needed a retry does not go unnoticed.
+        run: |
+          for attempt in 1 2 3; do
+            if npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --prod --no-build --dir=build --message="Commit ${{ github.sha }}"; then
+              exit 0
+            fi
+            echo "::warning::Deploy attempt $attempt of 3 failed"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
+          done
+          exit 1
         env:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
