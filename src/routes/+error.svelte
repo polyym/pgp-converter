@@ -1,96 +1,76 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { PageFrame } from '#lib/components/index.ts';
 </script>
 
 <svelte:head>
 	<title>Error - PGP Converter</title>
 </svelte:head>
 
-<div class="error-page">
-	<div class="error-container">
-		<div class="error-code">
-			<span>{page.status}</span>
-		</div>
-		<h1>
-			{#if page.status === 404}
-				Page Not Found
-			{:else}
-				Something went wrong
-			{/if}
-		</h1>
-		<!-- SvelteKit always supplies its own short message ("Not Found", "Internal Error"),
+<!-- The same frame as every other page, so a wrong address still looks like this app -->
+<PageFrame>
+	<p class="status">{page.status}</p>
+	<h1>
+		{#if page.status === 404}
+			There is no page at this address
+		{:else}
+			Something went wrong
+		{/if}
+	</h1>
+	<!-- SvelteKit always supplies its own short message ("Not Found", "Internal Error"),
 		     so the text here is chosen by status instead of falling back to it -->
-		<p>
-			{#if page.status === 404}
-				The page you're looking for doesn't exist.
-			{:else}
-				An unexpected error occurred. Please try again.
-			{/if}
-		</p>
-		<a href="/" class="home-btn">Go Home</a>
-	</div>
-</div>
+	<p class="explanation">
+		{#if page.status === 404}
+			The link may be out of date, or the address may have been mistyped. The tools are all in the
+			bar at the top.
+		{:else}
+			An unexpected error occurred. Nothing you typed was sent anywhere. Try again, or go back to
+			the start.
+		{/if}
+	</p>
+	<a href="/" class="home-btn">Go to the homepage</a>
+</PageFrame>
 
 <style>
-	.error-page {
-		min-height: 100vh;
-		background: var(--bg, #09090b);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 16px;
-		font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-	}
-
-	.error-container {
-		max-width: 420px;
-		width: 100%;
-		text-align: center;
-	}
-
-	.error-code {
-		margin-bottom: 32px;
-	}
-
-	.error-code span {
-		font-size: 3.75rem;
-		font-weight: 700;
-		color: var(--error, #ef4444);
+	.status {
+		margin: 0 0 12px;
+		font-family: var(--mono);
+		font-size: 13px;
+		color: var(--text-dim);
 	}
 
 	h1 {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: var(--text, #fafafa);
 		margin: 0 0 16px;
+		font-size: 32px;
+		font-weight: 600;
+		line-height: 1.2;
+		letter-spacing: -1px;
+		color: var(--text);
 	}
 
-	p {
-		color: var(--text-secondary, #9494a0);
-		margin: 0 0 32px;
-		font-size: 15px;
-		line-height: 1.5;
+	.explanation {
+		margin: 0 0 28px;
+		max-width: 520px;
+		font-size: 16px;
+		line-height: 1.65;
+		color: var(--text-secondary);
 	}
 
 	.home-btn {
-		display: inline-block;
-		padding: 12px 24px;
-		background: var(--surface-2, #16161a);
-		color: var(--text, #fafafa);
-		font-weight: 500;
-		font-size: 14px;
-		border-radius: 10px;
+		display: inline-flex;
+		align-items: center;
+		min-height: 48px;
+		padding: 12px 20px;
+		font-size: 15px;
+		font-weight: 600;
+		color: #000;
+		background: var(--text);
+		border-radius: var(--radius-lg);
 		text-decoration: none;
-		border: 1px solid var(--border, #1f1f24);
-		transition: background 0.15s ease, border-color 0.15s ease;
+		transition: background 0.15s ease;
 	}
 
 	.home-btn:hover {
-		background: var(--border, #1f1f24);
-		border-color: var(--border-hover, #2a2a30);
-	}
-
-	.home-btn:active {
-		transform: scale(0.98);
+		background: #e4e4e7;
 	}
 </style>

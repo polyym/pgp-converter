@@ -1,4 +1,4 @@
-import { DONATION_COOLDOWN_MS, DONATION_STORAGE_KEY } from './constants';
+import { DONATION_COOLDOWN_MS, DONATION_STORAGE_KEY } from './constants.ts';
 
 /**
  * Checks whether the donation banner is allowed to appear.
@@ -8,10 +8,14 @@ import { DONATION_COOLDOWN_MS, DONATION_STORAGE_KEY } from './constants';
 export function isDonationBannerAllowed(): boolean {
 	try {
 		const dismissed = localStorage.getItem(DONATION_STORAGE_KEY);
-		if (!dismissed) return true;
+		if (!dismissed) {
+			return true;
+		}
 		const dismissedAt = Number(dismissed);
 		// A value that is not a timestamp must not hide the banner for ever
-		if (!Number.isFinite(dismissedAt)) return true;
+		if (!Number.isFinite(dismissedAt)) {
+			return true;
+		}
 		return Date.now() - dismissedAt >= DONATION_COOLDOWN_MS;
 	} catch {
 		// localStorage unavailable (e.g. private browsing); allow banner

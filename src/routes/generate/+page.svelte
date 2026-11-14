@@ -1,553 +1,745 @@
 <script lang="ts">
-  import { generateKeyPair, downloadKey } from '$lib/keygen';
-  import { createFeedback } from '$lib/feedback.svelte';
-  import { createToolPage, copyText } from '$lib/tool-page.svelte';
-  import { COPY_FEEDBACK_MS, COPY_ERROR_MS, MIN_PASSPHRASE_LENGTH, CLEAR_CONFIRM_MS } from '$lib/constants';
-  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner, SEO, PassphraseInput } from '$lib/components';
-  import { onMount, tick } from 'svelte';
+	import { Icon, SEO } from '#lib/components/index.ts';
+	import {
+		ConfirmDialog,
+		Explainer,
+		KeyOutput,
+		PassphraseInput,
+		Question,
+		Questions,
+		ToolFrame
+	} from '#lib/components/tool/index.ts';
+	import { COPY_ERROR_MS, IDLE_CLEAR_MINUTES, MIN_PASSPHRASE_LENGTH } from '#lib/constants.ts';
+	import { downloadText } from '#lib/download.ts';
+	import { offerKey } from '#lib/handoff.ts';
+	import { KEEP_ASSISTANTS_OUT } from '#lib/keep-out.ts';
+	import { combineKeyPair, keyFileName } from '#lib/key-files.ts';
+	import { generateKeyPair } from '#lib/keygen.ts';
+	import { ratePassphrase } from '#lib/passphrase.ts';
+	import { createCopyFlag } from '#lib/stores/copy.svelte.ts';
+	import { createToolPage } from '#lib/stores/tool-page.svelte.ts';
+	import { createUnsavedKeyGuard } from '#lib/stores/unsaved-key.svelte.ts';
 
-  let keysElement = $state<HTMLElement>();
-  let name = $state('');
-  let email = $state('');
-  let passphrase = $state('');
-  let confirmPassphrase = $state('');
-  let keyType = $state<'ecc' | 'rsa'>('ecc');
-  let curve = $state<'curve25519' | 'nistP256' | 'nistP384' | 'nistP521'>('curve25519');
-  let rsaBits = $state<2048 | 3072 | 4096>(4096);
+	const IDLE_NOTICE = `Passphrase cleared after ${String(IDLE_CLEAR_MINUTES)} minutes without activity. Any keys you generated are still here.`;
 
-  let publicKey = $state('');
-  let privateKey = $state('');
-  let fingerprint = $state('');
-  let isLoading = $state(false);
-  let copyPublicSuccess = $state(false);
-  let copyPrivateSuccess = $state(false);
-  // True while Clear is armed and waiting for a second press
-  let confirmingClear = $state(false);
-  let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+	let name = $state('');
+	let email = $state('');
+	let passphrase = $state('');
+	let confirmPassphrase = $state('');
+	let keyType = $state<'ecc' | 'rsa'>('ecc');
+	let curve = $state<'curve25519' | 'nistP256' | 'nistP384' | 'nistP521'>('curve25519');
+	let rsaBits = $state<2048 | 3072 | 4096>(4096);
 
-  const feedback = createFeedback();
-  const tool = createToolPage({
-    submitLabel: 'Generate keys',
-    onSubmit: handleGenerate,
-    onClear: requestClear,
-    canClear: () => !!(name || email || passphrase || publicKey)
-  });
+	let publicKey = $state('');
+	let privateKey = $state('');
+	let fingerprint = $state('');
+	// How the private key on screen has been kept, if it has. Copying it or
+	// downloading it is all the page can see; where it ends up is the user's affair.
+	let savedBy = $state<'copy' | 'download'>();
 
-  const isValid = $derived(
-    name.trim().length > 0 &&
-    email.trim().length > 0 &&
-    passphrase.length >= MIN_PASSPHRASE_LENGTH &&
-    passphrase === confirmPassphrase
-  );
+	// A private key exists nowhere but on this page until it is copied or downloaded
+	const hasUnsavedKey = $derived(!!privateKey && !savedBy);
+	const isValid = $derived(
+		name.trim().length > 0 &&
+			passphrase.length >= MIN_PASSPHRASE_LENGTH &&
+			passphrase === confirmPassphrase
+	);
+	const rating = $derived(ratePassphrase(passphrase));
+	const isConfirmed = $derived(passphrase === confirmPassphrase || confirmPassphrase === '');
 
-  const passphraseMatch = $derived(passphrase === confirmPassphrase || confirmPassphrase === '');
+	const publicCopy = createCopyFlag();
+	const privateCopy = createCopyFlag();
+	const guard = createUnsavedKeyGuard({ hasUnsavedKey: () => hasUnsavedKey, onReplace: generate });
+	const tool = createToolPage({
+		submitLabel: 'Generate keys',
+		canSubmit: () => isValid,
+		onSubmit: generateUnlessUnsaved,
+		canClear: () => !!(name || email || passphrase || publicKey),
+		onClear: clearAll,
+		// Generated keys cannot be recovered once cleared, so while keys are on
+		// screen the Clear button asks twice, as Esc always does
+		confirmClear: () => !!privateKey,
+		// New keys cannot be recovered, so an idle clear takes only the passphrase.
+		// The private key on screen is still locked by it.
+		onIdle: clearPassphrases,
+		hasSecrets: () => !!(passphrase || confirmPassphrase),
+		idleNotice: IDLE_NOTICE
+	});
 
-  async function handleGenerate() {
-    if (!isValid || isLoading) return;
+	// For the Generate button and its shortcut: asks first if a key on screen would be lost
+	function generateUnlessUnsaved() {
+		if (!guard.askBeforeReplacing()) {
+			generate();
+		}
+	}
 
-    // Keys from a generation that was cleared while it ran must not reappear
-    const isCurrent = tool.startRun();
-    isLoading = true;
-    feedback.clear();
+	function generate() {
+		// The form may have been cleared while the question about an unsaved key was open
+		if (!isValid) {
+			return;
+		}
+		void tool.run({
+			shouldPaintFirst: false,
+			work: () =>
+				generateKeyPair({
+					name,
+					email,
+					passphrase,
+					keyType,
+					curve: keyType === 'ecc' ? curve : undefined,
+					rsaBits: keyType === 'rsa' ? rsaBits : undefined
+				}),
+			onSuccess: (result) => {
+				publicKey = result.data?.publicKey ?? '';
+				privateKey = result.data?.privateKey ?? '';
+				fingerprint = result.data?.fingerprint ?? '';
+				savedBy = undefined;
+				return { message: 'Keys generated' };
+			},
+			onFailure: () => {
+				publicKey = '';
+				privateKey = '';
+				fingerprint = '';
+			},
+			fallbackError: 'Key generation failed'
+		});
+	}
 
-    const result = await generateKeyPair({
-      name,
-      email,
-      passphrase,
-      keyType,
-      curve: keyType === 'ecc' ? curve : undefined,
-      rsaBits: keyType === 'rsa' ? rsaBits : undefined
-    });
-    if (!isCurrent()) return;
+	async function copyPublicKey() {
+		if (!(await publicCopy.copy(publicKey))) {
+			tool.feedback.showError('Failed to copy', COPY_ERROR_MS);
+		}
+	}
 
-    if (result.success && result.data) {
-      publicKey = result.data.publicKey;
-      privateKey = result.data.privateKey;
-      fingerprint = result.data.fingerprint;
-      feedback.showSuccess('Keys generated');
-      tool.offerDonation();
-    } else {
-      publicKey = '';
-      privateKey = '';
-      fingerprint = '';
-      feedback.showError(result.error || 'Key generation failed');
-    }
-    isLoading = false;
+	async function copyPrivateKey() {
+		if (await privateCopy.copy(privateKey)) {
+			savedBy ??= 'copy';
+		} else {
+			tool.feedback.showError('Failed to copy', COPY_ERROR_MS);
+		}
+	}
 
-    if (privateKey) {
-      await tick();
-      tool.revealResult(keysElement);
-    }
-  }
+	function downloadPublicKey() {
+		downloadText(publicKey, keyFileName(name, 'public'));
+	}
 
-  async function copyPublicKey() {
-    if (!publicKey) return;
-    if (await copyText(publicKey)) {
-      copyPublicSuccess = true;
-      setTimeout(() => copyPublicSuccess = false, COPY_FEEDBACK_MS);
-    } else {
-      feedback.showError('Failed to copy', COPY_ERROR_MS);
-    }
-  }
+	function downloadPrivateKey() {
+		downloadText(privateKey, keyFileName(name, 'private'));
+		savedBy = 'download';
+	}
 
-  async function copyPrivateKey() {
-    if (!privateKey) return;
-    if (await copyText(privateKey)) {
-      copyPrivateSuccess = true;
-      setTimeout(() => copyPrivateSuccess = false, COPY_FEEDBACK_MS);
-    } else {
-      feedback.showError('Failed to copy', COPY_ERROR_MS);
-    }
-  }
+	function downloadBothKeys() {
+		downloadText(combineKeyPair(publicKey, privateKey), keyFileName(name, 'keypair'));
+		savedBy = 'download';
+	}
 
-  function downloadPublicKey() {
-    if (!publicKey) return;
-    const filename = `${name.replace(/\s+/g, '_')}_public.asc`;
-    downloadKey(publicKey, filename);
-  }
+	function clearAll() {
+		tool.reset();
+		publicCopy.reset();
+		privateCopy.reset();
+		name = '';
+		email = '';
+		passphrase = '';
+		confirmPassphrase = '';
+		publicKey = '';
+		privateKey = '';
+		fingerprint = '';
+		savedBy = undefined;
+	}
 
-  function downloadPrivateKey() {
-    if (!privateKey) return;
-    const filename = `${name.replace(/\s+/g, '_')}_private.asc`;
-    downloadKey(privateKey, filename);
-  }
-
-  function downloadBothKeys() {
-    if (!publicKey || !privateKey) return;
-    const combined = `=== PUBLIC KEY ===\n\n${publicKey}\n\n=== PRIVATE KEY ===\n\n${privateKey}`;
-    const filename = `${name.replace(/\s+/g, '_')}_keypair.txt`;
-    downloadKey(combined, filename);
-  }
-
-  function clearAll() {
-    tool.cancelRuns();
-    isLoading = false;
-    clearTimeout(confirmTimer);
-    confirmingClear = false;
-    name = '';
-    email = '';
-    passphrase = '';
-    confirmPassphrase = '';
-    publicKey = '';
-    privateKey = '';
-    fingerprint = '';
-    feedback.clear();
-  }
-
-  // Generated keys cannot be recovered once cleared, so while keys are on screen
-  // the first press of Clear (or Esc) only arms it and a second press confirms.
-  function requestClear() {
-    if (privateKey && !confirmingClear) {
-      confirmingClear = true;
-      confirmTimer = setTimeout(() => confirmingClear = false, CLEAR_CONFIRM_MS);
-      return;
-    }
-    clearAll();
-  }
-
-  onMount(() => {
-    const stopShortcuts = tool.mount();
-    return () => {
-      stopShortcuts();
-      clearTimeout(confirmTimer);
-      feedback.clear();
-    };
-  });
+	function clearPassphrases() {
+		passphrase = '';
+		confirmPassphrase = '';
+	}
 </script>
 
 <SEO
-  title="Generate PGP Key Pair Online: Free ECC &amp; RSA Key Generator"
-  description="Generate PGP key pairs in your browser. Choose ECC (Curve25519) or RSA (up to 4096-bit), set a passphrase, and download your public and private keys instantly."
-  path="/generate"
+	title="PGP Key Generator Online: Free ECC and RSA Key Pairs"
+	description="Free PGP key generator online. Make an ECC (Curve25519) or RSA key pair with a passphrase, in your browser. The keys are never sent to a server."
+	path="/generate"
 />
 
-<div class="app">
-  <NavBar currentPage="generate" />
-  <ShortcutsModal show={tool.showShortcuts} shortcuts={tool.shortcuts} onClose={tool.closeShortcuts} />
+<ToolFrame
+	page="generate"
+	title="Generate a PGP Key Pair"
+	subtitle="Create your own public and private key. They are made in this browser and never sent anywhere."
+	{tool}
+	submitText="Generate"
+	clearArmedText={privateKey ? 'Delete keys?' : undefined}
+	clearArmedStatus={privateKey
+		? 'Press Clear again to delete the generated keys. They cannot be recovered.'
+		: undefined}
+	isResultSticky={false}
+>
+	{#snippet dialogs()}
+		<ConfirmDialog
+			isOpen={guard.isAsking}
+			title={guard.question.title}
+			body={guard.question.body}
+			confirmLabel={guard.question.confirm}
+			cancelLabel={guard.question.cancel}
+			onConfirm={guard.goAhead}
+			onCancel={guard.stay}
+		/>
+	{/snippet}
 
-  <main class="main">
-    <PageHeader
-      title="Generate a PGP Key Pair"
-      iconClass="generate"
-      onShortcutsClick={tool.hintsVisible ? tool.toggleShortcuts : undefined}
-    >
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-      </svg>
-    </PageHeader>
+	{#snippet fields()}
+		<!-- autocomplete="off": a browser would otherwise offer the user's real name
+		     and address here, and may keep a pseudonym typed here to offer on other sites -->
+		<div class="field-row">
+			<div class="field">
+				<label for="name">Name</label>
+				<input
+					type="text"
+					id="name"
+					bind:value={name}
+					placeholder="Your name..."
+					dir="auto"
+					autocomplete="off"
+					spellcheck="false"
+					autocorrect="off"
+					{...KEEP_ASSISTANTS_OUT}
+				/>
+			</div>
+			<div class="field">
+				<label for="email">Email <span class="optional">optional</span></label>
+				<input
+					type="email"
+					id="email"
+					bind:value={email}
+					placeholder="Leave empty for none"
+					autocomplete="off"
+					spellcheck="false"
+					{...KEEP_ASSISTANTS_OUT}
+				/>
+			</div>
+		</div>
+		<p class="identity-note">
+			Both are written into the key, where anyone who has your public key can read them. The name
+			does not have to be your real one, and the email can be left out.
+		</p>
 
-    <Toast type="success" message={feedback.success} show={!!feedback.success} />
-    <Toast type="error" message={feedback.error} show={!!feedback.error} />
+		<div class="field-row">
+			<div class="field">
+				<label for="passphrase">Passphrase</label>
+				<PassphraseInput
+					id="passphrase"
+					bind:value={passphrase}
+					placeholder="Min {MIN_PASSPHRASE_LENGTH} characters..."
+					autocomplete="new-password"
+				/>
+				{#if passphrase}
+					<div class="strength {rating.strength}" role="status">
+						<span class="strength-bars" aria-hidden="true">
+							{#each [1, 2, 3] as bar (bar)}
+								<span class={{ on: bar <= rating.bars }}></span>
+							{/each}
+						</span>
+						<span class="strength-text">
+							{passphrase.length < MIN_PASSPHRASE_LENGTH
+								? `Must be at least ${String(MIN_PASSPHRASE_LENGTH)} characters.`
+								: rating.advice}
+						</span>
+					</div>
+				{/if}
+			</div>
+			<div class="field">
+				<label for="confirmPassphrase">Confirm Passphrase</label>
+				<PassphraseInput
+					id="confirmPassphrase"
+					bind:value={confirmPassphrase}
+					placeholder="Confirm passphrase..."
+					isInvalid={!isConfirmed}
+					autocomplete="new-password"
+				/>
+				{#if !isConfirmed}
+					<span class="field-hint error">Passphrases do not match</span>
+				{/if}
+			</div>
+		</div>
 
-    <div class="fields">
-      <div class="field-row">
-        <div class="field">
-          <label for="name">Name</label>
-          <input type="text" id="name" bind:value={name} placeholder="Your name..." spellcheck="false" />
-        </div>
-        <div class="field">
-          <label for="email">Email</label>
-          <input type="email" id="email" bind:value={email} placeholder="your@email.com" />
-        </div>
-      </div>
+		<div class="field-row">
+			<div class="field">
+				<label for="keyType">Key Type</label>
+				<select id="keyType" bind:value={keyType}>
+					<option value="ecc">ECC</option>
+					<option value="rsa">RSA</option>
+				</select>
+			</div>
+			{#if keyType === 'ecc'}
+				<div class="field">
+					<label for="curve">Curve</label>
+					<select id="curve" bind:value={curve}>
+						<option value="curve25519">Curve25519</option>
+						<option value="nistP256">NIST P-256</option>
+						<option value="nistP384">NIST P-384</option>
+						<option value="nistP521">NIST P-521</option>
+					</select>
+				</div>
+			{:else}
+				<div class="field">
+					<label for="rsaBits">Key Size</label>
+					<select id="rsaBits" bind:value={rsaBits}>
+						<option value={4096}>4096 bits</option>
+						<option value={3072}>3072 bits</option>
+						<option value={2048}>2048 bits</option>
+					</select>
+				</div>
+			{/if}
+		</div>
+		<!-- Says which choice to make. Inside the boxes it would be cut off where two share a row. -->
+		<p class="identity-note">
+			{#if keyType === 'ecc'}
+				ECC with Curve25519 is the recommended choice. The NIST curves are for organisations whose
+				rules require them.
+			{:else}
+				ECC is the recommended choice unless someone asks you for RSA. For an RSA key you will keep,
+				pick 4096 bits.
+			{/if}
+		</p>
+	{/snippet}
 
-      <div class="field-row">
-        <div class="field">
-          <label for="passphrase">Passphrase</label>
-          <PassphraseInput id="passphrase" bind:value={passphrase} placeholder="Min {MIN_PASSPHRASE_LENGTH} characters..." autocomplete="new-password" />
-          {#if passphrase && passphrase.length < MIN_PASSPHRASE_LENGTH}
-            <span class="field-hint error">Must be at least {MIN_PASSPHRASE_LENGTH} characters</span>
-          {/if}
-        </div>
-        <div class="field">
-          <label for="confirmPassphrase">Confirm Passphrase</label>
-          <PassphraseInput id="confirmPassphrase" bind:value={confirmPassphrase} placeholder="Confirm passphrase..." invalid={!passphraseMatch} autocomplete="new-password" />
-          {#if !passphraseMatch}
-            <span class="field-hint error">Passphrases do not match</span>
-          {/if}
-        </div>
-      </div>
+	{#snippet result()}
+		{#if publicKey && privateKey}
+			<div
+				class="keys-output"
+				bind:this={tool.resultElement}
+				tabindex="-1"
+				role="region"
+				aria-label="Generated keys"
+			>
+				<div class="fingerprint">
+					<span class="fingerprint-label">Fingerprint</span>
+					<code translate="no">{fingerprint}</code>
+					<p>
+						A short identifier for this key pair. Give it to people along with your public key, so
+						they can check they are encrypting to the right key.
+					</p>
+				</div>
 
-      <div class="field-row">
-        <div class="field">
-          <label for="keyType">Key Type</label>
-          <select id="keyType" bind:value={keyType}>
-            <option value="ecc">ECC (Recommended)</option>
-            <option value="rsa">RSA</option>
-          </select>
-        </div>
-        {#if keyType === 'ecc'}
-          <div class="field">
-            <label for="curve">Curve</label>
-            <select id="curve" bind:value={curve}>
-              <option value="curve25519">Curve25519 (Recommended)</option>
-              <option value="nistP256">NIST P-256</option>
-              <option value="nistP384">NIST P-384</option>
-              <option value="nistP521">NIST P-521</option>
-            </select>
-          </div>
-        {:else}
-          <div class="field">
-            <label for="rsaBits">Key Size</label>
-            <select id="rsaBits" bind:value={rsaBits}>
-              <option value={4096}>4096 bits (Recommended)</option>
-              <option value={3072}>3072 bits</option>
-              <option value={2048}>2048 bits</option>
-            </select>
-          </div>
-        {/if}
-      </div>
-    </div>
+				<KeyOutput
+					kind="public"
+					value={publicKey}
+					isCopied={publicCopy.isCopied}
+					onCopy={() => {
+						void copyPublicKey();
+					}}
+					onDownload={downloadPublicKey}
+				/>
 
-    {#if publicKey && privateKey}
-      <div class="keys-output" bind:this={keysElement} tabindex="-1" role="region" aria-label="Generated keys">
-        <div class="fingerprint">
-          <span class="fingerprint-label">Fingerprint</span>
-          <code>{fingerprint}</code>
-          <p>A short identifier for this key pair. Give it to people along with your public key, so they can check they are encrypting to the right key.</p>
-        </div>
+				<KeyOutput
+					kind="private"
+					value={privateKey}
+					isCopied={privateCopy.isCopied}
+					onCopy={() => {
+						void copyPrivateKey();
+					}}
+					onDownload={downloadPrivateKey}
+				>
+					<!-- Whether the one copy of this key has been kept anywhere yet -->
+					<p class={['output-note', { signed: !!savedBy }]} role="status">
+						{#if savedBy === 'download'}
+							<strong>Downloaded.</strong> Keep the file somewhere only you can reach, and never send
+							it to anyone.
+						{:else if savedBy === 'copy'}
+							<strong>Copied.</strong> Paste it somewhere only you can reach before you leave, and never
+							send it to anyone.
+						{:else}
+							<strong>Not saved yet.</strong> Copy or download your private key before you leave this
+							page. It cannot be shown again.
+						{/if}
+					</p>
+				</KeyOutput>
 
-        <div class="key-section">
-          <div class="key-header">
-            <span class="key-label public">Public Key</span>
-            <div class="key-actions">
-              <button class="action-btn" onclick={copyPublicKey} aria-label={copyPublicSuccess ? 'Copied public key' : 'Copy public key'}>
-                {#if copyPublicSuccess}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                  Copied
-                {:else}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                  Copy
-                {/if}
-              </button>
-              <button class="action-btn" onclick={downloadPublicKey} aria-label="Download public key">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Download
-              </button>
-            </div>
-          </div>
-          <pre class="key-content">{publicKey}</pre>
-        </div>
+				<button class="download-both-btn" onclick={downloadBothKeys}>
+					<Icon name="download" strokeWidth={2} />
+					Download Both Keys as .txt
+				</button>
 
-        <div class="key-section">
-          <div class="key-header">
-            <span class="key-label private">Private Key</span>
-            <div class="key-actions">
-              <button class="action-btn" onclick={copyPrivateKey} aria-label={copyPrivateSuccess ? 'Copied private key' : 'Copy private key'}>
-                {#if copyPrivateSuccess}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                  Copied
-                {:else}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                  Copy
-                {/if}
-              </button>
-              <button class="action-btn" onclick={downloadPrivateKey} aria-label="Download private key">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Download
-              </button>
-            </div>
-          </div>
-          <pre class="key-content">{privateKey}</pre>
-        </div>
+				<!-- The key travels in memory to the next page; it is not stored anywhere -->
+				<nav class="next-steps" aria-label="Use this key">
+					<a
+						href="/encrypt"
+						onclick={() => {
+							offerKey({ publicKey });
+						}}
+					>
+						Encrypt a message to this key
+						<Icon name="arrow" size={14} strokeWidth={1.75} />
+					</a>
+					<a
+						href="/sign"
+						onclick={() => {
+							offerKey({ privateKey });
+						}}
+					>
+						Sign a message with this key
+						<Icon name="arrow" size={14} strokeWidth={1.75} />
+					</a>
+				</nav>
+			</div>
+		{:else}
+			<div class="output">
+				<div class="output-header"><span>Your keys</span></div>
+				<div class="output-body">
+					<ol class="placeholder-steps">
+						<li>Enter the name the key should carry, and an email if you want one on it.</li>
+						<li>Choose a passphrase you will remember. It cannot be reset.</li>
+						<li>Press Generate. Your public and private key appear here.</li>
+					</ol>
+				</div>
+			</div>
+		{/if}
+	{/snippet}
 
-        <button class="download-both-btn" onclick={downloadBothKeys}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download Both Keys as .txt
-        </button>
-      </div>
-    {/if}
+	<div class="warning-box">
+		<Icon name="warning" strokeWidth={2} />
+		<p>
+			Never share your private key. If you lose it or forget its passphrase, nothing encrypted to
+			this key can be read again.
+		</p>
+	</div>
 
-    <div class="warning-box">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-        <line x1="12" y1="9" x2="12" y2="13"/>
-        <line x1="12" y1="17" x2="12.01" y2="17"/>
-      </svg>
-      <p><strong>Important:</strong> Keep your private key and passphrase safe. Never share your private key with anyone. If you lose your passphrase, you will not be able to decrypt messages.</p>
-    </div>
+	<Explainer title="How to generate a PGP key pair">
+		<p>
+			A key pair is a public key, which others use to encrypt messages to you, and a private key,
+			which you use to decrypt them.
+		</p>
+		<ol>
+			<li>
+				Enter a name, and an email if you want one. Both are written into the public key and visible
+				to anyone who has it, so use a pseudonym and leave the email empty if you would rather not
+				be identified.
+			</li>
+			<li>
+				Choose a passphrase. It locks the private key, and you will need it every time you decrypt
+				or sign. Use at least 8 characters. Longer is better.
+			</li>
+			<li>
+				Choose a key type. ECC with Curve25519 is recommended: its keys are small and fast, and
+				GnuPG and other current PGP programs read them. RSA is for older software, and 4096 bits is
+				the size to pick for a key you will keep.
+			</li>
+			<li>
+				Press Generate. Copy or download the private key before you leave or clear the page, because
+				it cannot be shown again.
+			</li>
+		</ol>
+	</Explainer>
 
-    <details class="explainer">
-      <summary>
-        How to generate a PGP key pair
-        <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </summary>
-      <p>A key pair has two halves: a public key for others to encrypt messages to you, and a private key for you to decrypt them.</p>
-      <ol>
-        <li><strong>Fill in your name and email.</strong> These become part of the key's user ID; they're embedded in the public key and visible to anyone you share it with.</li>
-        <li><strong>Choose a strong passphrase.</strong> This encrypts the private key at rest. You'll enter it every time you decrypt. Use at least 8 characters; longer is better.</li>
-        <li><strong>Pick an algorithm.</strong>
-          <ul>
-            <li><strong>ECC (Curve25519)</strong>: recommended. Small keys, fast, modern cryptography. Generated in the format that GnuPG and other mainstream PGP clients read.</li>
-            <li><strong>RSA (2048 / 3072 / 4096 bits)</strong>: traditional, widely compatible with older tools. Slower key generation, larger keys. Use 4096 bits for long-term use.</li>
-          </ul>
-        </li>
-        <li><strong>Generate.</strong> The key pair appears in the output. Copy the public key to share; store the private key somewhere safe before you leave or clear the page, because it cannot be shown again.</li>
-      </ol>
-      <p>Randomness comes from the browser's cryptographically secure random number generator. Nothing leaves your device.</p>
-    </details>
-
-    <PageFooter />
-  </main>
-
-  <DonationBanner show={tool.showDonationBanner} onDismiss={tool.dismissDonation} />
-
-  <div class="bottom-actions">
-    <div class="bottom-actions-inner">
-      {#if name || email || passphrase || publicKey}
-        <button class="btn secondary" class:confirming={confirmingClear} onclick={requestClear}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-          {confirmingClear ? 'Delete keys?' : 'Clear'}
-          {#if tool.hintsVisible}<kbd>Esc</kbd>{/if}
-        </button>
-        <span class="sr-only" role="status">
-          {confirmingClear ? 'Press Clear again to delete the generated keys. They cannot be recovered.' : ''}
-        </span>
-      {/if}
-      <button
-        class="btn primary"
-        onclick={handleGenerate}
-        disabled={isLoading || !isValid}
-      >
-        {#if isLoading}
-          <span class="spinner"></span>
-        {:else}
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-          </svg>
-        {/if}
-        Generate
-        {#if tool.hintsVisible}<kbd>{tool.keys.submitHint}</kbd>{/if}
-      </button>
-    </div>
-  </div>
-</div>
+	<Questions title="Questions about PGP keys">
+		<Question q="Is it safe to use an online PGP key generator?">
+			<p>
+				Only if the keys are made on your device and never leave it. A generator that makes your
+				private key on a server has held a copy of it.
+			</p>
+			<p>
+				Here the key pair is made in your browser by the open-source OpenPGP.js library, using the
+				browser's cryptographic random number generator. Nothing is uploaded, and you can disconnect
+				from the internet before you press Generate to be sure. You are still trusting this site to
+				serve the code it publishes. Every release is signed so that this can be checked (see the <a
+					href="/about#verifying-this-deployment">About page</a
+				>).
+			</p>
+			<p>
+				For a key you will rely on for years, GnuPG on your own computer is the more cautious
+				choice.
+			</p>
+		</Question>
+		<Question q="Should I choose ECC or RSA?">
+			<p>
+				ECC with Curve25519, unless you have a reason not to. Its keys are short, quick to use and
+				supported by current PGP software.
+			</p>
+			<p>
+				Choose RSA if the person or system you deal with asks for it or runs old software, and pick
+				4096 bits for a key you will keep. The NIST curves are for organisations whose rules require
+				them.
+			</p>
+		</Question>
+		<Question q="Do PGP keys made here expire?">
+			<p>No. They have no expiry date, and the page does not make a revocation certificate.</p>
+			<p>
+				If you want either, import the private key into GnuPG, which can add an expiry date (<code
+					>gpg --edit-key</code
+				>) and make a revocation certificate (<code>gpg --gen-revoke</code>).
+			</p>
+		</Question>
+		<Question q="What if I lose my private key or forget the passphrase?">
+			<p>
+				Then messages encrypted to that key cannot be read by anyone. No copy of the key or the
+				passphrase exists outside your own devices.
+			</p>
+			<p>
+				Download the private key as soon as it is made and keep it somewhere safe, such as a
+				password manager or an encrypted drive, with a second copy elsewhere. Keep the passphrase
+				where you will find it again, preferably not in the same place.
+			</p>
+		</Question>
+		<Question q="How do I share my public key?">
+			<p>
+				Any way you like. Copy or download it, then send it by email, put it on your website or
+				profile, or upload it to a key server such as <a
+					href="https://keys.openpgp.org/"
+					target="_blank"
+					rel="noopener noreferrer">keys.openpgp.org</a
+				>.
+			</p>
+			<p>
+				Give people the fingerprint too, through a different channel if you can, so they can check
+				that the key they received is yours. Never send anyone the private key.
+			</p>
+		</Question>
+		<Question q="Can I use these keys in GnuPG or Kleopatra?">
+			<p>
+				Yes. They are standard OpenPGP keys. Save the private key to a file and import it with <code
+					>gpg --import</code
+				> or Kleopatra's import option. You may be asked for the passphrase you chose here.
+			</p>
+			<p>
+				Curve25519 keys are written in the encoding GnuPG uses, and this project's tests import keys
+				made here into GnuPG.
+			</p>
+		</Question>
+	</Questions>
+</ToolFrame>
 
 <style>
-  .main {
-    max-width: 560px;
-    margin: 0 auto;
-    padding: 12px 20px 40px;
-    padding-left: calc(20px + var(--safe-left));
-    padding-right: calc(20px + var(--safe-right));
-  }
+	.optional {
+		margin-left: 6px;
+		font-size: 12px;
+		font-weight: 500;
+		letter-spacing: 0.3px;
+		text-transform: uppercase;
+		color: var(--text-dim);
+	}
 
-  .bottom-actions-inner {
-    max-width: 560px;
-  }
+	.identity-note {
+		margin: -4px 0 0;
+		padding-left: 2px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--text-secondary);
+	}
 
-  @media (min-width: 768px) {
-    .main {
-      max-width: 800px;
-    }
+	.strength {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		padding-left: 2px;
+	}
 
-    .bottom-actions-inner {
-      max-width: 800px;
-    }
-  }
+	.strength-bars {
+		display: flex;
+		gap: 3px;
+		padding-top: 7px;
+		flex-shrink: 0;
+	}
 
-  .field-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
+	.strength-bars span {
+		width: 18px;
+		height: 4px;
+		background: var(--border-hover);
+		border-radius: 2px;
+		transition: background 0.2s ease;
+	}
 
-  @media (max-width: 500px) {
-    .field-row {
-      grid-template-columns: 1fr;
-    }
-  }
+	.strength.weak .strength-bars span.on {
+		background: var(--error);
+	}
+	.strength.fair .strength-bars span.on {
+		background: var(--warning);
+	}
+	.strength.strong .strength-bars span.on {
+		background: var(--success);
+	}
 
-  input, select {
-    width: 100%;
-    padding: 14px 16px;
-    font-family: var(--font);
-    font-size: 16px;
-    line-height: 1.4;
-    color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    transition: border-color 0.15s ease;
-  }
+	/* Windows high-contrast mode drops backgrounds, and these bars are nothing else */
+	@media (forced-colors: active) {
+		.strength-bars span.on {
+			forced-color-adjust: none;
+			background: CanvasText;
+		}
+	}
 
-  input::placeholder { color: var(--text-dim); }
-  input:hover, select:hover { border-color: var(--border-hover); }
-  /* The transparent outline becomes visible in forced-colours (high contrast) modes */
-  input:focus, select:focus {
-    outline: 2px solid transparent;
-    border-color: var(--focus);
-    box-shadow: 0 0 0 1px var(--focus);
-  }
+	.strength-text {
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--text-secondary);
+	}
 
-  select {
-    cursor: pointer;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239494a0' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 40px;
-  }
+	.next-steps {
+		display: flex;
+		flex-direction: column;
+		border: 1px solid var(--border);
+		border-radius: 12px;
+		overflow: hidden;
+	}
 
-  .field-hint { font-size: 12px; padding-left: 2px; }
-  .field-hint.error { color: var(--error); }
+	.next-steps a {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		min-height: 48px;
+		padding: 10px 16px;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--text);
+		text-decoration: none;
+		background: var(--surface);
+		transition: background 0.15s ease;
+	}
 
-  .keys-output { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
+	.next-steps a + a {
+		border-top: 1px solid var(--border);
+	}
 
-  .fingerprint {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 12px 16px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-  }
-  .fingerprint-label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
-  .fingerprint code { font-family: var(--mono); font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
-  .fingerprint p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+	.next-steps a:hover {
+		background: var(--surface-2);
+	}
 
-  .btn.secondary.confirming { color: var(--error); border-color: var(--error); }
+	.next-steps :global(svg) {
+		color: var(--text-dim);
+		flex-shrink: 0;
+	}
 
-  .key-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-  }
+	.field-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
+	}
 
-  .key-header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-  }
+	@media (max-width: 500px) {
+		.field-row {
+			grid-template-columns: 1fr;
+		}
+	}
 
-  .key-label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-  .key-label.public { color: var(--success); }
-  .key-label.private { color: var(--error); }
+	input,
+	select {
+		width: 100%;
+		padding: 14px 16px;
+		font-family: var(--font);
+		font-size: 16px;
+		line-height: 1.4;
+		color: var(--text);
+		background: var(--surface);
+		border: 1px solid var(--field-border);
+		border-radius: 12px;
+		transition: border-color 0.15s ease;
+	}
 
-  .key-actions { display: flex; gap: 8px; }
+	input::placeholder {
+		color: var(--text-dim);
+	}
+	input:hover,
+	select:hover {
+		border-color: var(--field-border-hover);
+	}
+	/* The transparent outline becomes visible in forced-colours (high contrast) modes */
+	input:focus,
+	select:focus {
+		outline: 2px solid transparent;
+		border-color: var(--text);
+		box-shadow: 0 0 0 1px var(--text);
+	}
 
-  .action-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    min-height: 36px;
-    padding: 0 12px;
-    font-family: var(--font);
-    font-size: 13px;
-    font-weight: 500;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
+	select {
+		cursor: pointer;
+		appearance: none;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239494a0' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: right 12px center;
+		padding-right: 40px;
+	}
 
-  .action-btn:hover { color: var(--text); border-color: var(--border-hover); }
+	.field-hint {
+		font-size: 12px;
+		padding-left: 2px;
+	}
+	.field-hint.error {
+		color: var(--error);
+	}
 
-  .key-content {
-    margin: 0;
-    padding: 16px;
-    font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1.5;
-    color: var(--text-secondary);
-    word-break: break-all;
-    white-space: pre-wrap;
-    max-height: 150px;
-    overflow-y: auto;
-  }
+	.keys-output {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		margin-bottom: 20px;
+	}
 
-  .download-both-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    width: 100%;
-    padding: 14px 20px;
-    font-family: var(--font);
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
+	.fingerprint {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 12px 16px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: 12px;
+	}
+	.fingerprint-label {
+		font-size: 13px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		color: var(--text-secondary);
+	}
+	.fingerprint code {
+		font-family: var(--mono);
+		font-size: 13px;
+		color: var(--text);
+		overflow-wrap: anywhere;
+	}
+	.fingerprint p {
+		margin: 0;
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--text-secondary);
+	}
 
-  .download-both-btn:hover { border-color: var(--border-hover); background: var(--surface-2); }
+	.download-both-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		width: 100%;
+		padding: 14px 20px;
+		font-family: var(--font);
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--text);
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: 12px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
 
-  .warning-box {
-    display: flex;
-    gap: 12px;
-    padding: 16px;
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: 12px;
-    margin-bottom: 24px;
-  }
+	.download-both-btn:hover {
+		border-color: var(--border-hover);
+		background: var(--surface-2);
+	}
 
-  .warning-box svg { flex-shrink: 0; color: var(--warning); margin-top: 2px; }
-  .warning-box p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
-  .warning-box strong { color: var(--warning); }
+	.warning-box {
+		display: flex;
+		gap: 12px;
+		padding: 16px;
+		background: rgba(245, 158, 11, 0.1);
+		border: 1px solid rgba(245, 158, 11, 0.2);
+		border-radius: 12px;
+		margin-bottom: 24px;
+	}
 
-  @media (prefers-reduced-motion: reduce) {
-    .action-btn:active,
-    .download-both-btn:active {
-      transform: none;
-    }
-  }
+	.warning-box :global(svg) {
+		flex-shrink: 0;
+		color: var(--warning);
+		margin-top: 2px;
+	}
+	.warning-box p {
+		margin: 0;
+		font-size: 13px;
+		line-height: 1.6;
+		color: var(--text-secondary);
+	}
 </style>

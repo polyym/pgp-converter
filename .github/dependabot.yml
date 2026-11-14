@@ -1,0 +1,24 @@
+# Proposes updates as pull requests, so that pinned versions do not quietly go
+# stale. Each pull request runs the Tests workflow; nothing is merged or
+# deployed until someone merges it.
+version: 2
+updates:
+  # The workflows name each action by the commit it was reviewed at. A commit
+  # never moves, so without this the actions would stay as they are for good.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  # The packages in package.json. Minor and patch releases arrive together in one
+  # pull request a month; a new major version gets a pull request of its own,
+  # because those need reading before they are accepted.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch

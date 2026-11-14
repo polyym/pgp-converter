@@ -36,14 +36,15 @@ afterEach(() => {
 
 describe('wallet proxy', () => {
 	it('should keep its default address by declaring no custom path', () => {
-		// A custom path is shadowed by the page-rendering function's "/*" when the
-		// site is deployed with --no-build; see the note in the function's file
+		// The page and the deploy check ask for it at its default address. A custom
+		// path was once shadowed by another function's "/*" under --no-build, which
+		// took the donate page down; see the note in the function's file
 		const { config } = walletProxy as { config?: { path?: unknown } };
 		expect(config?.path).toBeUndefined();
 	});
 
 	it('should always read the same upstream record, whatever was requested', async () => {
-		const fetchMock = vi.fn().mockResolvedValue(upstream(upstreamBody));
+		const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(upstream(upstreamBody));
 		vi.stubGlobal('fetch', fetchMock);
 
 		await handler(request(`${DEFAULT_ADDRESS}/someone-else`));
@@ -51,7 +52,7 @@ describe('wallet proxy', () => {
 
 		for (const call of fetchMock.mock.calls) {
 			expect(call[0]).toBe(`${API_URL}/v1/wallets/pgp-converter`);
-			expect(call[1].headers['X-API-Key']).toBe('test-key');
+			expect(new Headers(call[1]?.headers).get('X-API-Key')).toBe('test-key');
 		}
 	});
 

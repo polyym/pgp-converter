@@ -1,9 +1,37 @@
 [[headers]]
   for = "/*"
   [headers.values]
+    # HTTPS only, for two years, on this domain and every subdomain. "preload"
+    # declares that the domain may be put on the list browsers ship with, so
+    # that even a first visit never starts over plain HTTP. The listing itself
+    # is a separate step, done by hand at hstspreload.org, and is slow to undo.
+    # Every subdomain must serve HTTPS for as long as this header is sent.
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+    Referrer-Policy = "no-referrer"
+    # The app uses none of these, so no script on the page can, whatever it is
+    Permissions-Policy = "accelerometer=(), bluetooth=(), browsing-topics=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(), midi=(), payment=(), serial=(), usb=()"
     Cross-Origin-Opener-Policy = "same-origin"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    # The Content-Security-Policy is not here. It names each page's start-up
+    # script by a hash that changes with every build, so the build writes it
+    # into build/_headers (scripts/write-csp.ts; the policy is in
+    # scripts/csp.ts). Netlify applies that file together with these rules.
+    # Do not add a second policy here: browsers would enforce both.
+
+# Files under /_app/immutable carry a hash of their contents in their name, so
+# a browser may keep them for good. SvelteKit's static adapter writes no rules
+# for any host, so the rule is kept here.
+[[headers]]
+  for = "/_app/immutable/*"
+  [headers.values]
+    Cache-Control = "public, immutable, max-age=31536000"
+
+# The About page was called Help until v3.0. Old links are sent on with a
+# permanent redirect. "force" is needed because the build still contains a
+# small page at this address that forwards on its own, kept as a fallback.
+[[redirects]]
+  from = "/help"
+  to = "/about"
+  status = 301
+  force = true

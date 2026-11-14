@@ -1,6 +1,7 @@
-# Runs the unit test suite, type check, and production build on every push to
-# main and every pull request. Intended as the canonical validation workflow
-# and the status check to require for branch protection on main.
+# Runs the unit test suite, type check, lint rules, formatting check and
+# production build on every push to main and every pull request. Intended as
+# the canonical validation workflow and the status check to require for branch
+# protection on main.
 #
 # It can also be started by hand: Actions → Tests → Run workflow. That runs the
 # checks on the chosen branch without pushing or deploying anything.
@@ -21,6 +22,7 @@ on:
   # Adds the "Run workflow" button on the Actions page
   workflow_dispatch:
 
+# Actions are named by commit, not by tag; see the note in deploy.yml
 permissions:
   contents: read
 
@@ -38,9 +40,9 @@ jobs:
     # carries libgcrypt 1.12.1 or later; deploy.yml uses the same image.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 26
           cache: npm
@@ -56,5 +58,15 @@ jobs:
       - name: Type check
         run: npm run check
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
       - name: Production build
         run: npm run build
+
+      # The homepage, About and Donate must not download the cryptography library
+      - name: Check page weight
+        run: node scripts/check-bundle.ts build

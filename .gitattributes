@@ -1,0 +1,7 @@
+# Text files are checked out with the same line endings on every system. Git on
+# Windows would otherwise change them, and the same commit would then build
+# different files there (see "Reproducing a Build" in the README).
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.woff2 binary

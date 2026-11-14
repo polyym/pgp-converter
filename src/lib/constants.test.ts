@@ -7,7 +7,7 @@ import {
 	COPY_ERROR_MS,
 	MIN_PASSPHRASE_LENGTH,
 	EMAIL_REGEX
-} from './constants';
+} from './constants.ts';
 
 describe('timing constants', () => {
 	it('should all be positive numbers', () => {

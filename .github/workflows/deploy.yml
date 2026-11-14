@@ -19,13 +19,12 @@
 #      the signed one.
 # The final step of the production job fails if the live site differs from build/.
 #
-# A consequence of --no-build: the CLI packages the functions itself and gives
-# them all the same routing priority, where Netlify's build step would rank the
-# project's own functions above generated ones. The page-rendering function that
-# the SvelteKit adapter generates claims every path except /.netlify/*, so a
-# function in netlify/functions must be reached at its default address
-# (/.netlify/functions/<name>), not at a custom path. The final step also fails
-# if the wallet proxy cannot be reached.
+# The site is files only: every page is built ahead of time (SvelteKit's static
+# adapter), 404.html included, which Netlify serves for an address that does
+# not exist. The one function is the wallet proxy in netlify/functions, which
+# the CLI packages itself under --no-build and which is reached at its default
+# address (/.netlify/functions/<name>); the note in that file says why it has
+# no custom path. The final step also fails if the wallet proxy cannot be reached.
 #
 # Required GitHub repo secrets:
 #   NETLIFY_AUTH_TOKEN: personal access token from Netlify user settings
@@ -38,6 +37,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+
+# Actions are named by commit, not by tag: a tag can be moved to different code
+# after it was reviewed, a commit cannot. The comment beside each one gives the
+# release that commit is. Dependabot proposes the move to a newer release
+# (.github/dependabot.yml).
 
 # Each job asks for what it needs; previews get no signing permissions
 permissions:
@@ -54,13 +58,15 @@ env:
 
 jobs:
   preview:
-    if: github.event_name == 'pull_request'
+    # Not for Dependabot's pull requests: they are not given the deploy secrets,
+    # so the deploy step could only fail. The Tests workflow still runs on them.
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     # Not ubuntu-latest: see the note on the job in tests.yml
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 26
           cache: npm
@@ -72,6 +78,22 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Type check
+        run: npm run check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      # The same commit must always build the same files, so that anyone can
+      # repeat the build and compare (README, "Reproducing a Build"). The one
+      # thing in a build that depends on the clock, the dates it writes into the
+      # sitemap and security.txt, is taken from the commit instead.
+      - name: Take the build date from the commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
 
       - name: Build
         run: npm run build
@@ -99,12 +121,12 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write        # mint OIDC token for Sigstore
-      attestations: write    # write attestation to GitHub
+      id-token: write # mint OIDC token for Sigstore
+      attestations: write # write attestation to GitHub
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 26
           cache: npm
@@ -114,11 +136,35 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # Also in the Tests workflow, which runs beside this one and cannot stop
+      # it: without these steps a change that fails the type check, the lint
+      # rules or the formatting check would still go live
+      - name: Type check
+        run: npm run check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      # The same commit must always build the same files, so that anyone can
+      # repeat the build and compare (README, "Reproducing a Build"). The one
+      # thing in a build that depends on the clock, the dates it writes into the
+      # sitemap and security.txt, is taken from the commit instead.
+      - name: Take the build date from the commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
       - name: Build
         run: npm run build
 
+      # Before anything is signed or published: the homepage, About and Donate
+      # must not download the cryptography library
+      - name: Check page weight
+        run: node scripts/check-bundle.ts build
+
       - name: Attest build provenance
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: 'build/**/*'
 
@@ -142,4 +188,4 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
 
       - name: Check the live site matches the signed build
-        run: node scripts/verify-deploy.mjs https://pgp-converter.com build
+        run: node scripts/verify-deploy.ts https://pgp-converter.com build

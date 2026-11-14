@@ -1,280 +1,293 @@
 <script lang="ts">
-  import { decryptMessage } from '$lib/decryption';
-  import { createFeedback } from '$lib/feedback.svelte';
-  import { createToolPage, copyText } from '$lib/tool-page.svelte';
-  import { LOADING_DELAY_MS, COPY_FEEDBACK_MS, COPY_ERROR_MS } from '$lib/constants';
-  import { NavBar, ShortcutsModal, Toast, PageFooter, PageHeader, DonationBanner, SEO, PassphraseInput } from '$lib/components';
-  import { onMount, tick } from 'svelte';
+	import { SEO } from '#lib/components/index.ts';
+	import {
+		Explainer,
+		OptionSection,
+		PassphraseInput,
+		Question,
+		Questions,
+		ResultPanel,
+		ResultText,
+		SignatureVerdict,
+		TextField,
+		ToolFrame
+	} from '#lib/components/tool/index.ts';
+	import { decryptMessage } from '#lib/decryption.ts';
+	import type { SignatureCheck } from '#lib/signatures.ts';
+	import { createKeyInspector } from '#lib/stores/key-inspector.svelte.ts';
+	import { createToolPage } from '#lib/stores/tool-page.svelte.ts';
+	import { summariseSignatures } from '#lib/verdicts.ts';
 
-  let outputElement = $state<HTMLElement>();
-  let encrypted = $state('');
-  let privateKey = $state('');
-  let passphrase = $state('');
-  let decrypted = $state('');
-  // A message can decrypt to an empty string, so success is tracked separately from the text
-  let hasOutput = $state(false);
-  let signed = $state(false);
-  let isLoading = $state(false);
-  let copySuccess = $state(false);
+	let encrypted = $state('');
+	let privateKey = $state('');
+	let passphrase = $state('');
+	let decrypted = $state('');
+	// A message can decrypt to an empty string, so success is tracked separately from the text
+	let hasOutput = $state(false);
+	let senderKey = $state('');
+	let signatures = $state<SignatureCheck[]>([]);
+	// Whether the result on screen was checked against a sender's key
+	let wasSenderChecked = $state(false);
 
-  const isValid = $derived(encrypted.trim().length > 0 && privateKey.trim().length > 0);
-  const hasContent = $derived(!!(encrypted || privateKey || passphrase || hasOutput));
+	const sender = createKeyInspector(() => senderKey, 'verify');
+	const ownKey = createKeyInspector(() => privateKey, 'decrypt');
+	const isChecking = $derived(senderKey.trim().length > 0);
+	const hasBadSignature = $derived(summariseSignatures(signatures).tone === 'bad');
+	const checkingSummary = $derived.by(() => {
+		if (!isChecking) {
+			return "Optional. Verifies the signature with the sender's public key";
+		}
+		const name = sender.keys[0]?.userIDs[0];
+		return name ? `Checking against ${name}` : "Checking against the sender's key";
+	});
 
-  const feedback = createFeedback();
-  const tool = createToolPage({
-    submitLabel: 'Decrypt message',
-    onSubmit: handleDecrypt,
-    onCopy: copyToClipboard,
-    canCopy: () => !!decrypted,
-    onClear: clearAll,
-    canClear: () => hasContent
-  });
+	const tool = createToolPage({
+		submitLabel: 'Decrypt message',
+		canSubmit: () => encrypted.trim().length > 0 && privateKey.trim().length > 0,
+		onSubmit: decrypt,
+		canClear: () => !!(encrypted || privateKey || passphrase || senderKey || hasOutput),
+		onClear: clearAll,
+		copyable: () => decrypted,
+		// Your own key and passphrase open the message; the result is a matter of the message and the sender's key
+		resultInputs: () => [encrypted, senderKey]
+	});
 
-  async function handleDecrypt() {
-    if (!isValid || isLoading) return;
+	function decrypt() {
+		void tool.run({
+			work: () => decryptMessage(encrypted, privateKey, passphrase, senderKey),
+			onSuccess: (result) => {
+				decrypted = result.data ?? '';
+				hasOutput = true;
+				signatures = result.signatures ?? [];
+				wasSenderChecked = isChecking;
+				return { message: 'Decrypted' };
+			},
+			onFailure: () => {
+				decrypted = '';
+				hasOutput = false;
+				signatures = [];
+			},
+			fallbackError: 'Decryption failed'
+		});
+	}
 
-    // A result that arrives after the form was cleared must not reappear
-    const isCurrent = tool.startRun();
-    isLoading = true;
-    feedback.clear();
-
-    await new Promise(resolve => setTimeout(resolve, LOADING_DELAY_MS));
-    if (!isCurrent()) return;
-
-    const result = await decryptMessage(encrypted, privateKey, passphrase);
-    if (!isCurrent()) return;
-
-    if (result.success && result.data !== undefined) {
-      decrypted = result.data;
-      hasOutput = true;
-      signed = !!result.signed;
-      feedback.showSuccess('Decrypted');
-      tool.offerDonation();
-    } else {
-      decrypted = '';
-      hasOutput = false;
-      signed = false;
-      feedback.showError(result.error || 'Decryption failed');
-    }
-    isLoading = false;
-
-    if (hasOutput) {
-      await tick();
-      tool.revealResult(outputElement);
-    }
-  }
-
-  async function copyToClipboard() {
-    if (!decrypted) return;
-
-    if (await copyText(decrypted)) {
-      copySuccess = true;
-      setTimeout(() => copySuccess = false, COPY_FEEDBACK_MS);
-    } else {
-      feedback.showError('Failed to copy', COPY_ERROR_MS);
-    }
-  }
-
-  function clearAll() {
-    tool.cancelRuns();
-    isLoading = false;
-    encrypted = '';
-    privateKey = '';
-    passphrase = '';
-    decrypted = '';
-    hasOutput = false;
-    signed = false;
-    feedback.clear();
-  }
-
-  onMount(() => {
-    const stopShortcuts = tool.mount();
-    return () => {
-      stopShortcuts();
-      feedback.clear();
-    };
-  });
+	function clearAll() {
+		tool.reset();
+		encrypted = '';
+		privateKey = '';
+		passphrase = '';
+		decrypted = '';
+		senderKey = '';
+		hasOutput = false;
+		signatures = [];
+	}
 </script>
 
 <SEO
-  title="PGP Decrypt Message Online: Free Browser-Based Decryption Tool"
-  description="Decrypt PGP-encrypted messages in your browser. Paste the ciphertext, your private key, and passphrase to reveal the original message. Fully client-side."
-  path="/decrypt"
+	title="PGP Decryption Online: Decrypt a Message in Your Browser"
+	description="Free PGP decryption online. Paste the encrypted message, your private key and passphrase to read it. Runs in your browser; your key is never uploaded."
+	path="/decrypt"
 />
 
-<div class="app">
-  <NavBar currentPage="decrypt" />
-  <ShortcutsModal show={tool.showShortcuts} shortcuts={tool.shortcuts} onClose={tool.closeShortcuts} />
+<ToolFrame
+	page="decrypt"
+	title="Decrypt a PGP Message"
+	subtitle="Read a message that was encrypted to your public key."
+	{tool}
+	submitText="Decrypt"
+>
+	{#snippet fields()}
+		<TextField
+			id="encrypted"
+			error={tool.errorFor('encrypted')}
+			label="Encrypted Message"
+			bind:value={encrypted}
+			placeholder="Paste encrypted message..."
+			isMonospace
+			canOpenFiles
+		/>
 
-  <main class="main">
-    <PageHeader
-      title="Decrypt a PGP Message"
-      onShortcutsClick={tool.hintsVisible ? tool.toggleShortcuts : undefined}
-    >
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-        <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
-      </svg>
-    </PageHeader>
+		<TextField
+			id="privateKey"
+			error={tool.errorFor('privateKey')}
+			label="Private Key"
+			bind:value={privateKey}
+			placeholder="Paste private key..."
+			isMonospace
+			canOpenFiles
+			keysTitle="Decrypting with"
+			keys={ownKey.keys}
+		/>
 
-    <Toast type="success" message={feedback.success} show={!!feedback.success} />
-    <Toast type="error" message={feedback.error} show={!!feedback.error} />
+		<div class="field">
+			<label for="passphrase">Passphrase</label>
+			<PassphraseInput
+				id="passphrase"
+				error={tool.errorFor('passphrase')}
+				bind:value={passphrase}
+				placeholder="Enter passphrase..."
+				autocomplete="off"
+			/>
+		</div>
 
-    <div class="fields">
-      <div class="field">
-        <label for="encrypted">Encrypted Message</label>
-        <textarea
-          id="encrypted"
-          bind:value={encrypted}
-          placeholder="Paste encrypted message..."
-          rows="4"
-          class="mono"
-          spellcheck="false"
-          autocomplete="off"
-          autocapitalize="off"
-        ></textarea>
-      </div>
+		<OptionSection
+			icon="verify"
+			title="Check who sent it"
+			summary={checkingSummary}
+			note="If the sender signed the message, their public key shows whether it really came from them and arrived unchanged."
+			isActive={isChecking}
+		>
+			<TextField
+				id="senderKey"
+				error={tool.errorFor('senderKey')}
+				label="Sender's Public Key"
+				bind:value={senderKey}
+				placeholder="Paste the sender's public key..."
+				isMonospace
+				canOpenFiles
+				keysTitle="Checking against"
+				keys={sender.keys}
+				keysHint="A valid signature proves which key signed. Confirm the fingerprint with the sender to know whose key it is."
+				canHoldSeveral
+				addHint="Not sure which key signed? Paste or open another. Each one is added to this list."
+			/>
+		</OptionSection>
+	{/snippet}
 
-      <div class="field">
-        <label for="privateKey">Private Key</label>
-        <textarea
-          id="privateKey"
-          bind:value={privateKey}
-          placeholder="Paste private key..."
-          rows="4"
-          class="mono"
-          spellcheck="false"
-          autocomplete="off"
-          autocapitalize="off"
-        ></textarea>
-      </div>
+	{#snippet result()}
+		<ResultPanel
+			{tool}
+			label="Decrypted message"
+			filename="message.txt"
+			what="decrypted message"
+			canShare={false}
+			tone={hasOutput ? (hasBadSignature ? 'bad' : 'good') : undefined}
+			staleWithheld="The message or the sender's key has changed since this was decrypted. Press Decrypt again."
+			staleAccepted="This is the result from before the change. Press Decrypt again."
+		>
+			<div class="output-body">
+				{#if decrypted}
+					<ResultText text={decrypted} isProse />
+				{:else if hasOutput}
+					<span class="empty-result">The message decrypted successfully, but it is empty.</span>
+				{:else}
+					<ol class="placeholder-steps">
+						<li>Add the encrypted message.</li>
+						<li>Add your private key and its passphrase.</li>
+						<li>Press Decrypt. The message appears here.</li>
+					</ol>
+				{/if}
+			</div>
+			{#if hasOutput}
+				<SignatureVerdict
+					{signatures}
+					wereKeysSupplied={wasSenderChecked}
+					isMuted={tool.isResultStale}
+					howToCheck="To check it, open the option above the output, paste the sender's public key and decrypt again."
+				/>
+			{/if}
+		</ResultPanel>
+	{/snippet}
 
-      <div class="field">
-        <label for="passphrase">Passphrase</label>
-        <PassphraseInput
-          id="passphrase"
-          bind:value={passphrase}
-          placeholder="Enter passphrase..."
-          autocomplete="off"
-        />
-      </div>
-    </div>
+	<Explainer title="How to decrypt a PGP message">
+		<p>
+			To read a message that was encrypted to your public key, you need your private key and its
+			passphrase.
+		</p>
+		<ol>
+			<li>
+				Paste the whole encrypted message, from <code>-----BEGIN PGP MESSAGE-----</code> to
+				<code>-----END PGP MESSAGE-----</code>.
+			</li>
+			<li>Add your private key.</li>
+			<li>Enter its passphrase. Leave this empty if the key has none.</li>
+			<li>
+				If you have the sender's public key, open "Check who sent it" and add it. The page then says
+				whether the message was signed with that key.
+			</li>
+			<li>Press Decrypt.</li>
+		</ol>
+		<p>
+			If something is wrong, the error names the input at fault: the message, the key or the
+			passphrase.
+		</p>
+		<p>
+			Decrypting shows what a message says, not who wrote it. Anyone with your public key can write
+			to you, so only a signature checked against the sender's key tells you who it came from.
+		</p>
+	</Explainer>
 
-    <div
-      class="output"
-      class:has-content={hasOutput}
-      bind:this={outputElement}
-      tabindex="-1"
-      role="region"
-      aria-label="Decrypted message"
-    >
-      <div class="output-header">
-        <span>Output</span>
-        {#if decrypted}
-          <button class="copy-btn" onclick={copyToClipboard}>
-            {#if copySuccess}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              Copied
-            {:else}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
-              Copy
-              {#if tool.hintsVisible}<kbd>{tool.keys.copyHint}</kbd>{/if}
-            {/if}
-          </button>
-        {/if}
-      </div>
-      <div class="output-body">
-        {#if decrypted}
-          <pre>{decrypted}</pre>
-        {:else if hasOutput}
-          <span class="empty-result">The message decrypted successfully, but it is empty.</span>
-        {:else}
-          <span class="placeholder">Decrypted message appears here</span>
-        {/if}
-      </div>
-      {#if hasOutput && signed}
-        <p class="output-note"><strong>Signature not checked.</strong> This message carries a digital signature, but PGP Converter does not verify signatures, so it cannot confirm who sent it.</p>
-      {/if}
-    </div>
-
-    <details class="explainer">
-      <summary>
-        How to decrypt a PGP message
-        <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </summary>
-      <p>Decryption uses your private key and passphrase to unlock a message that was encrypted for you. Without all three inputs correct, the plaintext stays sealed.</p>
-      <ol>
-        <li><strong>Paste the encrypted message.</strong> It begins with <code>-----BEGIN PGP MESSAGE-----</code>. Copy the whole block including header and footer.</li>
-        <li><strong>Paste your private key.</strong> This is the secret half of your keypair; never share it with anyone.</li>
-        <li><strong>Enter your passphrase.</strong> The one you set when generating the key. Leave it blank if your key has none.</li>
-        <li><strong>Decrypt.</strong> The original plaintext appears in the output panel.</li>
-      </ol>
-      <p>If the passphrase is wrong, the private key doesn't match the message, or the ciphertext was truncated, you'll see a specific error rather than a partial result. Your private key, passphrase, and decrypted message never leave this browser.</p>
-      <p>Decryption shows what a message says, not who wrote it. Anyone with your public key can encrypt a message to you, and this app does not verify digital signatures.</p>
-    </details>
-
-    <PageFooter />
-  </main>
-
-  <DonationBanner show={tool.showDonationBanner} onDismiss={tool.dismissDonation} />
-
-  <div class="bottom-actions">
-    <div class="bottom-actions-inner">
-      {#if hasContent}
-        <button class="btn secondary" onclick={clearAll}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-          Clear
-          {#if tool.hintsVisible}<kbd>Esc</kbd>{/if}
-        </button>
-      {/if}
-      <button
-        class="btn primary"
-        onclick={handleDecrypt}
-        disabled={isLoading || !isValid}
-      >
-        {#if isLoading}
-          <span class="spinner"></span>
-        {:else}
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
-          </svg>
-        {/if}
-        Decrypt
-        {#if tool.hintsVisible}<kbd>{tool.keys.submitHint}</kbd>{/if}
-      </button>
-    </div>
-  </div>
-</div>
-
-<style>
-  .main {
-    max-width: 480px;
-    margin: 0 auto;
-    padding: 12px 20px 40px;
-    padding-left: calc(20px + var(--safe-left));
-    padding-right: calc(20px + var(--safe-right));
-  }
-
-  .empty-result {
-    display: block;
-    font-size: 14px;
-    color: var(--text-secondary);
-  }
-
-  @media (min-width: 768px) {
-    .main {
-      max-width: 720px;
-    }
-  }
-</style>
+	<Questions title="Questions about PGP decryption">
+		<Question q="Is it safe to paste my private key into a website?">
+			<p>
+				Only where you can be confident it stays on your device. On this page the key is read by
+				code running in your browser. It is not uploaded or saved, and the page clears itself after
+				15 minutes without activity. You can check this by disconnecting from the internet before
+				you paste.
+			</p>
+			<p>
+				You are still trusting this site to serve the code it publishes. Every release is signed so
+				that this can be checked (see the <a href="/about#verifying-this-deployment">About page</a
+				>). If the key protects something valuable, use a program on your own computer such as
+				GnuPG.
+			</p>
+		</Question>
+		<Question q="Can I decrypt a PGP message without the private key?">
+			<p>
+				No. A PGP message can only be opened with a private key that matches one of the public keys
+				it was encrypted to.
+			</p>
+			<p>
+				If the page says the message was not encrypted with the key you provided, the sender used a
+				different public key. Send them your current public key and ask them to encrypt the message
+				again.
+			</p>
+		</Question>
+		<Question q="What if I have forgotten my passphrase?">
+			<p>It cannot be reset. Nobody else has a copy of your key or its passphrase.</p>
+			<p>
+				If you cannot recall it, make a new key pair, give people the new public key, and ask for
+				anything important to be sent again. Messages encrypted to the old key stay unreadable.
+			</p>
+		</Question>
+		<Question q="Why will my PGP message not decrypt?">
+			<p>The usual causes:</p>
+			<ul>
+				<li>
+					<strong>Part of the message is missing.</strong> Copy everything from
+					<code>-----BEGIN PGP MESSAGE-----</code>
+					to <code>-----END PGP MESSAGE-----</code>.
+				</li>
+				<li>
+					<strong>It was encrypted to a different key.</strong> The sender has to use the public key that
+					matches your private key.
+				</li>
+				<li>
+					<strong>The passphrase is wrong.</strong> Check Caps Lock and the keyboard layout.
+				</li>
+				<li>
+					<strong>The text was changed on the way.</strong> The page repairs quote marks, indentation
+					and lost line breaks. If characters are missing, ask for the message as a file and open it here.
+				</li>
+			</ul>
+			<p>The error on the page says which of these it is.</p>
+		</Question>
+		<Question q="Can it decrypt messages made with GnuPG or Kleopatra?">
+			<p>
+				Yes. Any standard OpenPGP message encrypted to your public key can be decrypted here. This
+				project's tests decrypt messages made by GnuPG, which Kleopatra and Gpg4win use underneath.
+			</p>
+			<p>
+				The page reads armoured text only. It does not decrypt files, binary <code>.gpg</code> files,
+				or messages protected with a password instead of a key.
+			</p>
+		</Question>
+		<Question q="Is the decrypted message stored anywhere?">
+			<p>
+				No. It exists only in this page's memory. It is gone when you press Clear, close the tab, or
+				leave the page untouched for 15 minutes.
+			</p>
+			<p>If you copy the message, it stays on your clipboard until you copy something else.</p>
+		</Question>
+	</Questions>
+</ToolFrame>

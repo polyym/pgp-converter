@@ -1,62 +1,93 @@
 <script lang="ts">
-  type Page = 'encrypt' | 'decrypt' | 'generate' | 'about' | 'donate';
+	import { TOOL_LINKS, type PageName } from '#lib/pages.ts';
+	import { appUpdate } from '#lib/stores/app-update.svelte.ts';
+	import Icon from './Icon.svelte';
 
-  let {
-    currentPage
-  }: {
-    currentPage: Page;
-  } = $props();
+	let {
+		currentPage
+	}: {
+		/** The page being shown; leave out where no entry should be marked */
+		currentPage?: PageName;
+	} = $props();
 
-  const navItems = [
-    {
-      href: '/',
-      page: null,
-      label: 'Home',
-      icon: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>'
-    },
-    {
-      href: '/encrypt',
-      page: 'encrypt',
-      label: 'Encrypt',
-      icon: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
-    },
-    {
-      href: '/decrypt',
-      page: 'decrypt',
-      label: 'Decrypt',
-      icon: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>'
-    },
-    {
-      href: '/generate',
-      page: 'generate',
-      label: 'Generate',
-      icon: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>'
-    }
-  ];
+	// Moves keyboard focus to the page's content. Done here, not left to the
+	// link's address alone, so that it works every time it is used and leaves the
+	// address bar as it was. Without scripts the link still jumps to the content.
+	function skipToContent(e: MouseEvent) {
+		const main = document.getElementById('main');
+		if (!main) {
+			return;
+		}
+		e.preventDefault();
+		main.focus();
+		main.scrollIntoView();
+	}
 
-  const filteredItems = $derived(navItems.filter(item => item.page !== currentPage));
+	let height = $state(0);
 
-  let height = $state(0);
-
-  // The bar is pinned to the top and can grow (a second row on a very narrow
-  // screen, a notch inset). Publishing its real height lets anchor jumps and
-  // floating messages stop below it instead of underneath it.
-  $effect(() => {
-    if (height) document.documentElement.style.setProperty('--nav-height', `${height}px`);
-  });
+	// The bar is pinned to the top and is taller on phones, where it has two rows.
+	// Publishing its real height lets anchor jumps, floating messages and the
+	// sticky result panel stop below it instead of underneath it.
+	$effect(() => {
+		if (height) {
+			document.documentElement.style.setProperty('--nav-height', `${String(height)}px`);
+		}
+	});
 </script>
 
-<nav class="nav" aria-label="Main" bind:offsetHeight={height}>
-  <!-- "crowded" marks the pages that list all four destinations (About, Donate) -->
-  <div class="nav-group" class:crowded={filteredItems.length > 3}>
-    {#each filteredItems as item}
-      <!-- The text label is hidden on narrow screens, so the link carries its own name -->
-      <a href={item.href} class="nav-link" aria-label={item.label}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-          {@html item.icon}
-        </svg>
-        <span class="nav-label">{item.label}</span>
-      </a>
-    {/each}
-  </div>
-</nav>
+<a class="skip-link" href="#main" onclick={skipToContent}>Skip to content</a>
+
+<header class="nav" bind:offsetHeight={height}>
+	<div class="nav-inner">
+		<a href="/" class="nav-brand" aria-current={currentPage === 'home' ? 'page' : undefined}>
+			<span class="nav-logo"><Icon name="generate" size={16} /></span>
+			PGP Converter
+		</a>
+
+		<nav class="nav-tools" aria-label="Tools">
+			{#each TOOL_LINKS as item (item.href)}
+				<a
+					href={item.href}
+					class="nav-link"
+					aria-current={currentPage === item.page ? 'page' : undefined}
+				>
+					<Icon name={item.page} size={15} />
+					{item.label}
+				</a>
+			{/each}
+		</nav>
+
+		<!-- Appears only when a newer version of the app has been fetched. Switching
+         reloads the page, so it waits for the visitor to ask. -->
+		{#if appUpdate.isReady}
+			<button
+				type="button"
+				class="nav-update"
+				onclick={() => {
+					appUpdate.apply();
+				}}
+				disabled={appUpdate.isBusy}
+				aria-busy={appUpdate.isBusy}
+				title="A new version is ready. Updating reloads the page and clears anything on it."
+			>
+				<Icon name="refresh" size={14} strokeWidth={2} />
+				<span class="nav-update-short">{appUpdate.isBusy ? 'Updating…' : 'Update'}</span>
+				<span class="nav-update-long"
+					>{appUpdate.isBusy ? 'Updating…' : 'A new version is ready. Update'}</span
+				>
+				<span class="sr-only">Updating reloads the page and clears anything on it.</span>
+			</button>
+		{/if}
+
+		<nav class="nav-more" aria-label="About this site">
+			<a href="/about" class="nav-link" aria-current={currentPage === 'about' ? 'page' : undefined}
+				>About</a
+			>
+			<a
+				href="/donate"
+				class="nav-link"
+				aria-current={currentPage === 'donate' ? 'page' : undefined}>Donate</a
+			>
+		</nav>
+	</div>
+</header>

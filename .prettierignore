@@ -1,0 +1,5 @@
+build/
+.svelte-kit/
+.netlify/
+package-lock.json
+static/fonts/

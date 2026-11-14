@@ -1,4 +1,4 @@
-import { SUCCESS_TOAST_MS, ERROR_TOAST_MS } from './constants';
+import { SUCCESS_TOAST_MS, ERROR_TOAST_MS } from '#lib/constants.ts';
 
 /**
  * Creates the success and error message state behind a page's toasts.

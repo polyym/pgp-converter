@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseWallets, fetchWallets, generateQrDataUrls, truncateAddress, WALLET_LOAD_ERROR } from './donations';
+import {
+	parseWallets,
+	fetchWallets,
+	generateQrDataUrls,
+	truncateAddress,
+	WALLET_LOAD_ERROR
+} from './donations.ts';
+import { must } from './testing.ts';
 
 // Correctly shaped but made-up addresses
 const addresses = {
@@ -12,7 +19,10 @@ const addresses = {
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
-	return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+	return Response.json(body, {
+		status,
+		headers: { 'Content-Type': 'application/json' }
+	});
 }
 
 afterEach(() => {
@@ -29,7 +39,9 @@ describe('parseWallets', () => {
 	});
 
 	it('should leave out a missing address and keep the others', () => {
-		const { bitcoin_taproot: _missing, ...rest } = addresses;
+		const rest = Object.fromEntries(
+			Object.entries(addresses).filter(([coin]) => coin !== 'bitcoin_taproot')
+		);
 		const wallets = parseWallets({ addresses: rest });
 
 		expect(wallets.map((wallet) => wallet.id)).toEqual(['sol', 'eth', 'btc-segwit']);
@@ -57,8 +69,9 @@ describe('fetchWallets', () => {
 		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ addresses }));
 		vi.stubGlobal('fetch', fetchMock);
 
-		const wallets = await fetchWallets();
-		expect(wallets).toHaveLength(4);
+		const result = await fetchWallets();
+		expect(result.success).toBe(true);
+		expect(result.data).toHaveLength(4);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		expect(fetchMock.mock.calls[0][0]).toBe('/.netlify/functions/wallet-proxy');
 	});
@@ -72,7 +85,8 @@ describe('fetchWallets', () => {
 		// Renaming the file without changing the address here would break the donate page.
 		const match = /^\/\.netlify\/functions\/([a-z0-9-]+)$/.exec(String(fetchMock.mock.calls[0][0]));
 		expect(match).not.toBeNull();
-		expect(existsSync(resolve('netlify', 'functions', `${match![1]}.mts`))).toBe(true);
+		const functionFile = resolve('netlify', 'functions', `${must(match)[1]}.mts`);
+		expect(existsSync(functionFile)).toBe(true);
 	});
 
 	it('should retry while the service is waking and report it once', async () => {
@@ -88,24 +102,25 @@ describe('fetchWallets', () => {
 		const pending = fetchWallets({ onWaking });
 		await vi.advanceTimersByTimeAsync(20_000);
 
-		expect(await pending).toHaveLength(4);
+		expect((await pending).data).toHaveLength(4);
 		expect(fetchMock).toHaveBeenCalledTimes(3);
 		expect(onWaking).toHaveBeenCalledTimes(1);
 	});
 
 	it('should stop retrying as soon as the request is aborted', async () => {
 		vi.useFakeTimers();
-		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'Service unavailable' }, 503));
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(jsonResponse({ error: 'Service unavailable' }, 503));
 		vi.stubGlobal('fetch', fetchMock);
 		const controller = new AbortController();
 
 		const pending = fetchWallets({ signal: controller.signal });
-		const outcome = pending.catch((e: unknown) => e);
-		await vi.advanceTimersByTimeAsync(1_000);
+		await vi.advanceTimersByTimeAsync(1000);
 		controller.abort();
 		await vi.advanceTimersByTimeAsync(60_000);
 
-		expect(await outcome).toBeInstanceOf(Error);
+		expect((await pending).success).toBe(false);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
@@ -113,23 +128,29 @@ describe('fetchWallets', () => {
 		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'Upstream error' }, 500));
 		vi.stubGlobal('fetch', fetchMock);
 
-		await expect(fetchWallets()).rejects.toThrow(WALLET_LOAD_ERROR);
+		expect(await fetchWallets()).toEqual({ success: false, error: WALLET_LOAD_ERROR });
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	it('should show the friendly error when no address is valid', async () => {
-		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ addresses: { solana: 'nope' } })));
-		await expect(fetchWallets()).rejects.toThrow(WALLET_LOAD_ERROR);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue(jsonResponse({ addresses: { solana: 'nope' } }))
+		);
+		expect(await fetchWallets()).toEqual({ success: false, error: WALLET_LOAD_ERROR });
 	});
 
 	it('should show the friendly error when the response is not JSON', async () => {
-		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>Bad gateway</html>', { status: 200 })));
-		await expect(fetchWallets()).rejects.toThrow(WALLET_LOAD_ERROR);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue(new Response('<html>Bad gateway</html>', { status: 200 }))
+		);
+		expect(await fetchWallets()).toEqual({ success: false, error: WALLET_LOAD_ERROR });
 	});
 
 	it('should show the friendly error, not the browser one, when the network fails', async () => {
 		vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
-		await expect(fetchWallets()).rejects.toThrow(WALLET_LOAD_ERROR);
+		expect(await fetchWallets()).toEqual({ success: false, error: WALLET_LOAD_ERROR });
 	});
 });
 

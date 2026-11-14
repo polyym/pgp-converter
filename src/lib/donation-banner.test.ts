@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { isDonationBannerAllowed, dismissDonationBanner } from './donation-banner';
-import { DONATION_COOLDOWN_MS, DONATION_STORAGE_KEY } from './constants';
+import { isDonationBannerAllowed, dismissDonationBanner } from './donation-banner.ts';
+import { DONATION_COOLDOWN_MS, DONATION_STORAGE_KEY } from './constants.ts';
 
 const NOW = new Date('2026-11-09T12:00:00Z');
 
@@ -61,6 +61,8 @@ describe('donation banner cooldown', () => {
 			}
 		});
 		expect(isDonationBannerAllowed()).toBe(true);
-		expect(() => dismissDonationBanner()).not.toThrow();
+		expect(() => {
+			dismissDonationBanner();
+		}).not.toThrow();
 	});
 });

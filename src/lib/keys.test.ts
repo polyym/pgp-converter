@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { generateKey, revokeKey } from 'openpgp';
-import { formatFingerprint, readPublicKeys, describeKey, inspectPublicKeys, PRIVATE_KEY_PROBLEM } from './keys';
+import {
+	formatFingerprint,
+	readPublicKeys,
+	describeKey,
+	inspectKeys,
+	PRIVATE_KEY_PROBLEM
+} from './keys.ts';
 
 async function createKeyPair(name: string) {
 	return generateKey({
@@ -9,6 +15,14 @@ async function createKeyPair(name: string) {
 		userIDs: [{ name, email: `${name.toLowerCase()}@example.com` }],
 		format: 'armored'
 	});
+}
+
+/** The lines of an armoured block, without the blank ones */
+function linesOf(armor: string): string[] {
+	return armor
+		.trim()
+		.split(/\r?\n/)
+		.filter((line) => line !== '');
 }
 
 describe('formatFingerprint', () => {
@@ -38,8 +52,14 @@ describe('readPublicKeys', () => {
 
 	it('should read a key that was indented or quoted in an email', async () => {
 		const alice = await createKeyPair('Alice');
-		const indented = alice.publicKey.split('\n').map((line) => '    ' + line).join('\n');
-		const quoted = alice.publicKey.split('\n').map((line) => '> ' + line).join('\n');
+		const indented = alice.publicKey
+			.split('\n')
+			.map((line) => ' '.repeat(4) + line)
+			.join('\n');
+		const quoted = alice.publicKey
+			.split('\n')
+			.map((line) => '> ' + line)
+			.join('\n');
 
 		expect(await readPublicKeys(indented)).toHaveLength(1);
 		expect(await readPublicKeys(quoted)).toHaveLength(1);
@@ -47,6 +67,38 @@ describe('readPublicKeys', () => {
 
 	it('should throw for text that is not a key', async () => {
 		await expect(readPublicKeys('not a key')).rejects.toThrow();
+	});
+});
+
+describe('readPublicKeys, when line breaks were lost', () => {
+	it('should read a key copied from a page that showed it as one long line', async () => {
+		const alice = await createKeyPair('Alice');
+		const keys = await readPublicKeys(linesOf(alice.publicKey).join(' '));
+		expect(keys).toHaveLength(1);
+		expect(keys[0].getUserIDs()[0]).toContain('Alice');
+	});
+
+	it('should read a key pasted through a box that takes a single line', async () => {
+		const alice = await createKeyPair('Alice');
+		const keys = await readPublicKeys(linesOf(alice.publicKey).join(''));
+		expect(keys).toHaveLength(1);
+	});
+
+	it('should read a key that lost only the empty line after its first line', async () => {
+		const alice = await createKeyPair('Alice');
+		const keys = await readPublicKeys(linesOf(alice.publicKey).join('\n'));
+		expect(keys).toHaveLength(1);
+	});
+
+	it('should read two such keys, and describe them for the page', async () => {
+		const alice = await createKeyPair('Alice');
+		const bob = await createKeyPair('Bob');
+		const oneLine = `${linesOf(alice.publicKey).join(' ')} ${linesOf(bob.publicKey).join(' ')}`;
+		expect(await readPublicKeys(oneLine)).toHaveLength(2);
+		expect((await inspectKeys(oneLine, 'encrypt')).map((key) => key.userIDs[0])).toEqual([
+			'Alice <alice@example.com>',
+			'Bob <bob@example.com>'
+		]);
 	});
 });
 
@@ -101,11 +153,11 @@ describe('describeKey', () => {
 	});
 });
 
-describe('inspectPublicKeys', () => {
+describe('inspectKeys', () => {
 	it('should describe every key in the text', async () => {
 		const alice = await createKeyPair('Alice');
 		const bob = await createKeyPair('Bob');
-		const infos = await inspectPublicKeys(`${alice.publicKey}\n${bob.publicKey}`);
+		const infos = await inspectKeys(`${alice.publicKey}\n${bob.publicKey}`, 'encrypt');
 
 		expect(infos.map((info) => info.userIDs[0])).toEqual([
 			'Alice <alice@example.com>',
@@ -114,6 +166,8 @@ describe('inspectPublicKeys', () => {
 	});
 
 	it('should return an empty list instead of throwing for unreadable text', async () => {
-		expect(await inspectPublicKeys('-----BEGIN PGP PUBLIC KEY BLOCK-----\nhalf a key')).toEqual([]);
+		expect(
+			await inspectKeys('-----BEGIN PGP PUBLIC KEY BLOCK-----\nhalf a key', 'encrypt')
+		).toEqual([]);
 	});
 });

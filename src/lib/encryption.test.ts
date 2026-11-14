@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { encryptMessage, PRIVATE_KEY_ERROR } from './encryption';
-import { decryptMessage } from './decryption';
+import { encryptMessage, PRIVATE_KEY_ERROR } from './encryption.ts';
+import { WEAK_RECIPIENT_KEY_ERROR } from './errors.ts';
+import { decryptMessage } from './decryption.ts';
 import { generateKey, readMessage, revokeKey } from 'openpgp';
+import { must } from './testing.ts';
 
 const TEST_PASSPHRASE = 'testpassphrase';
 
@@ -24,7 +26,7 @@ describe('encryptMessage', () => {
 		expect(result.data).toBeDefined();
 		expect(result.data).toContain('-----BEGIN PGP MESSAGE-----');
 		expect(result.error).toBeUndefined();
-	}, 15000);
+	}, 15_000);
 
 	it('should return a user-friendly error for invalid public key', async () => {
 		const result = await encryptMessage('Hello', 'not-a-valid-key');
@@ -49,9 +51,9 @@ describe('encryptMessage', () => {
 		const result = await encryptMessage('Hello', publicKey);
 
 		expect(result.recipients).toHaveLength(1);
-		expect(result.recipients![0].userIDs).toEqual(['Alice <test@example.com>']);
-		expect(result.recipients![0].fingerprint).toMatch(/^[0-9A-F ]+$/);
-	}, 15000);
+		expect(must(result.recipients)[0].userIDs).toEqual(['Alice <test@example.com>']);
+		expect(must(result.recipients)[0].fingerprint).toMatch(/^[0-9A-F ]+$/);
+	}, 15_000);
 
 	it('should refuse a private key instead of quietly using it', async () => {
 		const { privateKey } = await createTestKeyPair();
@@ -60,7 +62,7 @@ describe('encryptMessage', () => {
 		expect(result.success).toBe(false);
 		expect(result.data).toBeUndefined();
 		expect(result.error).toBe(PRIVATE_KEY_ERROR);
-	}, 15000);
+	}, 15_000);
 
 	it('should encrypt to every key when several are pasted', async () => {
 		const alice = await createTestKeyPair('Alice');
@@ -70,32 +72,38 @@ describe('encryptMessage', () => {
 		expect(result.success).toBe(true);
 		expect(result.recipients).toHaveLength(2);
 
-		const message = await readMessage({ armoredMessage: result.data! });
+		const message = await readMessage({ armoredMessage: must(result.data) });
 		expect(message.getEncryptionKeyIDs()).toHaveLength(2);
 
 		for (const pair of [alice, bob]) {
-			const decrypted = await decryptMessage(result.data!, pair.privateKey, TEST_PASSPHRASE);
+			const decrypted = await decryptMessage(must(result.data), pair.privateKey, TEST_PASSPHRASE);
 			expect(decrypted.data).toBe('For both of you');
 		}
-	}, 20000);
+	}, 20_000);
 
 	it('should accept a key that was indented or quoted in an email', async () => {
 		const { publicKey } = await createTestKeyPair();
-		const indented = publicKey.split('\n').map((line) => '    ' + line).join('\n');
-		const quoted = publicKey.split('\n').map((line) => '> ' + line).join('\n');
+		const indented = publicKey
+			.split('\n')
+			.map((line) => ' '.repeat(4) + line)
+			.join('\n');
+		const quoted = publicKey
+			.split('\n')
+			.map((line) => '> ' + line)
+			.join('\n');
 
 		expect((await encryptMessage('Hello', indented)).success).toBe(true);
 		expect((await encryptMessage('Hello', quoted)).success).toBe(true);
-	}, 15000);
+	}, 15_000);
 
 	it('should say when a message is pasted instead of a key', async () => {
 		const { publicKey } = await createTestKeyPair();
-		const message = (await encryptMessage('Hello', publicKey)).data!;
-		const result = await encryptMessage('Hello', message);
+		const message = await encryptMessage('Hello', publicKey);
+		const result = await encryptMessage('Hello', must(message.data));
 
 		expect(result.success).toBe(false);
 		expect(result.error).toContain('valid PGP public key');
-	}, 15000);
+	}, 15_000);
 
 	it('should explain that an expired key cannot be used', async () => {
 		const expired = await generateKey({
@@ -109,7 +117,9 @@ describe('encryptMessage', () => {
 
 		expect(result.success).toBe(false);
 		expect(result.error).toContain('expired');
-	}, 15000);
+		// Shown under the key box, where it stays, not in a message that fades
+		expect(result.errorField).toBe('publicKey');
+	}, 15_000);
 
 	it('should explain that a revoked key cannot be used', async () => {
 		const pair = await generateKey({
@@ -122,5 +132,22 @@ describe('encryptMessage', () => {
 
 		expect(result.success).toBe(false);
 		expect(result.error).toContain('revoked');
-	}, 15000);
+		expect(result.errorField).toBe('publicKey');
+	}, 15_000);
+
+	it('should explain that a short RSA key is no longer accepted', async () => {
+		// The library will only make a key this short when told the limit is lower
+		const weak = await generateKey({
+			type: 'rsa',
+			rsaBits: 1024,
+			userIDs: [{ name: 'Old Timer', email: 'old@example.com' }],
+			format: 'armored',
+			config: { minRSABits: 1024 }
+		});
+		const result = await encryptMessage('Hello', weak.publicKey);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toBe(WEAK_RECIPIENT_KEY_ERROR);
+		expect(result.errorField).toBe('publicKey');
+	}, 30_000);
 });

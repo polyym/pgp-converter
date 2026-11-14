@@ -1,422 +1,402 @@
 <script lang="ts">
-  import { version } from '../../package.json';
-  import { SEO } from '$lib/components';
+	import { version } from '../../package.json';
+	import { PageFrame, SEO } from '#lib/components/index.ts';
+	import { pictureDots, type DotPicture } from '#lib/dot-pictures.ts';
+	import { toDotText } from '#lib/dot-text.ts';
+	import { toStructuredDataScript, WEB_APPLICATION_DATA } from '#lib/structured-data.ts';
+
+	// The grid spells "PGP" until a word in the sentence is pointed at or focused
+	let shown = $state<DotPicture>('pgp');
+	const dots = $derived(pictureDots(shown));
+
+	// The version number, drawn in the same dots as the picture above it
+	const versionDots = toDotText(`v${version}`);
+
+	// The commit this build was made from. A build that was not given one shows none.
+	const commit = __BUILD_COMMIT__;
+
+	function show(picture: DotPicture) {
+		return () => {
+			shown = picture;
+		};
+	}
+
+	function rest() {
+		shown = 'pgp';
+	}
 </script>
 
 <SEO
-  title="PGP Converter: Free Online PGP Encryption, Decryption &amp; Key Generator"
-  description="Free, open-source PGP tool. Encrypt and decrypt messages, generate ECC or RSA key pairs, all in your browser. No data is sent to any server."
-  path="/"
+	title="PGP Converter: Free Online PGP Encryption and Key Generator"
+	description="Free, open-source PGP tool. Encrypt, decrypt, sign and verify messages, and generate ECC or RSA key pairs, all in your browser. No data is sent to any server."
+	path="/"
 />
 
 <svelte:head>
-  {@html `<script type="application/ld+json">${JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "WebApplication",
-    "name": "PGP Converter",
-    "url": "https://pgp-converter.com",
-    "description": "Free, open-source PGP tool. Encrypt and decrypt messages, generate ECC or RSA key pairs, all in your browser.",
-    "applicationCategory": "SecurityApplication",
-    "operatingSystem": "Any",
-    "offers": {
-      "@type": "Offer",
-      "price": "0"
-    },
-    "browserRequirements": "Requires a modern web browser with JavaScript enabled",
-    "featureList": [
-      "PGP Message Encryption",
-      "PGP Message Decryption",
-      "ECC Key Pair Generation (Curve25519, NIST P-256/384/521)",
-      "RSA Key Pair Generation (2048/3072/4096-bit)",
-      "Key Export (.asc and .txt)",
-      "Client-Side Only Processing",
-      "Keyboard Shortcuts"
-    ],
-    "softwareHelp": {
-      "@type": "WebPage",
-      "url": "https://pgp-converter.com/about"
-    },
-    "isAccessibleForFree": true,
-    "inLanguage": "en-GB"
-  })}</script>`}
+	<!-- Data for search engines, not code: see structured-data.ts for what makes it safe to place as HTML -->
+	{@html toStructuredDataScript(WEB_APPLICATION_DATA)}
 </svelte:head>
 
-<div class="app">
-  <main class="main">
-    <!-- Header -->
-    <header class="header">
-      <div class="icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-        </svg>
-      </div>
-      <div class="header-text">
-        <h1>PGP Converter</h1>
-        <span class="version">v{version}</span>
-      </div>
-    </header>
+<PageFrame currentPage="home">
+	<section class="hero">
+		<div class="hero-text">
+			<!-- The words are the way in: each underlined one leads to its tool -->
+			<h1 class="sentence">
+				I want to
+				<a
+					href="/encrypt"
+					onpointerenter={show('encrypt')}
+					onpointerleave={rest}
+					onfocus={show('encrypt')}
+					onblur={rest}>encrypt</a
+				>
+				a PGP message,
+				<a
+					href="/decrypt"
+					onpointerenter={show('decrypt')}
+					onpointerleave={rest}
+					onfocus={show('decrypt')}
+					onblur={rest}>decrypt</a
+				>
+				one,
+				<a
+					href="/sign"
+					onpointerenter={show('sign')}
+					onpointerleave={rest}
+					onfocus={show('sign')}
+					onblur={rest}>sign</a
+				>
+				or
+				<a
+					href="/verify"
+					onpointerenter={show('verify')}
+					onpointerleave={rest}
+					onfocus={show('verify')}
+					onblur={rest}>verify</a
+				>
+				one, or
+				<a
+					href="/generate"
+					onpointerenter={show('key')}
+					onpointerleave={rest}
+					onfocus={show('key')}
+					onblur={rest}>make a key</a
+				>.
+			</h1>
+			<p class="description">
+				It all happens in this browser. No account, and nothing you type is sent anywhere.
+			</p>
+		</div>
 
-    <!-- Description -->
-    <p class="description">
-      PGP Converter is a tool that enables you to encrypt and decrypt text using the PGP (Pretty Good Privacy) protocol. Free, ad-free, and open source since 2023.
-    </p>
+		<!-- Decoration only: redraws itself as the tool whose word is pointed at -->
+		<div class="shape">
+			<div class="grid" aria-hidden="true">
+				{#each dots as lit, index (index)}
+					<span class={['dot', { lit }]}></span>
+				{/each}
+			</div>
 
-    <!-- How it works -->
-    <div class="info-box">
-      <h3>How it works</h3>
-      <p>All encryption and decryption happens entirely in your browser using the <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js</a> library. No data is transmitted to any server; the processing is between you, your browser, and OpenPGP.js.</p>
-    </div>
+			<!-- The version, set like a maker's plate under the picture. It leads to the list of releases.
+             Beside it, the commit the build was made from, which leads to that commit's source. -->
+			<div class="build">
+				<a
+					class="version-plate"
+					href="https://github.com/polyym/pgp-converter/releases"
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-label="Version {version}. See what changed in each release."
+					title="Version {version}: see what changed"
+				>
+					<span class="version-dots" style="--columns: {versionDots.columns}" aria-hidden="true">
+						{#each versionDots.dots as lit, index (index)}
+							<span class={['pip', { lit }]}></span>
+						{/each}
+					</span>
+				</a>
+				{#if commit}
+					<a
+						class="build-commit"
+						href="https://github.com/polyym/pgp-converter/commit/{commit}"
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label="Built from commit {commit.slice(0, 7)}. See its source."
+						title="The commit this build was made from">{commit.slice(0, 7)}</a
+					>
+				{/if}
+			</div>
+		</div>
+	</section>
 
-    <!-- Action Cards -->
-    <div class="cards">
-      <a href="/encrypt" class="card">
-        <div class="card-icon encrypt">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-        </div>
-        <div class="card-content">
-          <h2>Encrypt</h2>
-          <p>Secure your message with a public key</p>
-        </div>
-        <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </a>
-
-      <a href="/decrypt" class="card">
-        <div class="card-icon decrypt">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
-          </svg>
-        </div>
-        <div class="card-content">
-          <h2>Decrypt</h2>
-          <p>Unlock messages with your private key</p>
-        </div>
-        <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </a>
-
-      <a href="/generate" class="card">
-        <div class="card-icon generate">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-          </svg>
-        </div>
-        <div class="card-content">
-          <h2>Generate</h2>
-          <p>Create a new PGP key pair</p>
-        </div>
-        <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </a>
-    </div>
-
-    <!-- Footer Links -->
-    <footer class="footer">
-      <div class="footer-row">
-        <a href="https://github.com/polyym/pgp-converter" target="_blank" rel="noopener noreferrer" class="footer-link">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-          </svg>
-          GitHub
-        </a>
-        <span class="divider">·</span>
-        <a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer" class="footer-link">OpenPGP.js</a>
-        <span class="divider">·</span>
-        <a href="/about" class="footer-link">About</a>
-        <span class="divider">·</span>
-        <a href="/donate" class="footer-link">Donate</a>
-      </div>
-      <a href="https://github.com/polyym" target="_blank" rel="noopener noreferrer" class="credit">by polyym</a>
-    </footer>
-  </main>
-</div>
+	<section class="facts" aria-label="How it works">
+		<div class="fact">
+			<h2>Runs on your device</h2>
+			<p>
+				All the cryptography is done in your browser by the <a
+					href="https://openpgpjs.org/"
+					target="_blank"
+					rel="noopener noreferrer">OpenPGP.js</a
+				> library. Keys, messages and passphrases are never transmitted, and after the first visit the
+				app works with no connection.
+			</p>
+		</div>
+		<div class="fact">
+			<h2>Open to inspection</h2>
+			<p>
+				The whole app is on <a
+					href="https://github.com/polyym/pgp-converter"
+					target="_blank"
+					rel="noopener noreferrer">GitHub</a
+				> under the AGPL. No tracking scripts, no cookies, and no code loaded from other sites.
+			</p>
+		</div>
+		<div class="fact">
+			<h2>Verifiable builds</h2>
+			<p>
+				Every deploy is signed, the live files are checked against the signed build, and anyone can
+				build the same files from the source. The <a href="/about#verifying-this-deployment"
+					>About page</a
+				> shows how to check.
+			</p>
+		</div>
+	</section>
+</PageFrame>
 
 <style>
-  /* Colours, fonts and safe-area values come from the shared tokens in app.css */
-  .app {
-    min-height: 100vh;
-    min-height: 100dvh;
-    background: var(--bg);
-    font-family: var(--font);
-    color: var(--text);
-    -webkit-font-smoothing: antialiased;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    padding-top: calc(20px + var(--safe-top));
-    padding-bottom: calc(20px + var(--safe-bottom));
-    padding-left: calc(20px + var(--safe-left));
-    padding-right: calc(20px + var(--safe-right));
-  }
+	/* Colours, fonts and safe-area values come from the shared tokens in app.css */
 
-  .main {
-    width: 100%;
-    max-width: 420px;
-  }
+	.hero {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 40px;
+		align-items: center;
+		margin-bottom: 64px;
+	}
 
-  /* Header */
-  .header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 24px;
-  }
+	.sentence {
+		margin: 0 0 24px;
+		font-size: 32px;
+		font-weight: 600;
+		line-height: 1.3;
+		letter-spacing: -1px;
+		color: var(--text-secondary);
+		text-wrap: balance;
+	}
 
-  .icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px;
-    height: 56px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    color: var(--text);
-    flex-shrink: 0;
-  }
+	/* The links are the bright words; the rest of the sentence steps back */
+	.sentence a {
+		color: var(--text);
+		text-decoration: underline;
+		text-decoration-thickness: 2px;
+		text-decoration-color: var(--text-dim);
+		text-underline-offset: 6px;
+		border-radius: 6px;
+		transition:
+			text-decoration-color 0.15s ease,
+			background 0.15s ease;
+	}
 
-  .header-text {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+	.sentence a:hover {
+		text-decoration-color: var(--text);
+	}
 
-  h1 {
-    font-size: 26px;
-    font-weight: 600;
-    letter-spacing: -0.5px;
-    margin: 0;
-  }
+	.description {
+		margin: 0;
+		max-width: 480px;
+		font-size: 16px;
+		line-height: 1.65;
+		color: var(--text-secondary);
+	}
 
-  .version {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-dim);
-    font-family: var(--mono);
-  }
+	/* The dot grid */
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(11, 1fr);
+		gap: 6px;
+		width: 100%;
+		aspect-ratio: 1;
+	}
 
-  /* Description */
-  .description {
-    font-size: 15px;
-    line-height: 1.7;
-    color: var(--text-secondary);
-    margin: 0 0 24px;
-  }
+	.dot {
+		background: var(--surface-2);
+		border: 1px solid var(--border);
+		border-radius: 30%;
+		transition:
+			background 0.25s ease,
+			border-color 0.25s ease,
+			transform 0.25s ease;
+	}
 
-  /* Info Box */
-  .info-box {
-    padding: 16px 18px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    margin-bottom: 28px;
-  }
+	.dot.lit {
+		background: var(--text);
+		border-color: var(--text);
+		transform: scale(1.06);
+	}
 
-  .info-box h3 {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-    margin: 0 0 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
+	.facts {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 28px;
+		margin-bottom: 0;
+	}
 
-  .info-box p {
-    font-size: 14px;
-    line-height: 1.6;
-    color: var(--text-secondary);
-    margin: 0;
-  }
+	.fact h2 {
+		margin: 0 0 8px;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--text);
+	}
 
-  .info-box a {
-    color: var(--text);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
+	.fact p {
+		margin: 0;
+		font-size: 14px;
+		line-height: 1.65;
+		color: var(--text-secondary);
+	}
 
-  .info-box a:hover {
-    color: var(--success);
-  }
+	.fact a {
+		color: var(--text);
+		text-decoration: underline;
+		text-decoration-color: var(--border-hover);
+		text-underline-offset: 3px;
+	}
 
-  /* Cards */
-  .cards {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 32px;
-  }
+	.fact a:hover {
+		text-decoration-color: var(--text);
+	}
 
-  .card {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 18px 20px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    text-decoration: none;
-    transition: all 0.15s ease;
-  }
+	.shape {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		width: min(100%, 260px);
+	}
 
-  .card:hover {
-    border-color: var(--border-hover);
-    background: var(--surface-2);
-  }
+	/* The version: small, grey and always in the same place, so it is easy to
+     find and never competes with the sentence */
+	.version-plate {
+		display: flex;
+		align-self: flex-start;
+		padding: 6px;
+		margin: -6px;
+		border-radius: 8px;
+	}
 
-  .card:active {
-    transform: scale(0.99);
-  }
+	/* The version and its commit, side by side */
+	.build {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+	}
 
-  .card-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    flex-shrink: 0;
-  }
+	.build-commit {
+		padding: 6px 0;
+		font-family: var(--mono);
+		font-size: 12px;
+		letter-spacing: 0.5px;
+		color: var(--text-secondary);
+		text-decoration: none;
+		transition: color 0.2s ease;
+	}
 
-  .card-icon.encrypt {
-    background: rgba(34, 197, 94, 0.1);
-    color: var(--success);
-  }
+	.build-commit:hover {
+		color: var(--text);
+	}
 
-  .card-icon.decrypt {
-    background: rgba(59, 130, 246, 0.1);
-    color: #3b82f6;
-  }
+	.version-dots {
+		display: grid;
+		grid-template-columns: repeat(var(--columns), 5px);
+		grid-auto-rows: 5px;
+		gap: 2px;
+	}
 
-  .card-icon.generate {
-    background: rgba(168, 85, 247, 0.1);
-    color: #a855f7;
-  }
+	.pip {
+		border-radius: 30%;
+		transition: background 0.2s ease;
+	}
 
-  .card-content {
-    flex: 1;
-  }
+	.pip.lit {
+		background: var(--text-secondary);
+	}
 
-  .card-content h2 {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text);
-    margin: 0 0 4px;
-  }
+	.version-plate:hover .pip.lit {
+		background: var(--text);
+	}
 
-  .card-content p {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin: 0;
-  }
+	@media (min-width: 720px) {
+		.sentence {
+			font-size: 44px;
+			letter-spacing: -1.6px;
+		}
 
-  .arrow {
-    color: var(--text-dim);
-    flex-shrink: 0;
-    transition: transform 0.15s ease;
-  }
+		.description {
+			font-size: 18px;
+		}
 
-  .card:hover .arrow {
-    transform: translateX(4px);
-    color: var(--text-secondary);
-  }
+		.facts {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			gap: 40px;
+		}
+	}
 
-  /* Footer */
-  .footer-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-  }
+	/* Desktop: the sentence on the left, the grid on the right */
+	@media (min-width: 1024px) {
+		.hero {
+			grid-template-columns: minmax(0, 1fr) 340px;
+			gap: 72px;
+			margin-bottom: 104px;
+		}
 
-  .footer-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--text-secondary);
-    text-decoration: none;
-    transition: color 0.15s ease;
-  }
+		.sentence {
+			font-size: 54px;
+			letter-spacing: -2.2px;
+			line-height: 1.22;
+		}
 
-  .footer-link:hover {
-    color: var(--text);
-  }
+		.shape {
+			width: 340px;
+			justify-self: end;
+		}
 
-  .credit {
-    font-size: 13px;
-    color: var(--text-dim);
-    text-decoration: none;
-    transition: color 0.15s ease;
-  }
+		.grid {
+			gap: 8px;
+		}
 
-  .credit:hover {
-    color: var(--text-secondary);
-  }
+		.version-dots {
+			grid-template-columns: repeat(var(--columns), 6px);
+			grid-auto-rows: 6px;
+		}
+	}
 
-  .divider {
-    color: var(--border);
-  }
+	@media (prefers-reduced-motion: reduce) {
+		.dot,
+		.pip {
+			transition: none;
+		}
+	}
 
-  /* Responsive - Small Phones */
-  @media (max-width: 380px) {
-    h1 {
-      font-size: 22px;
-    }
+	/* Windows high-contrast mode drops backgrounds, which is all that tells a
+     lit dot from an unlit one */
+	@media (forced-colors: active) {
+		.dot.lit,
+		.pip.lit,
+		.version-plate:hover .pip.lit {
+			forced-color-adjust: none;
+			background: CanvasText;
+			border-color: CanvasText;
+		}
+	}
 
-    .icon {
-      width: 48px;
-      height: 48px;
-    }
+	/* Fingers need a larger target than a mouse pointer does. The words in the
+     sentence grow without moving the lines; the commit grows in place. */
+	@media (pointer: coarse) {
+		.sentence a {
+			padding: 3px 0;
+		}
 
-    .icon svg {
-      width: 24px;
-      height: 24px;
-    }
-
-    .card {
-      padding: 14px 16px;
-    }
-
-    .card-icon {
-      width: 42px;
-      height: 42px;
-    }
-  }
-
-  /* Responsive - Tablets and larger */
-  @media (min-width: 768px) {
-    .app {
-      padding: 40px;
-    }
-
-    .main {
-      max-width: 640px;
-    }
-
-    h1 {
-      font-size: 30px;
-    }
-
-    .description {
-      font-size: 16px;
-    }
-  }
-
-  /* Reduce motion for accessibility */
-  @media (prefers-reduced-motion: reduce) {
-    .card:active {
-      transform: none;
-    }
-
-    .card:hover .arrow {
-      transform: none;
-    }
-  }
+		.build-commit {
+			display: inline-flex;
+			align-items: center;
+			min-height: 44px;
+		}
+	}
 </style>
