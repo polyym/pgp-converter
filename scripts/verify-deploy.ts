@@ -3,7 +3,8 @@
 // file (/encrypt.html) and at the address visitors ask for (/encrypt), and
 // each must arrive with a content policy that lets it start and allows no
 // other inline script. An address that does not exist must get the build's
-// 404.html. The Deploy workflow runs this after a production deploy.
+// 404.html, and the app manifest its own type. The Deploy workflow runs this
+// after a production deploy.
 //
 // Usage: node scripts/verify-deploy.ts <site-origin> [build-dir]
 //   e.g. node scripts/verify-deploy.ts https://pgp-converter.com build
@@ -45,6 +46,9 @@ const NOT_FOUND_PAGE = '404.html';
 // This is its default address; src/lib/donations.ts asks for the same one.
 const FUNCTION_PATH = '/.netlify/functions/wallet-proxy';
 const FUNCTION_DEPLOYED = 'Wallet proxy function is deployed.';
+// The app manifest, and the type a rule in netlify.toml gives it
+const MANIFEST_PATH = '/manifest.webmanifest';
+const MANIFEST_TYPE = 'application/manifest+json';
 // A new deploy can take a moment to reach every CDN node
 const ATTEMPTS = 6;
 const RETRY_DELAY_MS = 10_000;
@@ -107,6 +111,13 @@ async function main(): Promise<void> {
 		console.log(
 			"An address that does not exist is answered with the build's own 404 page, under the same policy."
 		);
+	}
+
+	const manifestProblem = await checkManifestType();
+	if (manifestProblem) {
+		warn(manifestProblem);
+	} else {
+		console.log('The app manifest is served as a manifest.');
 	}
 }
 
@@ -301,6 +312,27 @@ async function checkErrorPage(): Promise<string | undefined> {
 			: undefined;
 	} catch (e: unknown) {
 		return `Could not check the "not found" page (${describeError(e)}).`;
+	}
+}
+
+/**
+ * Checks that the app manifest arrives as a manifest. The host does not know
+ * the file's ending, so a rule in netlify.toml names its type. Browsers read
+ * the manifest whatever it is called, so this only warns.
+ * @returns What is wrong, or undefined if nothing is
+ */
+async function checkManifestType(): Promise<string | undefined> {
+	try {
+		const res = await fetch(new URL(MANIFEST_PATH, origin), {
+			cache: 'no-store',
+			signal: AbortSignal.timeout(FILE_TIMEOUT_MS)
+		});
+		const type = res.headers.get('content-type') ?? 'no type';
+		return type.startsWith(MANIFEST_TYPE)
+			? undefined
+			: `${MANIFEST_PATH} is served as "${type}" where ${MANIFEST_TYPE} was expected; the rule for it in netlify.toml is not being applied.`;
+	} catch (e: unknown) {
+		return `Could not check the type of ${MANIFEST_PATH} (${describeError(e)}).`;
 	}
 }
 

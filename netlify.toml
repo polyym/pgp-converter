@@ -27,6 +27,14 @@
   [headers.values]
     Cache-Control = "public, immutable, max-age=31536000"
 
+# Netlify does not know the .webmanifest ending and would send the app manifest
+# as a file of no particular kind. Browsers read it either way; this gives it
+# the type that a manifest is meant to have.
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+
 # The About page was called Help until v3.0. Old links are sent on with a
 # permanent redirect. "force" is needed because the build still contains a
 # small page at this address that forwards on its own, kept as a fallback.

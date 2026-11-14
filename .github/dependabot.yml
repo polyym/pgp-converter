@@ -22,3 +22,10 @@ updates:
         update-types:
           - minor
           - patch
+    # TypeScript stays on version 6. SvelteKit, svelte-check and typescript-eslint
+    # accept nothing newer yet, so a pull request for 7 could only fail its tests.
+    # Minor and patch releases of 6 still arrive with the rest.
+    ignore:
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
