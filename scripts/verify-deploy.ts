@@ -8,10 +8,11 @@
 // workflow runs this after a production deploy.
 //
 // With --staging it checks the staging copy, which the workflow deploys from
-// dev. The files and the policy are held to the same standard. Two things
+// dev. The files and the policy are held to the same standard. Three things
 // differ: the staging copy must ask search engines to leave it out, where the
-// released site must not, and the preload list is no concern of an address
-// that belongs to the host.
+// released site must not; the preload list is no concern of an address that
+// belongs to the host; and the wallet proxy is not asked, because the Donate
+// page shows fake addresses everywhere but on the released site.
 //
 // After a production deploy it also checks that the host's own address for
 // the project sends visitors on to the released site.
@@ -66,6 +67,9 @@ const NOT_FOUND_PAGE = '404.html';
 // This is its default address; src/lib/donations.ts asks for the same one.
 const FUNCTION_PATH = '/.netlify/functions/wallet-proxy';
 const FUNCTION_DEPLOYED = 'Wallet proxy function is deployed.';
+// The Donate page asks the proxy on the released site alone (src/lib/donations.ts)
+const FUNCTION_NOT_ASKED =
+	'Wallet proxy function is not checked: the Donate page of a staging copy shows fake addresses.';
 // The app manifest, and the type a rule in netlify.toml gives it
 const MANIFEST_PATH = '/manifest.webmanifest';
 const MANIFEST_TYPE = 'application/manifest+json';
@@ -138,15 +142,19 @@ async function main(): Promise<void> {
 		);
 	}
 
-	const proxy = await checkFunction();
-	if (proxy.missing) {
-		console.error(proxy.missing);
-		process.exit(1);
-	}
-	if (proxy.note === FUNCTION_DEPLOYED) {
-		console.log(proxy.note);
-	} else if (proxy.note) {
-		warn(proxy.note);
+	if (isStaging) {
+		console.log(FUNCTION_NOT_ASKED);
+	} else {
+		const proxy = await checkFunction();
+		if (proxy.missing) {
+			console.error(proxy.missing);
+			process.exit(1);
+		}
+		if (proxy.note === FUNCTION_DEPLOYED) {
+			console.log(proxy.note);
+		} else if (proxy.note) {
+			warn(proxy.note);
+		}
 	}
 
 	const errorPageProblem = await checkErrorPage();

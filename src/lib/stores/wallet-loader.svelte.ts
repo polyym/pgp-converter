@@ -1,9 +1,10 @@
 import { copyText } from './copy.svelte.ts';
+import { readSiteAddress } from './site-address.svelte.ts';
 import { COPY_FEEDBACK_MS, LOADING_COIN_CYCLE_MS } from '#lib/constants.ts';
 import {
 	COINS,
-	fetchWallets,
 	generateQrDataUrls,
+	loadWallets,
 	WALLET_LOAD_ERROR,
 	type Wallet
 } from '#lib/donations.ts';
@@ -15,6 +16,7 @@ import {
  */
 export function createWalletLoader() {
 	let wallets = $state<Wallet[]>([]);
+	let isFake = $state(false);
 	let qrDataUrls = $state<Record<string, string>>({});
 	let isQrReady = $state(false);
 	let isLoading = $state(true);
@@ -49,7 +51,11 @@ export function createWalletLoader() {
 			loadingCoinIndex = (loadingCoinIndex + 1) % COINS.length;
 		}, LOADING_COIN_CYCLE_MS);
 
-		const result = await fetchWallets({
+		// Asked here, not read from the store: this page starts before the layout
+		// that fills the store in
+		isFake = readSiteAddress();
+		const result = await loadWallets({
+			isFake,
 			signal,
 			onWaking: () => {
 				isWaking = true;
@@ -67,7 +73,7 @@ export function createWalletLoader() {
 		wallets = result.data;
 
 		// A failed QR code must never hide an address that loaded fine
-		const urls = await generateQrDataUrls(result.data).catch(() => ({}));
+		const urls = await generateQrDataUrls(result.data, { isFake }).catch(() => ({}));
 		// The visitor may have left, or tried again, while the codes were drawn
 		if (controller !== current) {
 			return;
@@ -100,6 +106,10 @@ export function createWalletLoader() {
 		/** The wallets whose addresses loaded and passed their checks */
 		get wallets() {
 			return wallets;
+		},
+		/** True when the addresses are fake ones, as on every copy but the released site */
+		get isFake() {
+			return isFake;
 		},
 		/** QR codes as data URLs, by wallet id */
 		get qrDataUrls() {

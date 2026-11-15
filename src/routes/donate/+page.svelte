@@ -37,7 +37,13 @@
 
 	<section class="section">
 		<h2>Donate with Crypto</h2>
-		<div class="wallets">
+		{#if loader.isFake}
+			<p class="fake-note">
+				<strong>These wallet addresses are fake.</strong>
+				The real ones are shown only on the released site.
+			</p>
+		{/if}
+		<div class={['wallets', { fake: loader.isFake }]}>
 			{#if loader.error}
 				<div class="info-box" role="alert">
 					<p>{loader.error}</p>
@@ -110,7 +116,7 @@
 								{#if qrCode}
 									<img
 										src={qrCode}
-										alt="QR code for {wallet.name}{wallet.badge
+										alt="QR code for {loader.isFake ? 'the fake ' : ''}{wallet.name}{wallet.badge
 											? ` (${wallet.badge})`
 											: ''} address"
 										class="qr-img"
@@ -162,6 +168,22 @@
 	}
 	.info-box p:last-child {
 		margin-bottom: 0;
+	}
+
+	/* Everywhere but the released site the addresses are fake, and are shown in
+     the colour of a dev build so that they look it */
+	.fake-note {
+		font-size: 14px;
+		line-height: 1.6;
+		color: var(--text-secondary);
+		margin: 0 0 16px;
+	}
+	.fake-note strong {
+		font-weight: 600;
+		color: var(--candidate);
+	}
+	.wallets.fake .address {
+		color: var(--candidate);
 	}
 
 	.wallet-loading {

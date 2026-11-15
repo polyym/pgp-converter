@@ -111,7 +111,7 @@ src/
 │   ├── result-preview.ts # Chooses how much of a very long result is put on the page
 │   ├── shortcuts.ts      # What each key press means, and shortcut labels for the user's keyboard (Ctrl or Command)
 │   ├── donation-banner.ts # Donation banner cooldown logic
-│   ├── donations.ts      # Wallet API fetch, address validation, and QR code generation
+│   ├── donations.ts      # Wallet API fetch, address validation, QR code generation, and the fake wallets of a test copy
 │   ├── server/           # Code that runs only while the site is built (the time of the build)
 │   ├── testing.ts        # A helper for the unit tests
 │   ├── encryption.ts     # Message encryption, with optional signing
@@ -247,7 +247,7 @@ You need Node.js 26 or later.
 
 `npm run dev -- --open` also opens the app in a new browser tab.
 
-On your own machine the app shows a notice under its top bar and its version in pale yellow. Every copy that is not the released site does.
+On your own machine the app shows a notice under its top bar, its version in pale yellow, and fake wallet addresses on the Donate page. Every copy that is not the released site does.
 
 ### Available Scripts
 
@@ -275,7 +275,7 @@ A build made by the workflow is named after its commit, and the dates in `sitema
 
 Production deploys run through `.github/workflows/deploy.yml`: pushes to `main` run the test suite, the type check, the lint rules and the formatting check, build the site, sign the build output with Sigstore via `actions/attest@v4`, and deploy that exact output to Netlify using the Netlify CLI with `--no-build`. Before signing, `scripts/check-bundle.ts` fails the run if the homepage, About or Donate would download the cryptography library. A final step, `scripts/verify-deploy.ts`, downloads every file from the live site and fails the workflow if any differs from the signed build, if a page arrives with a content policy that would stop it starting or that allows inline scripts, or if the wallet proxy cannot be reached. It also asks for an address that does not exist and warns if the answer is not the build's `404.html`. Pull requests trigger a preview deploy without an attestation.
 
-A push to `dev` is deployed to the staging address, also without an attestation. The same script then checks that address with `--staging`: the files and the policy are held to the same standard, and the copy must ask search engines to leave it out. The released site must not ask that, and the production check fails if it does.
+A push to `dev` is deployed to the staging address, also without an attestation. The same script then checks that address with `--staging`: the files and the policy are held to the same standard, and the copy must ask search engines to leave it out. The released site must not ask that, and the production check fails if it does. The wallet proxy is not checked there, because only the released site asks it.
 
 The Netlify project has no repository linked, so Netlify never builds the site itself and every deploy comes from this workflow. Linking one would let Netlify publish its own unsigned build over the signed one.
 
@@ -338,7 +338,7 @@ A version is put together on the `dev` branch before it is released. `package.js
 
 The candidate's number is `releaseCandidate` in `package.json`. Every change that goes to `dev` raises it by one, and it goes back to 1 when the version is raised. It is part of the code, so every copy shows the same one: the staging address, a preview and your own machine.
 
-The app decides what to show from where it is opened. At pgp-converter.com it shows the version as released. Everywhere else (the staging address, a preview, your own machine) it shows the version in pale yellow, marked "dev build", with a notice under the top bar. So nothing has to be changed or removed to release a version: the same code, candidate number and all, shows `4.1.0` once it is live. Every page shows its version and commit in the footer.
+The app decides what to show from where it is opened. At pgp-converter.com it shows the version as released. Everywhere else (the staging address, a preview, your own machine) it shows the version in pale yellow, marked "dev build", with a notice under the top bar, and the Donate page shows fake wallet addresses in place of the real ones. So nothing has to be changed or removed to release a version: the same code, candidate number and all, shows `4.1.0` once it is live. Every page shows its version and commit in the footer.
 
 ## Contributions
 

@@ -1,7 +1,7 @@
 {
 	"name": "pgp-app",
 	"version": "4.1.0",
-	"releaseCandidate": 1,
+	"releaseCandidate": 2,
 	"license": "AGPL-3.0-or-later",
 	"private": true,
 	"engines": {

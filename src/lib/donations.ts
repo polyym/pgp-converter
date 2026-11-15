@@ -90,6 +90,21 @@ const ADDRESS_FORMATS: Record<keyof ApiAddresses, RegExp> = {
 	bitcoin_native_segwit: /^bc1q(?:[02-9ac-hj-np-z]{38}|[02-9ac-hj-np-z]{58})$/
 };
 
+// What every copy but the released site shows in place of the real addresses.
+// Each is about as long as a real one, so the cards keep their shape, and has
+// characters no chain allows, so no wallet will send to it. No two are alike:
+// the page tells which address was copied by its text.
+const FAKE_ADDRESSES: ApiAddresses = {
+	solana: 'FAKE-SOLANA-ADDRESS-FAKE-FAKE-FAKE-FAKE-FAKE',
+	ethereum: 'FAKE-ETHEREUM-ADDRESS-FAKE-FAKE-FAKE-FAKE',
+	bitcoin_taproot: 'FAKE-BITCOIN-TAPROOT-ADDRESS-FAKE-FAKE-FAKE-FAKE-FAKE-FAKE-FAKE',
+	bitcoin_native_segwit: 'FAKE-BITCOIN-SEGWIT-ADDRESS-FAKE-FAKE-FAKE'
+};
+
+const FAKE_WALLETS: readonly Wallet[] = WALLET_SLOTS.map((slot) =>
+	toWallet(slot, FAKE_ADDRESSES[slot.field])
+);
+
 // The wallet proxy function at its default Netlify address: /.netlify/functions/
 // followed by the name of its file in netlify/functions. The proxy is locked to
 // this project's own wallet record. See the note in that file before moving it
@@ -101,6 +116,9 @@ const WAKING_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
 // Dark modules on a light background, whatever the colour scheme. Inverted
 // codes look better on a dark page but many wallet scanners cannot read them.
 const QR_COLORS = { dark: '#111111', light: '#ffffff' };
+// A fake address has its code on the yellow that marks a dev build (--candidate
+// in app.css), so the code looks as fake as the address reads
+const FAKE_QR_COLORS = { dark: '#111111', light: '#fde68a' };
 const QR_SIZE_PX = 160;
 // The quiet border around a code, in modules
 const QR_MARGIN = 2;
@@ -117,11 +135,34 @@ export interface FetchWalletsOptions {
 	onWaking?: () => void;
 }
 
+export interface LoadWalletsOptions extends FetchWalletsOptions {
+	/** True on every copy that is not the released site: it shows fake addresses */
+	isFake: boolean;
+}
+
+export interface QrOptions {
+	/** True for fake addresses, whose codes are drawn on yellow */
+	isFake?: boolean;
+}
+
 export interface WalletsResult {
 	success: boolean;
 	/** The wallets with valid addresses, in display order */
 	data?: Wallet[];
 	error?: string;
+}
+
+/**
+ * Gets the wallets the Donate page shows. Only the released site asks the
+ * wallet service. A copy anywhere else has no key for the service and must
+ * not pass for somewhere to send money, so it gets fake addresses.
+ * @param options - Whether this is such a copy, and how to cancel the request
+ * @returns The wallets to show, or the message to show in their place
+ */
+export function loadWallets({ isFake, ...options }: LoadWalletsOptions): Promise<WalletsResult> {
+	return isFake
+		? Promise.resolve({ success: true, data: [...FAKE_WALLETS] })
+		: fetchWallets(options);
 }
 
 /**
@@ -134,10 +175,10 @@ export interface WalletsResult {
 export function parseWallets(data: unknown): Wallet[] {
 	const addresses = isRecord(data) && isRecord(data.addresses) ? data.addresses : {};
 	const wallets: Wallet[] = [];
-	for (const { id, coin, field, badge } of WALLET_SLOTS) {
-		const address = addresses[field];
-		if (typeof address === 'string' && ADDRESS_FORMATS[field].test(address)) {
-			wallets.push(badge ? { ...coin, id, badge, address } : { ...coin, id, address });
+	for (const slot of WALLET_SLOTS) {
+		const address = addresses[slot.field];
+		if (typeof address === 'string' && ADDRESS_FORMATS[slot.field].test(address)) {
+			wallets.push(toWallet(slot, address));
 		}
 	}
 	return wallets;
@@ -175,18 +216,21 @@ export function truncateAddress(address: string, startChars = 8, endChars = 6): 
 /**
  * Generates QR code data URLs for each wallet address.
  * @param wallets - The wallets to generate codes for
+ * @param options - Whether the addresses are fake ones
  * @returns Data URLs keyed by wallet id; a wallet whose code failed is left out
  */
 export async function generateQrDataUrls(
-	wallets: readonly Wallet[]
+	wallets: readonly Wallet[],
+	{ isFake = false }: QrOptions = {}
 ): Promise<Record<string, string>> {
 	const urls: Record<string, string> = {};
+	const color = isFake ? FAKE_QR_COLORS : QR_COLORS;
 
 	// The async wrapper turns a synchronous throw for one wallet into a rejection,
 	// so the others are still generated
 	const results = await Promise.allSettled(
 		wallets.map(async (wallet) =>
-			QRCode.toDataURL(wallet.address, { width: QR_SIZE_PX, margin: QR_MARGIN, color: QR_COLORS })
+			QRCode.toDataURL(wallet.address, { width: QR_SIZE_PX, margin: QR_MARGIN, color })
 		)
 	);
 
@@ -200,6 +244,11 @@ export async function generateQrDataUrls(
 	}
 
 	return urls;
+}
+
+/** Puts an address on the coin and the label of the place it is shown in */
+function toWallet({ id, coin, badge }: WalletSlot, address: string): Wallet {
+	return badge ? { ...coin, id, badge, address } : { ...coin, id, address };
 }
 
 /** Asks the wallet service for its addresses, waiting and asking again while it wakes up */
