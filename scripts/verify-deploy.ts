@@ -3,10 +3,20 @@
 // file (/encrypt.html) and at the address visitors ask for (/encrypt), and
 // each must arrive with a content policy that lets it start and allows no
 // other inline script. An address that does not exist must get the build's
-// 404.html, and the app manifest its own type. The Deploy workflow runs this
-// after a production deploy.
+// 404.html, and the app manifest its own type. The HTTPS-only header is
+// checked against what the browsers' preload list requires. The Deploy
+// workflow runs this after a production deploy.
 //
-// Usage: node scripts/verify-deploy.ts <site-origin> [build-dir]
+// With --staging it checks the staging copy, which the workflow deploys from
+// dev. The files and the policy are held to the same standard. Two things
+// differ: the staging copy must ask search engines to leave it out, where the
+// released site must not, and the preload list is no concern of an address
+// that belongs to the host.
+//
+// After a production deploy it also checks that the host's own address for
+// the project sends visitors on to the released site.
+//
+// Usage: node scripts/verify-deploy.ts <site-origin> [build-dir] [--staging]
 //   e.g. node scripts/verify-deploy.ts https://pgp-converter.com build
 
 import { createHash } from 'node:crypto';
@@ -14,6 +24,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { inlineScripts, policyProblem, scriptHash } from './csp.ts';
 import { listFiles } from './list-files.ts';
+import { missingForPreload } from './preload-header.ts';
+import { asksNotToBeListed } from './robots-header.ts';
 
 /** An address on the live site, and the local file it must match */
 interface Target {
@@ -36,6 +48,14 @@ interface FunctionCheck {
 	note?: string;
 }
 
+/** What the site's X-Robots-Tag header showed */
+interface ListingCheck {
+	/** Set when the released site asks to be left out of search results, which fails the run */
+	failure?: string;
+	/** Set when the staging copy does not ask to be left out, or the header could not be read */
+	warning?: string;
+}
+
 // Netlify reads these as configuration and does not serve them
 const NOT_SERVED: ReadonlySet<string> = new Set(['_headers', '_redirects']);
 // The page for an address that does not exist. It is compared as a file like
@@ -49,6 +69,10 @@ const FUNCTION_DEPLOYED = 'Wallet proxy function is deployed.';
 // The app manifest, and the type a rule in netlify.toml gives it
 const MANIFEST_PATH = '/manifest.webmanifest';
 const MANIFEST_TYPE = 'application/manifest+json';
+// The released site, and the address the host gives the project besides it.
+// A rule in netlify.toml sends the second to the first.
+const RELEASED_HOST = 'pgp-converter.com';
+const HOST_ADDRESS = 'https://pgp-converter.netlify.app';
 // A new deploy can take a moment to reach every CDN node
 const ATTEMPTS = 6;
 const RETRY_DELAY_MS = 10_000;
@@ -59,19 +83,25 @@ const FILE_TIMEOUT_MS = 30_000;
 const FUNCTION_TIMEOUT_MS = 60_000;
 const HTML_ENDING = '.html';
 const HTTP_NOT_FOUND = 404;
+const HTTP_MOVED_FOR_GOOD = 301;
 // A SHA-256 hash in hexadecimal; anything else in a mismatch is a description
 const HASH_LENGTH = 64;
 const POLICY_PREFIX = 'content policy';
 const FORWARDS_ELSEWHERE = /<meta http-equiv="refresh"/i;
+const ROBOTS_HEADER = 'x-robots-tag';
+const STAGING_FLAG = '--staging';
+const USAGE = 'Usage: node scripts/verify-deploy.ts <site-origin> [build-dir] [--staging]';
 const EXIT_USAGE = 2;
 
-const [origin = '', buildDir = 'build'] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const isStaging = args.includes(STAGING_FLAG);
+const [origin = '', buildDir = 'build'] = args.filter((arg) => arg !== STAGING_FLAG);
 
 await main();
 
 async function main(): Promise<void> {
 	if (!origin) {
-		console.error('Usage: node scripts/verify-deploy.ts <site-origin> [build-dir]');
+		console.error(USAGE);
 		process.exit(EXIT_USAGE);
 	}
 	const built = await listFiles(buildDir);
@@ -92,6 +122,21 @@ async function main(): Promise<void> {
 		`All ${String(files.length)} files on ${origin} match the build in ${buildDir}/, as do the ${String(pageCount)} page addresses that serve them.` +
 			'\nEvery page arrives with a content policy that names its own start-up script and allows no other inline script.'
 	);
+
+	const listing = await checkSearchListing();
+	if (listing.failure) {
+		console.error(listing.failure);
+		process.exit(1);
+	}
+	if (listing.warning) {
+		warn(listing.warning);
+	} else {
+		console.log(
+			isStaging
+				? 'Search engines are asked to leave this copy out.'
+				: 'Search engines are not asked to leave the site out.'
+		);
+	}
 
 	const proxy = await checkFunction();
 	if (proxy.missing) {
@@ -118,6 +163,30 @@ async function main(): Promise<void> {
 		warn(manifestProblem);
 	} else {
 		console.log('The app manifest is served as a manifest.');
+	}
+
+	// Browsers take the HTTPS-only header from HTTPS alone, so a local preview is
+	// not asked for it. Nor is the staging copy: its address belongs to the host,
+	// and the preload list is about the released domain.
+	if (isStaging || new URL(origin).protocol !== 'https:') {
+		return;
+	}
+	const preloadProblem = await checkPreloadHeader();
+	if (preloadProblem) {
+		warn(preloadProblem);
+	} else {
+		console.log('The HTTPS-only header is as the preload list requires.');
+	}
+
+	// Only the released site has a second address to be sent on from
+	if (new URL(origin).hostname !== RELEASED_HOST) {
+		return;
+	}
+	const hostAddressProblem = await checkHostAddress();
+	if (hostAddressProblem) {
+		warn(hostAddressProblem);
+	} else {
+		console.log("The host's own address for the project sends visitors on to the released site.");
 	}
 }
 
@@ -210,7 +279,8 @@ function reportMismatches(mismatches: readonly Mismatch[], targetCount: number):
 	// else is comparing it with a build of their own (see "Reproducing a Build"
 	// in the README), and the likely reasons for a difference are not the same.
 	const isWorkflow = Boolean(process.env.GITHUB_ACTIONS);
-	const build = isWorkflow ? 'the signed build' : `the build in ${buildDir}/`;
+	const deployed = isStaging ? 'the build that was just deployed' : 'the signed build';
+	const build = isWorkflow ? deployed : `the build in ${buildDir}/`;
 	console.error(
 		`\n${String(mismatches.length)} of ${String(targetCount)} addresses on ${origin} do not match ${build}:`
 	);
@@ -222,7 +292,7 @@ function reportMismatches(mismatches: readonly Mismatch[], targetCount: number):
 	if (mismatches.some(({ actual }) => !actual.startsWith(POLICY_PREFIX))) {
 		console.error(
 			isWorkflow
-				? '\nThe live site is not serving the build that was attested. Likely causes: another deploy' +
+				? `\nThe site is not serving ${deployed}. Likely causes: another deploy` +
 						'\nreplaced this one (for example a build by Netlify itself, if a repository has been linked' +
 						'\nto the project), or the deploy step rebuilt the project instead of uploading build/ as it was.'
 				: '\nThe live site is not serving the same files as this build. If you built it to compare, check' +
@@ -273,6 +343,41 @@ async function checkFunction(): Promise<FunctionCheck> {
 			note: `Could not confirm the wallet proxy function (${describeError(e)}); check the donate page by hand.`
 		};
 	}
+}
+
+/**
+ * Checks what the site tells search engines. The staging copy must ask to be
+ * left out of their results, or it could be listed beside the released site.
+ * The released site must not ask: the header is added for the staging copy
+ * alone, and on the released site it would take the site out of search results
+ * without anything else looking wrong. That fails the run.
+ */
+async function checkSearchListing(): Promise<ListingCheck> {
+	let header: string | null;
+	try {
+		const res = await fetch(origin, {
+			method: 'HEAD',
+			cache: 'no-store',
+			signal: AbortSignal.timeout(FILE_TIMEOUT_MS)
+		});
+		header = res.headers.get(ROBOTS_HEADER);
+	} catch (e: unknown) {
+		return { warning: `Could not check the X-Robots-Tag header (${describeError(e)}).` };
+	}
+	const isLeftOut = asksNotToBeListed(header);
+	if (isStaging) {
+		return isLeftOut
+			? {}
+			: {
+					warning:
+						'The staging copy does not send "X-Robots-Tag: noindex", so search engines may list it beside the released site.'
+				};
+	}
+	return isLeftOut
+		? {
+				failure: `${origin} sends "X-Robots-Tag: ${header ?? ''}", which asks search engines to drop the site. That header is for the staging copy alone.`
+			}
+		: {};
 }
 
 /**
@@ -333,6 +438,54 @@ async function checkManifestType(): Promise<string | undefined> {
 			: `${MANIFEST_PATH} is served as "${type}" where ${MANIFEST_TYPE} was expected; the rule for it in netlify.toml is not being applied.`;
 	} catch (e: unknown) {
 		return `Could not check the type of ${MANIFEST_PATH} (${describeError(e)}).`;
+	}
+}
+
+/**
+ * Checks that the site still sends the HTTPS-only header in the form the
+ * browsers' preload list requires (see preload-header.ts). The domain was
+ * submitted to that list and is taken off it otherwise. The site works either
+ * way, so this only warns.
+ * @returns What is wrong, or undefined if nothing is
+ */
+async function checkPreloadHeader(): Promise<string | undefined> {
+	try {
+		const res = await fetch(origin, {
+			method: 'HEAD',
+			cache: 'no-store',
+			signal: AbortSignal.timeout(FILE_TIMEOUT_MS)
+		});
+		const header = res.headers.get('strict-transport-security');
+		const missing = missingForPreload(header);
+		return missing.length === 0
+			? undefined
+			: `The Strict-Transport-Security header (${header ? `"${header}"` : 'not sent'}) lacks ${missing.join(' and ')}. The domain is on the HSTS preload list, which drops a site that stops sending them.`;
+	} catch (e: unknown) {
+		return `Could not check the Strict-Transport-Security header (${describeError(e)}).`;
+	}
+}
+
+/**
+ * Checks that the address the host gives the project sends visitors on to the
+ * released site, as the rule in netlify.toml says. Without it the same build
+ * is served at a second address, where the app shows itself as a test copy.
+ * The released site works either way, so this only warns.
+ * @returns What is wrong, or undefined if nothing is
+ */
+async function checkHostAddress(): Promise<string | undefined> {
+	try {
+		const res = await fetch(HOST_ADDRESS, {
+			method: 'HEAD',
+			redirect: 'manual',
+			cache: 'no-store',
+			signal: AbortSignal.timeout(FILE_TIMEOUT_MS)
+		});
+		const target = res.headers.get('location') ?? '';
+		return res.status === HTTP_MOVED_FOR_GOOD && target.startsWith(origin)
+			? undefined
+			: `${HOST_ADDRESS} answered HTTP ${String(res.status)} where a redirect to ${origin} was expected; the rule for it in netlify.toml is not being applied.`;
+	} catch (e: unknown) {
+		return `Could not check ${HOST_ADDRESS} (${describeError(e)}).`;
 	}
 }
 

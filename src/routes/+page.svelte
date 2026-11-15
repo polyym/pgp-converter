@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { version } from '../../package.json';
 	import { PageFrame, SEO } from '#lib/components/index.ts';
 	import { pictureDots, type DotPicture } from '#lib/dot-pictures.ts';
 	import { toDotText } from '#lib/dot-text.ts';
+	import { appVersion } from '#lib/stores/app-version.svelte.ts';
 	import { toStructuredDataScript, WEB_APPLICATION_DATA } from '#lib/structured-data.ts';
 
 	// The grid spells "PGP" until a word in the sentence is pointed at or focused
@@ -10,7 +10,7 @@
 	const dots = $derived(pictureDots(shown));
 
 	// The version number, drawn in the same dots as the picture above it
-	const versionDots = toDotText(`v${version}`);
+	const versionDots = toDotText(`v${appVersion.release}`);
 
 	// The commit this build was made from. A build that was not given one shows none.
 	const commit = __BUILD_COMMIT__;
@@ -84,7 +84,7 @@
 				>.
 			</h1>
 			<p class="description">
-				It all happens in this browser. No account, and nothing you type is sent anywhere.
+				It all happens in this browser. No account, no ads, and nothing you type is sent anywhere.
 			</p>
 		</div>
 
@@ -97,15 +97,16 @@
 			</div>
 
 			<!-- The version, set like a maker's plate under the picture. It leads to the list of releases.
-             Beside it, the commit the build was made from, which leads to that commit's source. -->
+             Beside it, the commit the build was made from, which leads to that commit's source.
+             Everywhere but the released site it is drawn in its own colour and named a dev build. -->
 			<div class="build">
 				<a
-					class="version-plate"
+					class={['version-plate', { candidate: appVersion.isCandidate }]}
 					href="https://github.com/polyym/pgp-converter/releases"
 					target="_blank"
 					rel="noopener noreferrer"
-					aria-label="Version {version}. See what changed in each release."
-					title="Version {version}: see what changed"
+					aria-label="{appVersion.inWords}. See what changed in each release."
+					title="{appVersion.inWords}: see what changed"
 				>
 					<span class="version-dots" style="--columns: {versionDots.columns}" aria-hidden="true">
 						{#each versionDots.dots as lit, index (index)}
@@ -113,6 +114,9 @@
 						{/each}
 					</span>
 				</a>
+				{#if appVersion.isCandidate}
+					<span class="build-candidate">dev &middot; rc.{appVersion.candidate}</span>
+				{/if}
 				{#if commit}
 					<a
 						class="build-commit"
@@ -152,7 +156,7 @@
 		<div class="fact">
 			<h2>Verifiable builds</h2>
 			<p>
-				Every deploy is signed, the live files are checked against the signed build, and anyone can
+				Every release is signed, the live files are checked against the signed build, and anyone can
 				build the same files from the source. The <a href="/about#verifying-this-deployment"
 					>About page</a
 				> shows how to check.
@@ -281,11 +285,22 @@
 		border-radius: 8px;
 	}
 
-	/* The version and its commit, side by side */
+	/* The version and its commit, side by side. A dev build has one part more,
+     and on a narrow screen the commit goes under the rest. */
 	.build {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 14px;
+		gap: 0 14px;
+	}
+
+	/* Shown everywhere but the released site */
+	.build-candidate {
+		font-family: var(--mono);
+		font-size: 12px;
+		letter-spacing: 0.5px;
+		color: var(--candidate);
+		white-space: nowrap;
 	}
 
 	.build-commit {
@@ -320,6 +335,18 @@
 
 	.version-plate:hover .pip.lit {
 		background: var(--text);
+	}
+
+	/* Away from the released site the version has its own colour, which it keeps
+     under the pointer, a little dimmer at rest */
+	.version-plate.candidate .pip.lit {
+		background: var(--candidate);
+		opacity: 0.8;
+	}
+
+	.version-plate.candidate:hover .pip.lit {
+		background: var(--candidate);
+		opacity: 1;
 	}
 
 	@media (min-width: 720px) {
@@ -379,10 +406,13 @@
 	@media (forced-colors: active) {
 		.dot.lit,
 		.pip.lit,
-		.version-plate:hover .pip.lit {
+		.version-plate:hover .pip.lit,
+		.version-plate.candidate .pip.lit,
+		.version-plate.candidate:hover .pip.lit {
 			forced-color-adjust: none;
 			background: CanvasText;
 			border-color: CanvasText;
+			opacity: 1;
 		}
 	}
 

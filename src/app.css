@@ -221,6 +221,8 @@ html:has(.bottom-actions) {
 	--success: #22c55e;
 	--error: #ef4444;
 	--warning: #f59e0b;
+	/* The version, everywhere but the released site */
+	--candidate: #fde68a;
 	--info: #3b82f6;
 	--purple: #a78bfa;
 
@@ -306,6 +308,40 @@ main:focus {
 	color: var(--text);
 	background: var(--surface);
 	border-bottom: 1px solid var(--border);
+}
+
+/* Says that this copy is not the released site. The staging address, a
+   preview and a developer's own machine all show it. It sits under the top bar and
+   scrolls away with the page, so the bar's own height and place stay as they
+   are on the released site. */
+.test-address {
+	margin: 0;
+	padding: 10px 20px;
+	padding-left: calc(20px + var(--safe-left));
+	padding-right: calc(20px + var(--safe-right));
+	font-size: 14px;
+	line-height: 1.5;
+	text-align: center;
+	color: var(--text-secondary);
+	background: var(--surface);
+	border-bottom: 1px solid var(--border);
+}
+
+.test-address p {
+	margin: 0;
+}
+
+.test-address strong {
+	font-weight: 600;
+	color: var(--warning);
+}
+
+/* The address stays in one piece where the line has to break */
+.test-address a {
+	color: var(--text);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	white-space: nowrap;
 }
 
 /* Top bar. Named for page transitions, so it holds still while the page changes. */

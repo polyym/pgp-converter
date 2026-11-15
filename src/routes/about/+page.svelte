@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { version } from '../../../package.json';
 	import { Icon, PageFrame, PageHeader, SEO } from '#lib/components/index.ts';
 	import { findCurrentSection } from '#lib/sections.ts';
+	import { appVersion } from '#lib/stores/app-version.svelte.ts';
 	import { onMount } from 'svelte';
 
 	// The commit this build was made from, and the cryptography library it contains
@@ -426,7 +426,7 @@
 				</p>
 				{#if commit}
 					<p>
-						You are using version {version}, built from commit
+						You are using version {appVersion.shown}, built from commit
 						<a
 							href="https://github.com/polyym/pgp-converter/commit/{commit}"
 							target="_blank"

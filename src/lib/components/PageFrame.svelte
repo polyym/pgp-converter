@@ -4,6 +4,7 @@
 	import { onScreenKeyboard } from '#lib/stores/on-screen-keyboard.svelte.ts';
 	import NavBar from './NavBar.svelte';
 	import PageFooter from './PageFooter.svelte';
+	import TestAddressNotice from './TestAddressNotice.svelte';
 
 	let {
 		currentPage,
@@ -26,6 +27,7 @@
      place (see app.css). -->
 <div class={['app', { 'no-actions': !hasActionBar, 'keyboard-open': onScreenKeyboard.isOpen }]}>
 	<NavBar {currentPage} />
+	<TestAddressNotice />
 	{@render overlays?.()}
 
 	<main class="main tool" id="main" tabindex="-1">

@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import { watchForUpdates } from '#lib/stores/app-update.svelte.ts';
 	import { watchOnScreenKeyboard } from '#lib/stores/on-screen-keyboard.svelte.ts';
+	import { readSiteAddress } from '#lib/stores/site-address.svelte.ts';
 	import { crossFade } from '#lib/page-transition.ts';
 
 	let { children }: { children: Snippet } = $props();
@@ -16,6 +17,11 @@
 	// A phone's keyboard leaves little of the page in view. While it is open,
 	// the top bar scrolls away with the page instead of staying pinned.
 	onMount(watchOnScreenKeyboard);
+
+	// Everywhere but the released site (the staging copy, a preview, this
+	// machine) the app says so under the top bar and shows its version as a
+	// candidate's. Only the browser knows which address it was opened at.
+	onMount(readSiteAddress);
 
 	onNavigate(crossFade);
 </script>

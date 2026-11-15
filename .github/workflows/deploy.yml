@@ -3,7 +3,13 @@
 # On push to main:  runs tests → builds → signs the build output with
 #                   Sigstore via GitHub's OIDC → deploys that exact output to
 #                   Netlify prod → checks the live site serves the signed files.
+# On push to dev:   runs tests → builds → deploys that output to the staging
+#                   address → checks the address serves it. Not signed.
 # On pull_request:  runs tests → builds → deploys a preview URL to Netlify.
+#
+# main is the released site. dev, where the next version is put together, goes
+# to the staging address and never to the live site. A pull request into main
+# gets a preview; a pull request into dev is tested by tests.yml and not deployed.
 #
 # Anyone can verify a deployed file with:
 #   gh attestation verify <file-from-built-site> --repo polyym/pgp-converter
@@ -34,7 +40,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
     branches: [main]
 
@@ -55,6 +61,11 @@ env:
   # Pinned so that a new CLI release cannot change what gets deployed, or run
   # with the deploy token, without a reviewed change to this file
   NETLIFY_CLI_VERSION: 27.16.3
+  # Where dev is deployed: the Netlify project's own address with the alias in
+  # front. It stays the same from one push to the next, so it can be kept open
+  # on a phone. The app itself says under its top bar that this is a test address.
+  STAGING_ALIAS: dev
+  STAGING_URL: https://dev--pgp-converter.netlify.app
 
 jobs:
   preview:
@@ -189,3 +200,75 @@ jobs:
 
       - name: Check the live site matches the signed build
         run: node scripts/verify-deploy.ts https://pgp-converter.com build
+
+  staging:
+    # dev is deployed to one fixed address, so that the next version can be
+    # tried in a browser and on a phone before it is released. Only a push to
+    # dev starts this job, and a rule on GitHub lets only the maintainer push
+    # there. A pull request into dev does not start it.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    # Not ubuntu-latest: see the note on the job in tests.yml
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 26
+          cache: npm
+
+      - run: npm install --no-audit --no-fund
+
+      # The same checks as before a production deploy: the staging address only
+      # ever shows a commit that passed them
+      - name: Run tests
+        run: npm test
+
+      - name: Type check
+        run: npm run check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      # Built as production is: named after this commit, with its dates taken
+      # from the commit
+      - name: Take the build date from the commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: npm run build
+
+      - name: Check page weight
+        run: node scripts/check-bundle.ts build
+
+      # Not attested: the attestation is for the files that go live.
+
+      # Search engines are asked to leave this copy out. The line goes into
+      # build/_headers, which Netlify reads and does not serve, so the files
+      # stay those a production build of this commit would have.
+      # Written as a block: in a one-line YAML value the ": " inside the header
+      # would be read as the start of a mapping.
+      - name: Ask search engines not to list the staging copy
+        run: |
+          printf '\n/*\n  X-Robots-Tag: noindex\n' >> build/_headers
+
+      - name: Deploy to the staging address
+        # Up to three attempts, for the reason given on the production deploy step
+        run: |
+          for attempt in 1 2 3; do
+            if npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --no-build --dir=build --alias=${{ env.STAGING_ALIAS }} --message="dev @ ${{ github.sha }}"; then
+              exit 0
+            fi
+            echo "::warning::Deploy attempt $attempt of 3 failed"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
+          done
+          exit 1
+        env:
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+
+      - name: Check the staging address serves this build
+        run: node scripts/verify-deploy.ts ${{ env.STAGING_URL }} build --staging
