@@ -22,6 +22,8 @@
 	// A signed message can be empty, so a result is tracked separately from its text
 	let hasOutput = $state(false);
 	let signatures = $state<SignatureCheck[]>([]);
+	// Whether the box held anything besides the message, which the verdicts are not about
+	let hasOtherText = $state(false);
 
 	// The text is only as good as its weakest signature
 	const summary = $derived(summariseSignatures(signatures));
@@ -44,13 +46,15 @@
 			onSuccess: (result) => {
 				text = result.data ?? '';
 				signatures = result.signatures ?? [];
+				hasOtherText = result.hasOtherText ?? false;
 				hasOutput = true;
-				const verdict = summariseSignatures(signatures);
+				const verdict = summariseSignatures(signatures, hasOtherText);
 				return { message: verdict.message, isProblem: verdict.tone !== 'good' };
 			},
 			onFailure: () => {
 				text = '';
 				signatures = [];
+				hasOtherText = false;
 				hasOutput = false;
 			},
 			fallbackError: 'Verification failed'
@@ -63,6 +67,7 @@
 		publicKey = '';
 		text = '';
 		signatures = [];
+		hasOtherText = false;
 		hasOutput = false;
 	}
 </script>
@@ -126,7 +131,12 @@
 			staleAccepted="The verdict and the text below are from before the change, and are not about what is in the boxes now. Press Verify again."
 		>
 			{#if hasOutput}
-				<SignatureVerdict {signatures} wereKeysSupplied={true} isMuted={tool.isResultStale} />
+				<SignatureVerdict
+					{signatures}
+					wereKeysSupplied={true}
+					{hasOtherText}
+					isMuted={tool.isResultStale}
+				/>
 				<div class="output-body with-label">
 					<span class="output-label"
 						>{summary.tone === 'good' ? 'Signed text' : 'Text, not confirmed'}</span

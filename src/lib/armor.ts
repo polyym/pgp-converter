@@ -13,6 +13,34 @@ const HEADER_LINE = /^[A-Za-z][A-Za-z-]*: \S/;
 const HEADER_NAME = /^(?:Version|Comment|Hash|Charset|MessageID):$/i;
 /** How the data itself begins: letters, digits, "+" and "/" only, for longer than any word of a comment runs */
 const DATA_START = /^[A-Za-z0-9+/]{32}/;
+/** The lines that open and close a message, and the signature inside a signed message that anyone can read */
+const MESSAGE_FIRST_LINE = '-----BEGIN PGP MESSAGE-----';
+const MESSAGE_LAST_LINE = '-----END PGP MESSAGE-----';
+const SIGNATURE_FIRST_LINE = '-----BEGIN PGP SIGNATURE-----';
+const SIGNATURE_LAST_LINE = '-----END PGP SIGNATURE-----';
+/**
+ * OpenPGP.js's own test for the first or the last line of a block, flag and
+ * all. With that flag a line also starts and ends at the two Unicode line
+ * separators, so text can share a line of the box with what the library reads
+ * as a boundary.
+ */
+const LIBRARY_BOUNDARY = /^-----[^-]+-----$/m;
+/** A header line of one of the kinds the format names. One with nothing after its name holds no words. */
+const KNOWN_HEADER = /^(?:Version|Comment|MessageID|Hash|Charset):(?: |$)/;
+/** A line of the data that is not the last */
+const DATA_LINE = /^[A-Za-z0-9+/]+$/;
+/**
+ * The last line of the data, which may end in padding. In a block that had
+ * lost every line break and was laid out again, the checksum follows on the
+ * same line.
+ */
+const LAST_DATA_LINE = /^[A-Za-z0-9+/]+={0,2}(?:=[A-Za-z0-9+/]{4})?$/;
+/** The checksum that may follow the data on a line of its own */
+const CHECKSUM_LINE = /^=[A-Za-z0-9+/]{4}$/;
+/** What the library takes for an empty line: its own list of spaces, less the carriage return, which is gone by then */
+const BLANK_LINE = /^[ \f\t\u{A0}\u{2000}-\u{200A}\u{202F}\u{205F}\u{3000}]*$/u;
+/** Characters that draw nothing, such as a zero-width space or the mark old software ends a file with */
+const INVISIBLE = /[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu;
 
 /** The first or the last line of a block, as found in a text */
 interface BlockLine {
@@ -63,6 +91,65 @@ export function normaliseArmor(text: string): string {
 export function splitKeyBlocks(text: string): string[] {
 	const blocks = findBlocks(text, KEY_KINDS);
 	return blocks.length > 0 ? blocks.map((block) => text.slice(block.start, block.end)) : [text];
+}
+
+/**
+ * Says whether a message that OpenPGP.js accepted came with anything else.
+ * The library reads the first block it finds and passes over the rest without
+ * a word: text above or below it, a second message, and text slipped in among
+ * the block's own lines. None of that is part of the message, and no verdict
+ * on the message is about it, so the page has to say that it was there.
+ *
+ * The answer is "no" only for text that is one message laid out as the format
+ * describes, and "yes" for everything else. Following how the library finds a
+ * block would have to be right about every text anyone can build. Describing
+ * a clean message only has to be right about honest ones, and a wrong "yes"
+ * costs a caution where a wrong "no" costs a green verdict beside unsigned
+ * text.
+ *
+ * Three things are not seen. Words in a header line of a kind the format
+ * names, such as a Comment: honest messages have those. White space and ">"
+ * marks at the start of a line: that is how email programs quote. And text
+ * among the data that is written in the data's own characters, which are
+ * letters, digits, "+" and "/": OpenPGP.js can be made to pass over it, and
+ * nothing tells it from data.
+ * @param text - The message as it was handed to OpenPGP.js, which accepted it
+ * @returns False if the text is one plainly laid-out message and nothing more
+ */
+export function hasOtherText(text: string): boolean {
+	const lines = dropBlankEnds(readAsLibraryDoes(text));
+	const isCleartext = lines.at(0) === CLEARTEXT_HEADER;
+	if (!isCleartext && lines.at(0) !== MESSAGE_FIRST_LINE) {
+		return true;
+	}
+	let index = 1;
+	if (isCleartext) {
+		index = skipWhile(lines, index, (line) => line.startsWith('Hash: '));
+		if (!isBlank(lines.at(index))) {
+			return true;
+		}
+		// The signed text runs to the first line the library takes for a boundary, which must be the signature's
+		index = skipWhile(lines, index + 1, (line) => !LIBRARY_BOUNDARY.test(line));
+		if (lines.at(index) !== SIGNATURE_FIRST_LINE) {
+			return true;
+		}
+		index++;
+	}
+	index = skipWhile(lines, index, (line) => KNOWN_HEADER.test(line));
+	if (!isBlank(lines.at(index))) {
+		return true;
+	}
+	const dataStart = index + 1;
+	index = skipWhile(lines, dataStart, (line) => line === '' || LAST_DATA_LINE.test(line));
+	if (!isEvenlyWrapped(lines.slice(dataStart, index))) {
+		return true;
+	}
+	if (CHECKSUM_LINE.test(lines.at(index) ?? '')) {
+		index++;
+	}
+	index = skipWhile(lines, index, showsNothing);
+	const lastLine = isCleartext ? SIGNATURE_LAST_LINE : MESSAGE_LAST_LINE;
+	return !(index === lines.length - 1 && lines.at(index) === lastLine);
 }
 
 /**
@@ -181,25 +268,42 @@ function rebuildBlock(type: string, body: string): string | undefined {
 		wholeHeaders++;
 	}
 
-	const words = lines
-		.slice(wholeHeaders)
-		.join(' ')
-		.split(/\s+/)
-		.filter((word) => word !== '');
-	// Where everything ran together, a header is its name and the words up to the next name or the data
+	// Every word that is left, and the number of the line it stood on
+	const words: string[] = [];
+	const lineOf: number[] = [];
+	for (const [lineNumber, line] of lines.slice(wholeHeaders).entries()) {
+		for (const word of line.split(/\s+/)) {
+			if (word === '') {
+				continue;
+			}
+			words.push(word);
+			lineOf.push(lineNumber);
+		}
+	}
+	// Where everything ran together, a header is its name and the words up to the
+	// next name or the data. Words from the lines below the name stay on lines of
+	// their own: joined to it, they would pass for a header that somebody wrote,
+	// and hasOtherText could no longer see them.
 	let next = 0;
 	while (next < words.length && HEADER_NAME.test(words[next])) {
-		const name = words[next];
+		const nameAt = next;
+		let line = [words[next]];
+		const headerLines = [line];
 		next++;
-		const value: string[] = [];
 		while (next < words.length && !HEADER_NAME.test(words[next]) && !DATA_START.test(words[next])) {
-			value.push(words[next]);
+			if (lineOf[next] !== lineOf[next - 1]) {
+				line = [];
+				headerLines.push(line);
+			}
+			line.push(words[next]);
 			next++;
 		}
-		if (value.length === 0) {
+		if (next === nameAt + 1) {
 			return undefined;
 		}
-		headers.push(`${name} ${value.join(' ')}`);
+		for (const headerLine of headerLines) {
+			headers.push(headerLine.join(' '));
+		}
 	}
 
 	// What is left must be the data, and data opens with a long unbroken run.
@@ -277,4 +381,86 @@ function trimAroundLineBreaks(text: string): string {
 
 function isSpaceOrTab(character: string): boolean {
 	return character === ' ' || character === '\t';
+}
+
+/**
+ * Splits a text into lines as OpenPGP.js does when it reads a block: every
+ * carriage return gone, and no spaces or tabs at the end of a line. Other
+ * white space stays, because the library keeps it.
+ */
+function readAsLibraryDoes(text: string): string[] {
+	return text
+		.replaceAll('\r', '')
+		.split('\n')
+		.map((line) => {
+			let end = line.length;
+			while (end > 0 && isSpaceOrTab(line.charAt(end - 1))) {
+				end--;
+			}
+			return line.slice(0, end);
+		});
+}
+
+/**
+ * Says whether lines of data are wrapped as software wraps them. Every line
+ * but the last is as long as the longest. A shorter one is allowed where the
+ * next is full again or is the last, which is what a mail program leaves when
+ * it wraps a block a second time. Only the last line may end in padding.
+ *
+ * A sentence fails this: where a block was laid out again, each of its words
+ * has become a line, and they come one after another. The rule is needed
+ * because such a sentence need not spoil the message. OpenPGP.js reads nothing
+ * after the padding, and a sentence can be built for it to skip. Words in the
+ * data's own characters that are set between full lines still pass, as
+ * hasOtherText says.
+ */
+function isEvenlyWrapped(lines: readonly string[]): boolean {
+	const allButLast = lines.filter((line) => line !== '').slice(0, -1);
+	let fullLength = 0;
+	for (const line of allButLast) {
+		fullLength = Math.max(fullLength, line.length);
+	}
+	return allButLast.every(
+		(line, index) =>
+			DATA_LINE.test(line) &&
+			(line.length === fullLength ||
+				index === allButLast.length - 1 ||
+				allButLast[index + 1].length === fullLength)
+	);
+}
+
+/** Leaves out the lines at either end that show nothing */
+function dropBlankEnds(lines: readonly string[]): string[] {
+	let start = 0;
+	while (start < lines.length && showsNothing(lines[start])) {
+		start++;
+	}
+	let end = lines.length;
+	while (end > start && showsNothing(lines[end - 1])) {
+		end--;
+	}
+	return lines.slice(start, end);
+}
+
+/** True for a line that the library reads as an empty one. A line that is not there is not one. */
+function isBlank(line: string | undefined): boolean {
+	return line !== undefined && BLANK_LINE.test(line);
+}
+
+/** True for a line that is empty, or holds only white space and characters that draw nothing */
+function showsNothing(line: string): boolean {
+	return line.replaceAll(INVISIBLE, '').trim() === '';
+}
+
+/** Moves on from a line for as long as the lines pass a test, and says where it stopped */
+function skipWhile(
+	lines: readonly string[],
+	from: number,
+	passes: (line: string) => boolean
+): number {
+	let index = from;
+	while (index < lines.length && passes(lines[index])) {
+		index++;
+	}
+	return index;
 }

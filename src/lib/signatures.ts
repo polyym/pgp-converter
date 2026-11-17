@@ -9,8 +9,8 @@ import {
 	type Signature
 } from 'openpgp';
 import { getUserFriendlyError, WEAK_KEY_PATTERN, type ErrorStage } from './errors.ts';
-import { CLEARTEXT_HEADER, normaliseArmor } from './armor.ts';
-import { MESSAGE_READING_LIMITS } from './constants.ts';
+import { CLEARTEXT_HEADER, hasOtherText, normaliseArmor } from './armor.ts';
+import { KEY_USE_SETTINGS, MESSAGE_READING_LIMITS } from './constants.ts';
 import {
 	describeKey,
 	readPublicKeys,
@@ -64,6 +64,8 @@ export interface VerificationOutcome {
 	data?: string;
 	/** One entry for each signature on the message; empty if it carries none */
 	signatures?: SignatureCheck[];
+	/** True when the text held anything besides the message. The verdicts are not about that. */
+	hasOtherText?: boolean;
 	error?: string;
 	/** The input the error is about, when it is about one in particular */
 	errorField?: 'signedMessage' | 'publicKey';
@@ -81,9 +83,17 @@ export const WEAK_SIGNING_KEY_DETAIL =
 	'The key that made this signature is of an old kind that is no longer considered safe (DSA, or RSA under 2048 bits), so its signatures cannot be relied on.';
 export const FUTURE_SIGNATURE_DETAIL =
 	"The signature is dated in the future. Check that this device's clock is right.";
+export const UNFIT_SIGNING_KEY_DETAIL =
+	'The key that made this signature is not set up for signing, so do not rely on its signatures.';
 export const REISSUED_KEY_DETAIL =
 	'The key you provided was updated by its owner after this message was signed, and this copy of it holds no record from before then. The signature cannot be confirmed against this copy; an older copy of the key would confirm it.';
 
+/**
+ * All that OpenPGP.js says when a key's flags leave signing out: the key's ID
+ * ends the message. For any other fault it adds a cause, and the cause decides
+ * the verdict.
+ */
+const UNFIT_SIGNING_KEY_PATTERN = /could not find valid signing key packet in key [0-9a-f]+$/i;
 const SIGNATURE_HEADER = '-----BEGIN PGP SIGNATURE-----';
 const MESSAGE_HEADER = '-----BEGIN PGP MESSAGE-----';
 
@@ -126,7 +136,7 @@ export async function checkSignatures(
 					check.status = 'untrusted';
 					check.detail = 'The key that made this signature had expired when it was made.';
 				} else if (WEAK_KEY_PATTERN.test(message)) {
-					// Turned away because of the key's kind, before the signature was looked at.
+					// Turned away because of the key's kind, after the signature had matched.
 					// Calling that "does not match" would accuse an honest message of being altered.
 					check.status = 'untrusted';
 					check.detail = WEAK_SIGNING_KEY_DETAIL;
@@ -139,6 +149,12 @@ export async function checkSignatures(
 					// The second has nothing to do with anyone's clock.
 					const isAheadOfClock = !signedOn || signedOn.getTime() > Date.now();
 					check.detail = isAheadOfClock ? FUTURE_SIGNATURE_DETAIL : REISSUED_KEY_DETAIL;
+				} else if (UNFIT_SIGNING_KEY_PATTERN.test(message)) {
+					// The signature matches the key, but the key says it is not for signing.
+					// Any other fault of a signing subkey stays "does not match": one that its
+					// owner never bound to the key, for one.
+					check.status = 'untrusted';
+					check.detail = UNFIT_SIGNING_KEY_DETAIL;
 				} else {
 					check.status = 'invalid';
 				}
@@ -170,7 +186,7 @@ export async function signMessage(
 
 		stage = 'operation';
 		const message = await createCleartextMessage({ text });
-		const signed = await sign({ message, signingKeys: privateKey });
+		const signed = await sign({ message, signingKeys: privateKey, config: KEY_USE_SETTINGS });
 
 		// The library joins the lines of the text with CRLF and the rest with LF. One
 		// kind of line ending pastes more predictably, and verification treats both alike.
@@ -219,13 +235,16 @@ export async function verifyMessage(
 		// pasted. Only if that fails is it cleaned up, to undo quoting by an email client.
 		const candidates = [signedMessage.trim(), normaliseArmor(signedMessage)];
 		let result: { data: unknown; signatures: LibrarySignature[] } | undefined;
+		// The text the library accepted, which is the one to search for text it passed over
+		let accepted = '';
 		let firstError: unknown;
 		for (const candidate of candidates) {
 			try {
 				result = candidate.includes(CLEARTEXT_HEADER)
 					? await verify({
 							message: await readCleartextMessage({ cleartextMessage: candidate }),
-							verificationKeys: publicKeys
+							verificationKeys: publicKeys,
+							config: KEY_USE_SETTINGS
 						})
 					: await verify({
 							message: await readMessage({
@@ -233,8 +252,9 @@ export async function verifyMessage(
 								config: MESSAGE_READING_LIMITS
 							}),
 							verificationKeys: publicKeys,
-							config: MESSAGE_READING_LIMITS
+							config: { ...KEY_USE_SETTINGS, ...MESSAGE_READING_LIMITS }
 						});
+				accepted = candidate;
 				break;
 			} catch (e: unknown) {
 				firstError ??= e;
@@ -247,7 +267,8 @@ export async function verifyMessage(
 		return {
 			success: true,
 			data: String(result.data),
-			signatures: await checkSignatures(result.signatures, publicKeys)
+			signatures: await checkSignatures(result.signatures, publicKeys),
+			hasOtherText: hasOtherText(accepted)
 		};
 	} catch (e: unknown) {
 		if (import.meta.env.DEV) {

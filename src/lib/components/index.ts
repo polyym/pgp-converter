@@ -4,3 +4,4 @@ export { default as PageFooter } from './PageFooter.svelte';
 export { default as PageFrame } from './PageFrame.svelte';
 export { default as PageHeader } from './PageHeader.svelte';
 export { default as SEO } from './SEO.svelte';
+export { default as TestAddressNotice } from './TestAddressNotice.svelte';

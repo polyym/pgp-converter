@@ -25,6 +25,18 @@ export const MIN_PASSPHRASE_LENGTH = 8;
 // is the authoritative validator.
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Keys
+// What OpenPGP.js is told about a key, or a subkey, that does not say what it
+// is for. Each normally carries flags that name its uses: signing, encrypting.
+// One that carries none is refused by the library for everything, and a good
+// signature from it would not be confirmed. With this option it is
+// used for whatever its algorithm allows, as GnuPG uses one. A subkey must
+// still be cross-certified before its signatures count. Flags are obeyed where
+// the library reads them: on the main user ID, and on the signature that binds
+// a subkey. Every call that asks what a key may do takes this option, so that
+// the pages agree.
+export const KEY_USE_SETTINGS = { allowMissingKeyFlags: true };
+
 // Large messages and results
 // How much a message may unpack to when it is opened. A message can be
 // compressed, and one built for the purpose is a few kilobytes that unpack to
@@ -33,6 +45,7 @@ export const MAX_UNPACKED_MESSAGE_MB = 16;
 export const MAX_UNPACKED_MESSAGE_BYTES = MAX_UNPACKED_MESSAGE_MB * 1024 * 1024;
 // The same limit, as the option OpenPGP.js takes wherever it reads a message
 export const MESSAGE_READING_LIMITS = { maxDecompressedMessageSize: MAX_UNPACKED_MESSAGE_BYTES };
+
 // How much of a result is put on the page. Where a screen reader or a similar
 // tool is attached, a browser takes four times as long each time the text
 // doubles: a third of a second for this much, over a minute for two megabytes.
@@ -42,7 +55,7 @@ export const RESULT_PREVIEW_CHARS = 100_000;
 // Clearing a page
 // How long the Clear button stays armed while it waits for a second press
 export const CLEAR_CONFIRM_MS = 4000;
-// How long a tool page may sit untouched before its keys, passphrases and messages are cleared
+// How long a tool page may sit untouched before its idle clear runs
 export const IDLE_CLEAR_MS = 15 * MS_PER_MINUTE;
 // The same wait in minutes, for telling people about it
 export const IDLE_CLEAR_MINUTES = IDLE_CLEAR_MS / MS_PER_MINUTE;

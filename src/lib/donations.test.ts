@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import {
 	parseWallets,
 	fetchWallets,
+	loadWallets,
 	generateQrDataUrls,
 	truncateAddress,
 	WALLET_LOAD_ERROR
@@ -154,6 +155,52 @@ describe('fetchWallets', () => {
 	});
 });
 
+describe('loadWallets', () => {
+	it('should ask the wallet service on the released site', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ addresses }));
+		vi.stubGlobal('fetch', fetchMock);
+
+		const result = await loadWallets({ isFake: false });
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(result.data?.map((wallet) => wallet.address)).toEqual(Object.values(addresses));
+	});
+
+	it('should show fake wallets anywhere else, and ask nobody', async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal('fetch', fetchMock);
+
+		const result = await loadWallets({ isFake: true });
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(result.success).toBe(true);
+		expect(result.data?.map((wallet) => wallet.id)).toEqual([
+			'sol',
+			'eth',
+			'btc-taproot',
+			'btc-segwit'
+		]);
+	});
+
+	it('should make every fake address read as fake, and no two alike', async () => {
+		const { data = [] } = await loadWallets({ isFake: true });
+		const fakes = data.map((wallet) => wallet.address);
+
+		expect(new Set(fakes).size).toBe(fakes.length);
+		for (const fake of fakes) {
+			expect(fake).toMatch(/^FAKE-.*-FAKE$/);
+			expect(truncateAddress(fake)).toMatch(/^FAKE-.*-FAKE$/);
+		}
+	});
+
+	it('should hold no fake address that a real one could be mistaken for', async () => {
+		const { data = [] } = await loadWallets({ isFake: true });
+
+		for (const { address } of data) {
+			const asEveryCoin = Object.fromEntries(Object.keys(addresses).map((coin) => [coin, address]));
+			expect(parseWallets({ addresses: asEveryCoin })).toEqual([]);
+		}
+	});
+});
+
 describe('generateQrDataUrls', () => {
 	it('should draw dark codes on a light background', async () => {
 		const wallets = parseWallets({ addresses });
@@ -161,6 +208,16 @@ describe('generateQrDataUrls', () => {
 
 		expect(Object.keys(urls)).toEqual(['sol', 'eth', 'btc-taproot', 'btc-segwit']);
 		expect(urls.sol).toMatch(/^data:image\/png;base64,/);
+	});
+
+	it('should draw the code of a fake address in other colours', async () => {
+		const wallets = parseWallets({ addresses });
+		const real = await generateQrDataUrls(wallets);
+		const fake = await generateQrDataUrls(wallets, { isFake: true });
+
+		expect(Object.keys(fake)).toEqual(Object.keys(real));
+		expect(fake.sol).toMatch(/^data:image\/png;base64,/);
+		expect(fake.sol).not.toBe(real.sol);
 	});
 
 	it('should skip a wallet whose code cannot be drawn and keep the rest', async () => {

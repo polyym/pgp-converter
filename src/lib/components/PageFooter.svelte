@@ -1,3 +1,11 @@
+<script lang="ts">
+	import { REPOSITORY_URL } from '#lib/constants.ts';
+	import { appVersion } from '#lib/stores/app-version.svelte.ts';
+
+	// The commit this build was made from. A build that was not given one shows none.
+	const commit = __BUILD_COMMIT__;
+</script>
+
 <!-- The same footer on every page, so the bottom of the app never changes shape -->
 <footer class="footer">
 	<!-- About the project on the left, places to go on the right -->
@@ -18,6 +26,32 @@
 		<a href="/about">About</a>
 		<a href="/donate">Donate</a>
 	</span>
+
+	<!-- Which version this is, on every page, and the commit it was built from.
+	     Everywhere but the released site it says "dev build", in its own colour. -->
+	<p class={['footer-build', { candidate: appVersion.isCandidate }]}>
+		<a
+			class="footer-version"
+			href="{REPOSITORY_URL}/releases"
+			target="_blank"
+			rel="noopener noreferrer"
+			title="{appVersion.inWords}: see what changed">v{appVersion.shown}</a
+		>
+		{#if appVersion.isCandidate}
+			<span class="footer-build-dot" aria-hidden="true">&middot;</span>
+			<span class="footer-candidate">dev build</span>
+		{/if}
+		{#if commit}
+			<span class="footer-build-dot" aria-hidden="true">&middot;</span>
+			<a
+				href="{REPOSITORY_URL}/commit/{commit}"
+				target="_blank"
+				rel="noopener noreferrer"
+				aria-label="Built from commit {commit.slice(0, 7)}. See its source."
+				title="The commit this build was made from">{commit.slice(0, 7)}</a
+			>
+		{/if}
+	</p>
 </footer>
 
 <style>
@@ -85,9 +119,36 @@
 		text-underline-offset: 3px;
 	}
 
+	/* The version has a line of its own under the rest, so the two parts above
+     keep their shape on every screen */
+	.footer-build {
+		display: flex;
+		flex-basis: 100%;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0 8px;
+		margin: 0;
+		font-family: var(--mono);
+		font-size: 12px;
+		letter-spacing: 0.5px;
+		color: var(--text-dim);
+	}
+
+	/* Shown everywhere but the released site */
+	.footer-build.candidate .footer-version,
+	.footer-candidate {
+		color: var(--candidate);
+	}
+
 	/* Fingers need a larger target than a mouse pointer does. The extra width is
      padding that the margin takes back, so the gaps between the words stay even. */
 	@media (pointer: coarse) {
+		.footer-build a {
+			display: inline-flex;
+			align-items: center;
+			min-height: 44px;
+		}
+
 		.footer-links {
 			row-gap: 0;
 		}

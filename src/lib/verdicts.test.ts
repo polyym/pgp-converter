@@ -100,6 +100,29 @@ describe('describeSignatures', () => {
 		const verdicts = describeSignatures([VALID, INVALID], { wereKeysSupplied: true });
 		expect(verdicts.map((verdict) => verdict.tone)).toEqual(['good', 'bad']);
 	});
+
+	it('should add a caution when the box held more than the signed message', () => {
+		const verdicts = describeSignatures([VALID], {
+			wereKeysSupplied: true,
+			hasOtherText: true
+		});
+		expect(verdicts.map((verdict) => verdict.tone)).toEqual(['good', 'caution']);
+		expect(verdicts[1].title).toBe('The box holds more than the message');
+		expect(verdicts[1].body).toContain('Only the text in the result belongs to the message');
+	});
+
+	it('should add the same caution beside a signature that does not match', () => {
+		const verdicts = describeSignatures([INVALID], {
+			wereKeysSupplied: true,
+			hasOtherText: true
+		});
+		expect(verdicts.map((verdict) => verdict.tone)).toEqual(['bad', 'caution']);
+	});
+
+	it('should leave that caution out when the message carries no signature', () => {
+		const verdicts = describeSignatures([], { wereKeysSupplied: true, hasOtherText: true });
+		expect(verdicts.map((verdict) => verdict.title)).toEqual(['Not signed']);
+	});
 });
 
 describe('summariseSignatures', () => {
@@ -108,6 +131,18 @@ describe('summariseSignatures', () => {
 			tone: 'good',
 			message: 'Signature valid'
 		});
+	});
+
+	it('should mention other text in the box beside a valid signature, and stay good', () => {
+		expect(summariseSignatures([VALID], true)).toEqual({
+			tone: 'good',
+			message: 'Signature valid, but the box holds other text'
+		});
+	});
+
+	it('should say the same as without other text when the signature is not valid', () => {
+		expect(summariseSignatures([INVALID], true)).toEqual(summariseSignatures([INVALID]));
+		expect(summariseSignatures([UNKNOWN], true)).toEqual(summariseSignatures([UNKNOWN]));
 	});
 
 	it('should let one signature that does not match outweigh the valid ones', () => {

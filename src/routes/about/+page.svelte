@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { version } from '../../../package.json';
 	import { Icon, PageFrame, PageHeader, SEO } from '#lib/components/index.ts';
 	import { findCurrentSection } from '#lib/sections.ts';
+	import { appVersion } from '#lib/stores/app-version.svelte.ts';
 	import { onMount } from 'svelte';
 
 	// The commit this build was made from, and the cryptography library it contains
@@ -45,7 +45,7 @@
 				<a
 					href="#hosting-privacy"
 					class="toc-link"
-					aria-current={current === 'hosting-privacy' ? 'true' : undefined}>Hosting &amp; Privacy</a
+					aria-current={current === 'hosting-privacy' ? 'true' : undefined}>Privacy Policy</a
 				>
 				<a
 					href="#how-pgp-works"
@@ -121,7 +121,7 @@
 			</section>
 
 			<section class="section" id="hosting-privacy">
-				<h2>Hosting &amp; Privacy</h2>
+				<h2>Privacy Policy</h2>
 				<div class="info-box">
 					<p>
 						PGP Converter is hosted on <a
@@ -141,18 +141,21 @@
 						</li>
 						<li>
 							So that it works offline, your browser keeps a copy of the app's own pages, code,
-							fonts and icons. Nothing you type, paste, generate or decrypt is kept, and a tool page
-							left untouched for 15 minutes clears itself. While you are online, your browser still
-							asks this site now and then whether a newer version exists. The host sees that
-							request, but not which tool you open
+							fonts and icons. Nothing you type, paste, generate or decrypt is kept. While you are
+							online, your browser still asks this site now and then whether a newer version exists.
+							Once the app is on your device, the host sees that request but not which tool you open
+						</li>
+						<li>
+							A tool page left untouched for 15 minutes clears itself. The Generate page clears only
+							the passphrase and keeps the new keys, because nothing can bring a cleared key back
 						</li>
 						<li>No client-side tracking scripts are loaded</li>
 						<li>
 							The boxes you type and paste into ask writing-assistant extensions, such as Grammarly
 							and LanguageTool, and the browser's own spelling services to stay out, because those
-							work by sending your text elsewhere. Results, names and fingerprints are marked as not
-							to be translated, for the same reason. An extension is free to ignore the request, so
-							switch such tools off before handling anything sensitive
+							work by sending your text elsewhere. Results, fingerprints and the names in key lists
+							are marked as not to be translated, for the same reason. An extension is free to
+							ignore the request, so switch such tools off before handling anything sensitive
 						</li>
 						<li>
 							No code is loaded from other sites. The app is built from open-source libraries (<a
@@ -176,8 +179,8 @@
 					</ul>
 					<p>
 						<strong>If you would rather not rely on this,</strong> a trustworthy VPN hides your IP
-						address and approximate location from the analytics and access logs described above. A
-						VPN moves that trust to its provider and does not make you anonymous. For anonymity, use
+						address and approximate location from Netlify's logs. A VPN moves that trust to its
+						provider and does not make you anonymous. For anonymity, use
 						<a href="https://www.torproject.org/" target="_blank" rel="noopener noreferrer"
 							>Tor Browser</a
 						>.
@@ -426,7 +429,7 @@
 				</p>
 				{#if commit}
 					<p>
-						You are using version {version}, built from commit
+						You are using version {appVersion.shown}, built from commit
 						<a
 							href="https://github.com/polyym/pgp-converter/commit/{commit}"
 							target="_blank"

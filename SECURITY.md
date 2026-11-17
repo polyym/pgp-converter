@@ -14,7 +14,7 @@ Please include:
 
 - What the issue is and what an attacker could do with it
 - Clear steps to reproduce it
-- The affected commit or deploy, if you know it (the version is shown on the homepage and in [`package.json`](./package.json))
+- The affected commit or deploy, if you know it (the version and the commit are shown at the foot of every page; the version is also in [`package.json`](./package.json))
 - Your browser and operating system, where relevant
 
 Replies come through the same private thread. Once a fix has been deployed, the details can be published, with credit to you if you would like it.

@@ -24,11 +24,11 @@ PGP Converter is a web app for encrypting, decrypting, signing and verifying tex
 - Encrypt a message to one or more public keys. The app shows whose key each one is, and its fingerprint, before you encrypt
 - Decrypt a message with your private key and passphrase, and check the sender's signature at the same time
 - Sign a message, on its own or while encrypting
-- Verify a signed message against the sender's public key, and see who signed it, when, and whether it was changed
+- Verify a signed message against the sender's public key, and see who signed it, when, and whether it was changed. The result shows only the signed text, and warns when it finds other text in the box
 - Generate ECC or RSA key pairs that GnuPG and other mainstream clients can import. An email address on the key is optional, and the page asks before you leave without saving the private key
 - Download generated keys as `.asc` or `.txt` files
 - After the first visit the app runs with no connection, and it can be installed from the browser's menu
-- A tool page left untouched for 15 minutes clears its keys, passphrases and messages
+- A tool page left untouched for 15 minutes clears its keys, passphrases and messages. The Generate page clears only the passphrase and keeps the new keys, because nothing can bring a cleared key back
 - Keyboard shortcuts for the main actions
 - Works on phones, tablets and desktops
 - An About page that explains PGP, the threat model and how the site is hosted
@@ -46,7 +46,7 @@ The site is built with SvelteKit and Svelte 5 runes, and every page is prerender
 .github/
 ├── dependabot.yml        # Monthly pull requests for newer versions of the actions and packages
 └── workflows/
-    ├── deploy.yml        # CI: build, test, sign with Sigstore, deploy to Netlify, check the live site
+    ├── deploy.yml        # CI: build, test, sign with Sigstore, deploy to Netlify, check the live site; puts dev on the staging address
     └── tests.yml         # CI: unit tests, type check, lint, formatting check and production build
 
 netlify/
@@ -58,12 +58,14 @@ scripts/                  # TypeScript that Node runs as it is; no build step
 ├── csp.ts                # The Content-Security-Policy, in one place
 ├── list-files.ts         # Lists the files of a build in the same order on every machine
 ├── make-icons.ts         # Draws the app icons and the link-preview picture (run only if the design changes)
-├── verify-deploy.ts      # Compares the live site with the signed build after a deploy, and checks its content policy
+├── preload-header.ts     # What the HSTS preload list requires of the HTTPS-only header
+├── robots-header.ts      # Recognises the header that keeps a site out of search results
+├── verify-deploy.ts      # Compares the live site, or the staging copy, with the build that was deployed, and checks its content policy
 └── write-csp.ts          # After a build, writes the policy with the hash of each page's start-up script into build/_headers
 
 src/
 ├── lib/
-│   ├── components/       # UI that every page uses (PageFrame, NavBar, PageHeader, Icon, SEO)
+│   ├── components/       # UI that every page uses (PageFrame, NavBar, TestAddressNotice, PageHeader, Icon, SEO)
 │   │   └── tool/         # UI that only the tool pages use (ToolFrame, ResultPanel, TextField, etc.)
 │   ├── stores/           # Reactive state, as Svelte rune modules
 │   │   ├── tool-page.svelte.ts        # Behaviour shared by the tool pages: running the action, copying, shortcuts, clearing
@@ -74,7 +76,9 @@ src/
 │   │   ├── key-inspector.svelte.ts    # Describes the keys in a text box while the user types
 │   │   ├── unsaved-key.svelte.ts      # Asks before a new private key that has not been saved is lost
 │   │   ├── app-update.svelte.ts       # Tells the top bar when a newer version of the app is ready
+│   │   ├── app-version.svelte.ts      # The version as the pages show it: as released, or as a release candidate
 │   │   ├── on-screen-keyboard.svelte.ts # Tells the page frame while a phone's keyboard is open
+│   │   ├── site-address.svelte.ts     # Tells the page frame when the app is not at the released site's address
 │   │   └── wallet-loader.svelte.ts    # The Donate page's loading, QR codes and copying
 │   ├── constants.ts      # Shared constants and configuration
 │   ├── errors.ts         # User-friendly error mapping
@@ -97,17 +101,19 @@ src/
 │   ├── reveal.ts         # Brings a new result, or the field an error is about, into view
 │   ├── passphrase.ts     # Rough strength reading for a new passphrase
 │   ├── handoff.ts        # Passes a new key from Generate to the next page, in memory only
+│   ├── version.ts        # Names the version of a build that has not been released (4.1.0-rc.3)
 │   ├── idle.ts           # Decides when an untouched page has waited long enough to be cleared
 │   ├── idle-watch.ts     # Listens for activity in the browser, for idle.ts
 │   ├── on-screen-keyboard.ts # Recognises a phone's keyboard lying over the page
+│   ├── site-address.ts   # Recognises an address that is not the released site's
 │   ├── offline.ts        # Chooses which of the app's own files are kept on the device
 │   ├── result-state.ts   # Says when a result no longer matches the inputs beside it
 │   ├── result-preview.ts # Chooses how much of a very long result is put on the page
 │   ├── shortcuts.ts      # What each key press means, and shortcut labels for the user's keyboard (Ctrl or Command)
 │   ├── donation-banner.ts # Donation banner cooldown logic
-│   ├── donations.ts      # Wallet API fetch, address validation, and QR code generation
+│   ├── donations.ts      # Wallet API fetch, address validation, QR code generation, and the fake wallets of a test copy
 │   ├── server/           # Code that runs only while the site is built (the time of the build)
-│   ├── testing.ts        # A helper for the unit tests
+│   ├── testing.ts        # Helpers for the unit tests
 │   ├── encryption.ts     # Message encryption, with optional signing
 │   ├── decryption.ts     # Message decryption, with optional signature check
 │   └── keygen.ts         # Key pair generation module
@@ -149,8 +155,8 @@ vite.config.ts            # Vite and SvelteKit configuration (SvelteKit 3 has no
 ## Security
 
 - **Client-Side Only**: All the cryptography runs in your browser. No messages, keys or passphrases are sent to any server. The only outside request is for the donation addresses on the Donate page, and it carries no user data
-- **No Tracking**: No cookies, no client-side tracking scripts and no personal data collected. Fonts are served from the site itself, and the site sends no referrer information to the links it leads to
-- **Security Headers**: Strict-Transport-Security, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy and Cross-Origin-Opener-Policy are applied to every file via `netlify.toml`. The Permissions-Policy switches off the camera, microphone, location and other device features, none of which the app uses
+- **No Tracking**: No cookies and no client-side tracking scripts, and the app collects no personal data. Netlify, the host, has server logs that give aggregate visitor figures. The [privacy policy](https://pgp-converter.com/about#hosting-privacy) on the About page says more. Fonts are served from the site itself, and the site sends no referrer information to the links it leads to
+- **Security Headers**: Strict-Transport-Security, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy and Cross-Origin-Opener-Policy are applied to every file via `netlify.toml`. The Permissions-Policy switches off the camera, microphone, location and other device features, none of which the app uses. The domain was submitted to the browsers' HSTS preload list on 14 November 2026, so that even a first visit never starts over plain HTTP. For as long as it is listed, the Strict-Transport-Security header must keep its `max-age` of a year or more, `includeSubDomains` and `preload`, and every subdomain must serve HTTPS
 - **Strict Content-Security-Policy**: The policy refuses everything by default and then allows only what the app needs, all of it from this site. No other site is named in it, so a page cannot load scripts from, or connect to, anywhere else. The short script that starts each page is allowed by the hash of its exact text, which the build works out (`scripts/write-csp.ts`). Scripts have no `'unsafe-inline'` and no `'unsafe-eval'`, so a script that reached a page by any other route would not run. The "not found" page is a file like the rest, so it carries the same policy and headers and is part of the signed build
 - **Text Stays in the Box**: Fields that take your own text ask writing-assistant extensions and the browser's spelling services to stay out, and results are marked as not to be translated. Extensions can ignore the request, so switch them off for anything sensitive
 - **Modern Cryptography**: OpenPGP.js v6. Keys are ECC (Curve25519 by default, or NIST P-256, P-384 and P-521) or RSA (2048 to 4096 bits)
@@ -225,7 +231,7 @@ The key has been imported and works, so the warning can be ignored. Algorithms 1
 - **Linting and formatting**: ESLint 10 with typescript-eslint, eslint-plugin-svelte and eslint-plugin-unicorn, and Prettier 3. Both are checked on every push
 - **TypeScript**: 6.x with strict mode, for the app, its tests and its build scripts, which Node runs directly. The code follows the [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html)
 - **Serverless**: Netlify Functions v2 (wallet address proxy)
-- **CI / Deployment**: GitHub Actions builds, tests and deploys with a pinned version of the Netlify CLI on every push to `main`. The actions are pinned to exact commits, and Dependabot proposes newer ones
+- **CI / Deployment**: GitHub Actions builds, tests and deploys with a pinned version of the Netlify CLI on every push to `main`. A push to `dev` goes to a staging address the same way. The actions are pinned to exact commits, and Dependabot proposes newer ones
 - **Build Attestations**: `actions/attest@v4` signs each production build with Sigstore and generates a SLSA build provenance attestation, which is recorded in Rekor's public transparency log and can be checked with `gh attestation verify`
 
 ## Building and Running Locally
@@ -240,6 +246,8 @@ You need Node.js 26 or later.
 4. Start the development server: `npm run dev`
 
 `npm run dev -- --open` also opens the app in a new browser tab.
+
+On your own machine the app shows a notice under its top bar, its version in pale yellow, and fake wallet addresses on the Donate page. Every copy that is not the released site does.
 
 ### Available Scripts
 
@@ -267,7 +275,11 @@ A build made by the workflow is named after its commit, and the dates in `sitema
 
 Production deploys run through `.github/workflows/deploy.yml`: pushes to `main` run the test suite, the type check, the lint rules and the formatting check, build the site, sign the build output with Sigstore via `actions/attest@v4`, and deploy that exact output to Netlify using the Netlify CLI with `--no-build`. Before signing, `scripts/check-bundle.ts` fails the run if the homepage, About or Donate would download the cryptography library. A final step, `scripts/verify-deploy.ts`, downloads every file from the live site and fails the workflow if any differs from the signed build, if a page arrives with a content policy that would stop it starting or that allows inline scripts, or if the wallet proxy cannot be reached. It also asks for an address that does not exist and warns if the answer is not the build's `404.html`. Pull requests trigger a preview deploy without an attestation.
 
+A push to `dev` is deployed to the staging address, also without an attestation. The same script then checks that address with `--staging`: the files and the policy are held to the same standard, and the copy must ask search engines to leave it out. The released site must not ask that, and the production check fails if it does. The wallet proxy is not checked there, because only the released site asks it.
+
 The Netlify project has no repository linked, so Netlify never builds the site itself and every deploy comes from this workflow. Linking one would let Netlify publish its own unsigned build over the signed one.
+
+Netlify also serves the project at an address of its own, `pgp-converter.netlify.app`. A rule in `netlify.toml` sends that address on to pgp-converter.com, and the deploy check warns if it stops doing so.
 
 ### Verifying a Deployed Build
 
@@ -278,7 +290,7 @@ curl -O https://pgp-converter.com/_app/version.json
 gh attestation verify version.json --repo polyym/pgp-converter
 ```
 
-A successful check confirms that the file was produced by the official GitHub Actions workflow and has not been changed since. `version.json` holds the commit the site was built from. The homepage shows the same commit beside the version number.
+A successful check confirms that the file was produced by the official GitHub Actions workflow and has not been changed since. `version.json` holds the commit the site was built from. Every page shows the same commit beside the version number, in its footer.
 
 ### Reproducing a Build
 
@@ -315,9 +327,22 @@ Version numbers follow [Semantic Versioning](https://semver.org/), with one addi
 
 Only major and minor versions are published as GitHub releases; patch versions are rolled into the current release for their minor line. Each release (for example, `v3.2`) always reflects the latest patch state of that minor line, and its tag carries the full version number (`3.2.2`). When a patch needs to ship, the existing release is deleted and republished with the new patch's tag once the patch is merged. The exact version, including the patch component, is always in [`package.json`](./package.json).
 
+### Release Candidates
+
+A version is put together on the `dev` branch before it is released. `package.json` holds the version being worked towards and, beside it, the number of the release candidate:
+
+| Branch | Version shown                            | What happens there                                                                                |
+| ------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `dev`  | `4.1.0-rc.1`, `4.1.0-rc.2`, `4.1.0-rc.3` | New work lands here and goes to the staging address, where problems are found and fixed           |
+| `main` | `4.1.0`                                  | Once a candidate has passed on staging, `dev` is merged into `main` as one commit for the release |
+
+The candidate's number is `releaseCandidate` in `package.json`. Every change that goes to `dev` raises it by one, and it goes back to 1 when the version is raised. It is part of the code, so every copy shows the same one: the staging address, a preview and your own machine.
+
+The app decides what to show from where it is opened. At pgp-converter.com it shows the version as released. Everywhere else (the staging address, a preview, your own machine) it shows the version in pale yellow, marked "dev build", with a notice under the top bar, and the Donate page shows fake wallet addresses in place of the real ones. So nothing has to be changed or removed to release a version: the same code, candidate number and all, shows `4.1.0` once it is live. Every page shows its version and commit in the footer.
+
 ## Contributions
 
-Contributions are welcome. Fork the repository and open a pull request with your changes.
+Contributions are welcome. Fork the repository and open a pull request against the `dev` branch with your changes.
 
 All contributors must sign the [Contributor License Agreement (CLA)](https://github.com/polyym/pgp-converter/blob/main/CONTRIBUTING.md) before their pull request can be merged. The CLA bot prompts you on your first pull request.
 
@@ -328,6 +353,17 @@ Before you open one, check that:
 - The lint rules pass (`npm run lint`)
 - The formatting is right (`npm run format:check`; `npm run format` fixes it)
 - The build completes (`npm run build`)
+
+### Branches
+
+- `main` is what is released. It changes only through a pull request, and every change to it is tested, built, signed and deployed to the live site
+- `dev` is where the next version is put together, as a series of [release candidates](#release-candidates). A push to it runs the tests and puts it on the staging address, never on the live site
+
+Work moves from `dev` to `main` when a version is ready. A pull request from `dev` into `main` runs the tests again and deploys a preview of the site, and merging it deploys to production.
+
+The staging address is https://dev--pgp-converter.netlify.app. It shows the latest commit on `dev` that passed the checks, built as a production build is but not signed. Like any copy of the app that is not at pgp-converter.com, it says so under its top bar. Use the released site for real keys.
+
+Rules on GitHub protect both branches. Neither can be deleted or force-pushed, and only the maintainer can push to them or merge a pull request into them. A pull request into `main` must also pass the `Tests` workflow. It is squashed into one commit, so `main` gains one commit for each release.
 
 ## License
 

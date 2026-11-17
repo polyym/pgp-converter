@@ -3,9 +3,13 @@
   [headers.values]
     # HTTPS only, for two years, on this domain and every subdomain. "preload"
     # declares that the domain may be put on the list browsers ship with, so
-    # that even a first visit never starts over plain HTTP. The listing itself
-    # is a separate step, done by hand at hstspreload.org, and is slow to undo.
-    # Every subdomain must serve HTTPS for as long as this header is sent.
+    # that even a first visit never starts over plain HTTP.
+    #
+    # The domain was submitted to that list, at hstspreload.org, on 14 November
+    # 2026. Since then this line has to keep all three of its parts: a max-age
+    # of at least a year, includeSubDomains and preload. If any one goes, the
+    # domain is taken off the list, and getting back on is slow. Every
+    # subdomain must serve HTTPS for as long as the domain is listed.
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
@@ -41,5 +45,15 @@
 [[redirects]]
   from = "/help"
   to = "/about"
+  status = 301
+  force = true
+
+# Netlify also answers at an address of its own for the project. The released
+# site has one address, so whatever is asked of that one is sent there. The
+# staging and preview addresses have other names and are left alone. The deploy
+# check warns if this stops working.
+[[redirects]]
+  from = "https://pgp-converter.netlify.app/*"
+  to = "https://pgp-converter.com/:splat"
   status = 301
   force = true
