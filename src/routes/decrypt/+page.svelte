@@ -28,6 +28,8 @@
 	let signatures = $state<SignatureCheck[]>([]);
 	// Whether the result on screen was checked against a sender's key
 	let wasSenderChecked = $state(false);
+	// Whether the box held anything besides the message, which the verdicts are not about
+	let hasOtherText = $state(false);
 
 	const sender = createKeyInspector(() => senderKey, 'verify');
 	const ownKey = createKeyInspector(() => privateKey, 'decrypt');
@@ -59,6 +61,7 @@
 				decrypted = result.data ?? '';
 				hasOutput = true;
 				signatures = result.signatures ?? [];
+				hasOtherText = result.hasOtherText ?? false;
 				wasSenderChecked = isChecking;
 				return { message: 'Decrypted' };
 			},
@@ -66,6 +69,7 @@
 				decrypted = '';
 				hasOutput = false;
 				signatures = [];
+				hasOtherText = false;
 			},
 			fallbackError: 'Decryption failed'
 		});
@@ -80,6 +84,7 @@
 		senderKey = '';
 		hasOutput = false;
 		signatures = [];
+		hasOtherText = false;
 	}
 </script>
 
@@ -182,6 +187,7 @@
 				<SignatureVerdict
 					{signatures}
 					wereKeysSupplied={wasSenderChecked}
+					{hasOtherText}
 					isMuted={tool.isResultStale}
 					howToCheck="To check it, open the option above the output, paste the sender's public key and decrypt again."
 				/>

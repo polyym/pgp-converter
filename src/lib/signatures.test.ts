@@ -6,11 +6,14 @@ import {
 	revokeKey,
 	readPrivateKey,
 	readKey,
+	decryptKey,
+	encryptKey,
 	sign,
 	createMessage,
 	createCleartextMessage,
 	armor,
-	enums
+	enums,
+	SecretKeyPacket
 } from 'openpgp';
 import {
 	signMessage,
@@ -21,10 +24,11 @@ import {
 	DETACHED_SIGNATURE_ERROR,
 	WEAK_SIGNING_KEY_DETAIL,
 	FUTURE_SIGNATURE_DETAIL,
-	REISSUED_KEY_DETAIL
+	REISSUED_KEY_DETAIL,
+	UNFIT_SIGNING_KEY_DETAIL
 } from './signatures.ts';
 import { OVERSIZED_MESSAGE_ERROR, WEAK_SIGNING_KEY_ERROR } from './errors.ts';
-import { MAX_UNPACKED_MESSAGE_BYTES } from './constants.ts';
+import { KEY_USE_SETTINGS, MAX_UNPACKED_MESSAGE_BYTES } from './constants.ts';
 import { encryptMessage } from './encryption.ts';
 import { decryptMessage } from './decryption.ts';
 import {
@@ -35,7 +39,7 @@ import {
 	WEAK_KEY_PROBLEM,
 	WEAK_VERIFYING_KEY_PROBLEM
 } from './keys.ts';
-import { must } from './testing.ts';
+import { makeKeyWithoutFlags, must, withKeyFlags, type ArmoredKeyPair } from './testing.ts';
 
 const PASSPHRASE = 'testpassphrase';
 
@@ -47,6 +51,14 @@ async function createKeyPair(name: string, passphrase: string | null = PASSPHRAS
 		passphrase: passphrase ?? undefined,
 		format: 'armored'
 	});
+}
+
+/** The text as an email program quotes it */
+function quote(text: string): string {
+	return text
+		.split('\n')
+		.map((line) => `> ${line}`)
+		.join('\n');
 }
 
 type KeyPair = Awaited<ReturnType<typeof createKeyPair>>;
@@ -586,5 +598,301 @@ describe('verifyMessage, on a message that unpacks to far more than it weighs', 
 		expect(result.success).toBe(true);
 		expect(result.data).toBe('Hello there.');
 		expect(result.signatures).toHaveLength(0);
+	}, 15_000);
+});
+
+describe('verifyMessage, when the box holds more than the message', () => {
+	const LINE_SEPARATOR = String.fromCodePoint(0x20_28);
+	const ADDED = 'Pay Mallory 1000.';
+	let signed: string;
+	let inlineSigned: string;
+
+	beforeAll(async () => {
+		signed = must((await signMessage('Pay Alice 10.', alice.privateKey, PASSPHRASE)).data).trim();
+		const armored: unknown = await sign({
+			message: await createMessage({ text: 'Pay Alice 10.' }),
+			signingKeys: await decryptKey({
+				privateKey: await readPrivateKey({ armoredKey: alice.privateKey }),
+				passphrase: PASSPHRASE
+			})
+		});
+		inlineSigned = String(armored).replaceAll('\r\n', '\n').trim();
+	}, 15_000);
+
+	it('should say so, and hand back only the text that was signed', async () => {
+		const pasted = `Pay Mallory 1000 first.\n\n${signed}\nP.S. And again.`;
+		const result = await verifyMessage(pasted, alice.publicKey);
+		expect(must(result.signatures)[0].status).toBe('valid');
+		expect(result.data).toBe('Pay Alice 10.');
+		expect(result.hasOtherText).toBe(true);
+	}, 15_000);
+
+	it('should not say so for a message that stands alone, however it was pasted', async () => {
+		const pastings = {
+			'with empty lines around it': `\n${signed}\n\n`,
+			'with Windows line endings': signed.replaceAll('\n', '\r\n'),
+			'with spaces at the end of each line': signed.replaceAll('\n', '  \n'),
+			'quoted by an email program': quote(signed),
+			indented: signed.replaceAll(/^/gm, ' '.repeat(4)),
+			'in a PGP MESSAGE block': inlineSigned,
+			'in a block whose line breaks became spaces': inlineSigned.replaceAll('\n', ' '),
+			'in a block whose line breaks were lost': inlineSigned.replaceAll('\n', '')
+		};
+		await Promise.all(
+			Object.entries(pastings).map(async ([name, pasted]) => {
+				const result = await verifyMessage(pasted, alice.publicKey);
+				expect(must(result.signatures)[0].status, name).toBe('valid');
+				expect(result.hasOtherText, name).toBe(false);
+			})
+		);
+	}, 30_000);
+
+	it('should judge the message as pasted when that is how the library read it', async () => {
+		// Cleaned up, the quoted line would read as the start of the signature
+		const text = ['You wrote:', '> -----BEGIN PGP SIGNATURE-----', 'and I agree.'].join('\n');
+		const quoting = must((await signMessage(text, alice.privateKey, PASSPHRASE)).data);
+		const result = await verifyMessage(quoting, alice.publicKey);
+		expect(must(result.signatures)[0].status).toBe('valid');
+		expect(result.hasOtherText).toBe(false);
+	}, 15_000);
+
+	it('should say so for a message quoted in an email under a line of its own', async () => {
+		const result = await verifyMessage(`On Monday Alice wrote:\n${quote(signed)}`, alice.publicKey);
+		expect(must(result.signatures)[0].status).toBe('valid');
+		expect(result.hasOtherText).toBe(true);
+	}, 15_000);
+
+	it('should say so for words after the data of a block that the app had to lay out again', async () => {
+		const lines = inlineSigned.split('\n');
+		const data = lines
+			.slice(2, -1)
+			.filter((line) => !line.startsWith('='))
+			.join('\n')
+			.replace(/=+$/, '');
+		// No empty line under the first line, so the block is laid out again and every
+		// word becomes a line. The library reads nothing after the one "=".
+		const pasted = [
+			lines[0],
+			`${data}=`,
+			'Please send 4500 EUR to the new account',
+			lines.at(-1)
+		].join('\n');
+		const result = await verifyMessage(pasted, alice.publicKey);
+		expect(must(result.signatures)[0].status).toBe('valid');
+		expect(result.data).toBe('Pay Alice 10.');
+		expect(result.hasOtherText).toBe(true);
+	}, 15_000);
+
+	it('should say so for a sentence built to be a packet that the library skips', async () => {
+		// "sEND" opens a packet of a kind the library passes over, 67 bytes long: these
+		// 92 characters. It can only follow data that needs no padding, so sign until it does.
+		const sentence =
+			'sEND 4500 EUR to the new account DE00 1234 5678 9012 before Friday or the deal is off and tell nobody thanks Alice';
+		expect(sentence.replaceAll(' ', '')).toHaveLength(92);
+		const key = await decryptKey({
+			privateKey: await readPrivateKey({ armoredKey: alice.privateKey }),
+			passphrase: PASSPHRASE
+		});
+		let lines: string[] = [];
+		for (
+			let extra = 0;
+			extra < 40 && (lines.length === 0 || lines.join('').includes('='));
+			extra++
+		) {
+			const text = `Pay Alice 10.${'!'.repeat(extra)}`;
+			const armored: unknown = await sign({
+				message: await createMessage({ text }),
+				signingKeys: key
+			});
+			lines = String(armored)
+				.replaceAll('\r\n', '\n')
+				.trim()
+				.split('\n')
+				.filter((line) => line !== '' && !line.startsWith('='));
+		}
+		const pasted = [...lines.slice(0, -1), sentence, lines.at(-1)].join('\n');
+
+		const result = await verifyMessage(pasted, alice.publicKey);
+		expect(must(result.signatures)[0].status).toBe('valid');
+		expect(result.hasOtherText).toBe(true);
+	}, 30_000);
+
+	it('should say so for paragraphs under a header name that stands alone', async () => {
+		const lines = inlineSigned.split('\n');
+		const pasted = [lines[0], 'Comment:', '', 'Pay Mallory 1000.', '', ...lines.slice(2)].join(
+			'\n'
+		);
+		const result = await verifyMessage(pasted, alice.publicKey);
+		expect(must(result.signatures)[0].status).toBe('valid');
+		expect(result.data).toBe('Pay Alice 10.');
+		expect(result.hasOtherText).toBe(true);
+	}, 15_000);
+
+	// Each of these adds text in a place that OpenPGP.js passes over without a
+	// word. The signature has to come out valid, or the case would show nothing.
+	it('should say so wherever the library passes text over', async () => {
+		const lines = signed.split('\n');
+		const last = lines.length - 1;
+		const signatureStart = lines.indexOf('-----BEGIN PGP SIGNATURE-----');
+		const pastings = {
+			'two lines of dashes for the last line': [...lines.slice(0, last), '-----', '-----', ADDED],
+			'dashes around the text for the last line': [
+				...lines.slice(0, last),
+				'-----',
+				ADDED,
+				'-----'
+			],
+			'text after a line separator': lines.with(last, `${lines[last]}${LINE_SEPARATOR}${ADDED}`),
+			'text before a line separator': lines.with(0, `${ADDED}${LINE_SEPARATOR}${lines[0]}`),
+			'a signature that opens under another name': lines.with(signatureStart, `-----${ADDED}-----`),
+			'a header line of no known kind': lines.toSpliced(signatureStart + 1, 0, `Note: ${ADDED}`),
+			'text between the checksum and the last line': lines.toSpliced(last, 0, ADDED),
+			'a second message': [...lines, ...lines],
+			// The library ends the signed text at the first of these lines and reads the
+			// true signature under it. The block further down is never looked at.
+			'a line of dashes after a line separator, with a block of no worth below': [
+				...lines.slice(0, signatureStart),
+				`${ADDED}${LINE_SEPARATOR}-----X-----`,
+				...lines.slice(signatureStart + 1, last),
+				'-----BEGIN PGP SIGNATURE-----',
+				'',
+				'abcd',
+				lines[last]
+			]
+		};
+		await Promise.all(
+			Object.entries(pastings).map(async ([name, pasted]) => {
+				const result = await verifyMessage(pasted.join('\n'), alice.publicKey);
+				expect(must(result.signatures)[0].status, name).toBe('valid');
+				expect(result.data, name).toBe('Pay Alice 10.');
+				expect(result.hasOtherText, name).toBe(true);
+			})
+		);
+	}, 30_000);
+});
+
+describe('a key that does not say what it may be used for', () => {
+	let old: ArmoredKeyPair;
+
+	beforeAll(async () => {
+		old = await makeKeyWithoutFlags('Old Key');
+	}, 15_000);
+
+	it('should be refused for everything by the library left to itself', async () => {
+		// Shows that the key really has no flags, which the tests below depend on
+		const key = await readKey({ armoredKey: old.publicKey });
+		await expect(key.getSigningKey()).rejects.toThrow(/None of the key flags is set/);
+		await expect(key.getEncryptionKey()).rejects.toThrow(/None of the key flags is set/);
+	}, 15_000);
+
+	it('should sign, and have its signature confirmed', async () => {
+		const signed = await signMessage('Hello', old.privateKey, '');
+		expect(signed.success).toBe(true);
+		const checked = await verifyMessage(must(signed.data), old.publicKey);
+		expect(must(checked.signatures)[0].status).toBe('valid');
+	}, 15_000);
+
+	it('should have its signature inside a PGP MESSAGE block confirmed', async () => {
+		const signed: unknown = await sign({
+			message: await createMessage({ text: 'Hello' }),
+			signingKeys: await readPrivateKey({ armoredKey: old.privateKey }),
+			config: KEY_USE_SETTINGS
+		});
+		const checked = await verifyMessage(String(signed), old.publicKey);
+		expect(checked.data).toBe('Hello');
+		expect(must(checked.signatures)[0].status).toBe('valid');
+	}, 15_000);
+
+	it('should encrypt and sign in one step, and decrypt with the signature confirmed', async () => {
+		const encrypted = await encryptMessage('Hello', old.publicKey, {
+			armoredPrivateKey: old.privateKey,
+			passphrase: ''
+		});
+		expect(encrypted.success).toBe(true);
+		const decrypted = await decryptMessage(must(encrypted.data), old.privateKey, '', old.publicKey);
+		expect(decrypted.data).toBe('Hello');
+		expect(must(decrypted.signatures)[0].status).toBe('valid');
+	}, 15_000);
+
+	it('should unlock with its passphrase when its main part is kept elsewhere', async () => {
+		const encrypted = await encryptMessage('Hello', old.publicKey);
+		const key = await readPrivateKey({ armoredKey: old.privateKey });
+		const primary = key.keyPacket;
+		if (!(primary instanceof SecretKeyPacket)) {
+			throw new TypeError('Expected a secret key packet');
+		}
+		// As GnuPG exports a key whose main part stays on another device
+		primary.makeDummy();
+		const locked = await encryptKey({ privateKey: key, passphrase: PASSPHRASE });
+
+		const result = await decryptMessage(must(encrypted.data), locked.armor(), PASSPHRASE);
+		expect(result.data).toBe('Hello');
+	}, 15_000);
+
+	it('should be shown with no warning, whatever it is pasted for', async () => {
+		const [toSign, toCheck, toEncrypt] = await Promise.all([
+			inspectKeys(old.privateKey, 'sign'),
+			inspectKeys(old.publicKey, 'verify'),
+			inspectKeys(old.publicKey, 'encrypt')
+		]);
+		expect(toSign[0].problem).toBeUndefined();
+		expect(toCheck[0].problem).toBeUndefined();
+		expect(toEncrypt[0].problem).toBeUndefined();
+	}, 15_000);
+});
+
+describe('a key that does say what it may be used for', () => {
+	it('should not be encrypted to when it was made for signing', async () => {
+		// RSA, whose algorithm could encrypt: only the flags stand in the way
+		const signingOnly = await generateKey({
+			type: 'rsa',
+			rsaBits: 2048,
+			userIDs: [{ name: 'Signing Only' }],
+			subkeys: [{ sign: true }],
+			format: 'armored'
+		});
+		const result = await encryptMessage('Hello', signingOnly.publicKey);
+		expect(result.success).toBe(false);
+		expect((await inspectKeys(signingOnly.publicKey, 'encrypt'))[0].problem).toBe(
+			'This key cannot be used for encryption.'
+		);
+	}, 60_000);
+
+	it('should not sign, or have a signature confirmed, when it says it is not for signing', async () => {
+		const made = await createKeyPair('Carol', null);
+		const signed = must((await signMessage('Hello', made.privateKey, '')).data);
+		// The same key, saying now that its main part only certifies
+		const certifyOnly = await withKeyFlags(made.privateKey, {
+			primary: enums.keyFlags.certifyKeys,
+			subkey: enums.keyFlags.encryptCommunication | enums.keyFlags.encryptStorage
+		});
+
+		const checked = await verifyMessage(signed, certifyOnly.publicKey);
+		expect(must(checked.signatures)[0].status).toBe('untrusted');
+		expect(must(checked.signatures)[0].detail).toBe(UNFIT_SIGNING_KEY_DETAIL);
+
+		const refused = await signMessage('Hello', certifyOnly.privateKey, '');
+		expect(refused.success).toBe(false);
+		expect(refused.errorField).toBe('privateKey');
+	}, 15_000);
+
+	it('should call a signature from a subkey that its owner never bound one that does not match', async () => {
+		const intruder = await generateKey({
+			type: 'ecc',
+			curve: 'curve25519Legacy',
+			userIDs: [{ name: 'Mallory' }],
+			subkeys: [{ sign: true }],
+			format: 'object'
+		});
+		const signed = must(
+			(await signMessage('Pay Mallory 1000.', intruder.privateKey.armor(), '')).data
+		);
+		// Alice's true key, with Mallory's signing subkey added to it by someone else
+		const forged = await readKey({ armoredKey: alice.publicKey });
+		forged.subkeys.push(...intruder.publicKey.subkeys);
+
+		const checked = await verifyMessage(signed, forged.armor());
+		expect(checked.data).toBe('Pay Mallory 1000.');
+		expect(must(checked.signatures)[0].status).toBe('invalid');
 	}, 15_000);
 });

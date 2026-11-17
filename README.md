@@ -24,11 +24,11 @@ PGP Converter is a web app for encrypting, decrypting, signing and verifying tex
 - Encrypt a message to one or more public keys. The app shows whose key each one is, and its fingerprint, before you encrypt
 - Decrypt a message with your private key and passphrase, and check the sender's signature at the same time
 - Sign a message, on its own or while encrypting
-- Verify a signed message against the sender's public key, and see who signed it, when, and whether it was changed
+- Verify a signed message against the sender's public key, and see who signed it, when, and whether it was changed. The result shows only the signed text, and warns when it finds other text in the box
 - Generate ECC or RSA key pairs that GnuPG and other mainstream clients can import. An email address on the key is optional, and the page asks before you leave without saving the private key
 - Download generated keys as `.asc` or `.txt` files
 - After the first visit the app runs with no connection, and it can be installed from the browser's menu
-- A tool page left untouched for 15 minutes clears its keys, passphrases and messages
+- A tool page left untouched for 15 minutes clears its keys, passphrases and messages. The Generate page clears only the passphrase and keeps the new keys, because nothing can bring a cleared key back
 - Keyboard shortcuts for the main actions
 - Works on phones, tablets and desktops
 - An About page that explains PGP, the threat model and how the site is hosted
@@ -113,7 +113,7 @@ src/
 │   ├── donation-banner.ts # Donation banner cooldown logic
 │   ├── donations.ts      # Wallet API fetch, address validation, QR code generation, and the fake wallets of a test copy
 │   ├── server/           # Code that runs only while the site is built (the time of the build)
-│   ├── testing.ts        # A helper for the unit tests
+│   ├── testing.ts        # Helpers for the unit tests
 │   ├── encryption.ts     # Message encryption, with optional signing
 │   ├── decryption.ts     # Message decryption, with optional signature check
 │   └── keygen.ts         # Key pair generation module
@@ -155,7 +155,7 @@ vite.config.ts            # Vite and SvelteKit configuration (SvelteKit 3 has no
 ## Security
 
 - **Client-Side Only**: All the cryptography runs in your browser. No messages, keys or passphrases are sent to any server. The only outside request is for the donation addresses on the Donate page, and it carries no user data
-- **No Tracking**: No cookies, no client-side tracking scripts and no personal data collected. Fonts are served from the site itself, and the site sends no referrer information to the links it leads to
+- **No Tracking**: No cookies and no client-side tracking scripts, and the app collects no personal data. Netlify, the host, has server logs that give aggregate visitor figures. The [privacy policy](https://pgp-converter.com/about#hosting-privacy) on the About page says more. Fonts are served from the site itself, and the site sends no referrer information to the links it leads to
 - **Security Headers**: Strict-Transport-Security, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy and Cross-Origin-Opener-Policy are applied to every file via `netlify.toml`. The Permissions-Policy switches off the camera, microphone, location and other device features, none of which the app uses. The domain was submitted to the browsers' HSTS preload list on 14 November 2026, so that even a first visit never starts over plain HTTP. For as long as it is listed, the Strict-Transport-Security header must keep its `max-age` of a year or more, `includeSubDomains` and `preload`, and every subdomain must serve HTTPS
 - **Strict Content-Security-Policy**: The policy refuses everything by default and then allows only what the app needs, all of it from this site. No other site is named in it, so a page cannot load scripts from, or connect to, anywhere else. The short script that starts each page is allowed by the hash of its exact text, which the build works out (`scripts/write-csp.ts`). Scripts have no `'unsafe-inline'` and no `'unsafe-eval'`, so a script that reached a page by any other route would not run. The "not found" page is a file like the rest, so it carries the same policy and headers and is part of the signed build
 - **Text Stays in the Box**: Fields that take your own text ask writing-assistant extensions and the browser's spelling services to stay out, and results are marked as not to be translated. Extensions can ignore the request, so switch them off for anything sensitive

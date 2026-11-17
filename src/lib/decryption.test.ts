@@ -343,3 +343,36 @@ describe('decryptMessage, on a message that unpacks to far more than it weighs',
 		expect(result.data).toBe(text);
 	}, 30_000);
 });
+
+describe('decryptMessage, when the box holds more than the message', () => {
+	it('should say so, and hand back only the message', async () => {
+		const { publicKey, privateKey } = await createTestKeyPair();
+		const encrypted = must((await encryptMessage('Pay Alice 10.', publicKey)).data);
+		const pasted = `Pay Mallory 1000 first.\n\n${encrypted}\nP.S. And again.`;
+
+		const result = await decryptMessage(pasted, privateKey, TEST_PASSPHRASE);
+		expect(result.data).toBe('Pay Alice 10.');
+		expect(result.hasOtherText).toBe(true);
+	}, 15_000);
+
+	it('should not say so for a message that stands alone, quoted or not', async () => {
+		const { publicKey, privateKey } = await createTestKeyPair();
+		const encrypted = must((await encryptMessage('Hello', publicKey)).data);
+
+		const plain = await decryptMessage(`\n${encrypted}\n\n`, privateKey, TEST_PASSPHRASE);
+		expect(plain.hasOtherText).toBe(false);
+		const quoted = await decryptMessage(quote(encrypted), privateKey, TEST_PASSPHRASE);
+		expect(quoted.data).toBe('Hello');
+		expect(quoted.hasOtherText).toBe(false);
+	}, 15_000);
+
+	it('should say so for a message quoted in an email under a line of its own', async () => {
+		const { publicKey, privateKey } = await createTestKeyPair();
+		const encrypted = must((await encryptMessage('Hello', publicKey)).data);
+		const pasted = `On Monday Alice wrote:\n${quote(encrypted)}`;
+
+		const result = await decryptMessage(pasted, privateKey, TEST_PASSPHRASE);
+		expect(result.data).toBe('Hello');
+		expect(result.hasOtherText).toBe(true);
+	}, 15_000);
+});

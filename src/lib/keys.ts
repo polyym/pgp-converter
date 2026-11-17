@@ -7,6 +7,7 @@ import {
 	type PrivateKey
 } from 'openpgp';
 import { normaliseArmor, splitKeyBlocks } from './armor.ts';
+import { KEY_USE_SETTINGS } from './constants.ts';
 import { WEAK_KEY_PATTERN, type ErrorStage } from './errors.ts';
 
 /** What a pasted key is about to be used for, which decides what counts as a problem with it */
@@ -40,6 +41,9 @@ export const WEAK_KEY_PROBLEM =
 export const WEAK_VERIFYING_KEY_PROBLEM = `${WEAK_KEY_PROBLEM} Its signatures cannot be relied on.`;
 
 const PRIVATE_KEY_HEADER = '-----BEGIN PGP PRIVATE KEY BLOCK-----';
+
+/** The library's settings for asking a key whether it can do a job. Those calls take the whole set or none. */
+export const KEY_CHECK_CONFIG = { ...defaultConfig, ...KEY_USE_SETTINGS };
 
 /** Names for the older algorithms, which the library reports in lower case */
 const ALGORITHM_LABELS: Record<string, string> = {
@@ -126,7 +130,7 @@ export async function readUsablePrivateKey(
 	if (!passphrase) {
 		throw new PassphraseRequiredError();
 	}
-	return decryptKey({ privateKey, passphrase });
+	return decryptKey({ privateKey, passphrase, config: KEY_USE_SETTINGS });
 }
 
 /**
@@ -185,10 +189,7 @@ async function findEncryptionProblem(key: Key): Promise<string | undefined> {
 		return PRIVATE_KEY_PROBLEM;
 	}
 	try {
-		await key.getEncryptionKey(undefined, undefined, undefined, {
-			...defaultConfig,
-			allowMissingKeyFlags: true
-		});
+		await key.getEncryptionKey(undefined, undefined, undefined, KEY_CHECK_CONFIG);
 		return undefined;
 	} catch (e: unknown) {
 		const message = e instanceof Error ? e.message : String(e);
@@ -217,7 +218,7 @@ async function findSigningProblem(key: Key): Promise<string | undefined> {
 		return PUBLIC_KEY_AS_SIGNER_PROBLEM;
 	}
 	try {
-		await key.getSigningKey();
+		await key.getSigningKey(undefined, undefined, undefined, KEY_CHECK_CONFIG);
 		return undefined;
 	} catch (e: unknown) {
 		const message = e instanceof Error ? e.message : String(e);
@@ -254,7 +255,7 @@ async function findVerificationProblem(key: Key): Promise<string | undefined> {
 	// A key that is valid but of a kind the library no longer accepts: every
 	// signature it made will be turned away, so say so before the user tries
 	try {
-		await key.getSigningKey();
+		await key.getSigningKey(undefined, undefined, undefined, KEY_CHECK_CONFIG);
 	} catch (e: unknown) {
 		if (WEAK_KEY_PATTERN.test(e instanceof Error ? e.message : String(e))) {
 			return WEAK_VERIFYING_KEY_PROBLEM;

@@ -1,10 +1,12 @@
 import { createMessage, encrypt, type PrivateKey } from 'openpgp';
+import { KEY_USE_SETTINGS } from './constants.ts';
 import { getUserFriendlyError, type ErrorStage } from './errors.ts';
 import {
 	readPublicKeys,
 	describeKey,
 	readUsablePrivateKey,
 	PassphraseRequiredError,
+	KEY_CHECK_CONFIG,
 	type KeyInfo
 } from './keys.ts';
 import { SIGNING_PASSPHRASE_REQUIRED_ERROR } from './signatures.ts';
@@ -67,7 +69,7 @@ export async function encryptMessage(
 			);
 			// Checked here so that a key that cannot sign is reported as that, not as a failed encryption
 			stage = 'operation';
-			await signingKey.getSigningKey();
+			await signingKey.getSigningKey(undefined, undefined, undefined, KEY_CHECK_CONFIG);
 			context = 'encrypt';
 		}
 
@@ -80,7 +82,7 @@ export async function encryptMessage(
 			message,
 			encryptionKeys: publicKeys,
 			signingKeys: signingKey,
-			config: { allowMissingKeyFlags: true }
+			config: KEY_USE_SETTINGS
 		});
 
 		return {

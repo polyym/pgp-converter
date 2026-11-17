@@ -6,8 +6,8 @@ import {
 	OVERSIZED_MESSAGE_ERROR,
 	type ErrorStage
 } from './errors.ts';
-import { MESSAGE_READING_LIMITS } from './constants.ts';
-import { CLEARTEXT_HEADER, normaliseArmor } from './armor.ts';
+import { KEY_USE_SETTINGS, MESSAGE_READING_LIMITS } from './constants.ts';
+import { CLEARTEXT_HEADER, hasOtherText, normaliseArmor } from './armor.ts';
 import { readPublicKeys, readUsablePrivateKey, PassphraseRequiredError } from './keys.ts';
 import { checkSignatures, PRIVATE_KEY_AS_SENDER_ERROR, type SignatureCheck } from './signatures.ts';
 
@@ -18,6 +18,8 @@ export interface DecryptionResult {
 	isSigned?: boolean;
 	/** The result of checking each signature against the sender's keys; empty if the message is unsigned */
 	signatures?: SignatureCheck[];
+	/** True when the text held anything besides the message. The verdicts are not about that. */
+	hasOtherText?: boolean;
 	error?: string;
 	/** The input the error is about, when it is about one in particular */
 	errorField?: 'encrypted' | 'privateKey' | 'passphrase' | 'senderKey';
@@ -85,7 +87,7 @@ export async function decryptMessage(
 			message,
 			decryptionKeys: usableKey,
 			verificationKeys: senderKeys,
-			config: { allowMissingKeyFlags: true, ...MESSAGE_READING_LIMITS }
+			config: { ...KEY_USE_SETTINGS, ...MESSAGE_READING_LIMITS }
 		});
 		const data = String(decryptedMessage.data);
 
@@ -93,7 +95,8 @@ export async function decryptMessage(
 			success: true,
 			data,
 			isSigned: decryptedMessage.signatures.length > 0,
-			signatures: await checkSignatures(decryptedMessage.signatures, senderKeys)
+			signatures: await checkSignatures(decryptedMessage.signatures, senderKeys),
+			hasOtherText: hasOtherText(armored)
 		};
 	} catch (e: unknown) {
 		if (e instanceof PassphraseRequiredError) {

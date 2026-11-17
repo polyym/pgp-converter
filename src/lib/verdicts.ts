@@ -16,6 +16,8 @@ export interface VerdictContext {
 	wereKeysSupplied: boolean;
 	/** What to do to get a signature checked, said when no key was supplied */
 	howToCheck?: string;
+	/** Whether the message box held anything besides the message */
+	hasOtherText?: boolean;
 }
 
 /** What a set of signatures amounts to as a whole */
@@ -32,6 +34,17 @@ const NOT_SIGNED: Verdict = {
 	tone: 'neutral',
 	title: 'Not signed',
 	body: 'Nothing in this message confirms who sent it.'
+};
+
+/**
+ * Said beside the verdicts on a signed message, so that they are not read as
+ * covering everything in the box. The words have to be true whatever the
+ * verdicts say and whatever the other text is, a second message included.
+ */
+const OTHER_TEXT: Verdict = {
+	tone: 'caution',
+	title: 'The box holds more than the message',
+	body: 'Only the text in the result belongs to the message. Text above the message, below it or inside it does not, and this page says nothing about it.'
 };
 
 /**
@@ -75,8 +88,9 @@ export function describeSignature(check: SignatureCheck, context: VerdictContext
 /**
  * Puts the result for every signature on a message into words.
  * @param signatures - The result for each signature; empty if the message carries none
- * @param context - Whether a key was supplied to check them against
- * @returns One verdict for each signature, or a single one saying the message is not signed
+ * @param context - Whether a key was supplied to check them against, and whether the box held other text
+ * @returns One verdict for each signature, or a single one saying the message is not signed.
+ *   Where the message is signed and the box held other text, one more that says so
  */
 export function describeSignatures(
 	signatures: readonly SignatureCheck[],
@@ -85,21 +99,30 @@ export function describeSignatures(
 	if (signatures.length === 0) {
 		return [NOT_SIGNED];
 	}
-	return signatures.map((check) => describeSignature(check, context));
+	const verdicts = signatures.map((check) => describeSignature(check, context));
+	return context.hasOtherText ? [...verdicts, OTHER_TEXT] : verdicts;
 }
 
 /**
  * Says what a message's signatures amount to. The text is only as good as its
  * weakest signature: one that does not match outweighs any that do.
  * @param signatures - The result for each signature on the message
- * @returns The overall tone and a few words for it
+ * @param hasOtherText - Whether the message box held anything besides the message
+ * @returns The overall tone and a few words for it. For a valid signature the
+ *   words mention other text, because they are the first thing read
  */
-export function summariseSignatures(signatures: readonly SignatureCheck[]): VerdictSummary {
+export function summariseSignatures(
+	signatures: readonly SignatureCheck[],
+	hasOtherText = false
+): VerdictSummary {
 	if (signatures.some((check) => check.status === 'invalid')) {
 		return { tone: 'bad', message: 'Signature does not match' };
 	}
 	if (signatures.length > 0 && signatures.every((check) => check.status === 'valid')) {
-		return { tone: 'good', message: 'Signature valid' };
+		return {
+			tone: 'good',
+			message: hasOtherText ? 'Signature valid, but the box holds other text' : 'Signature valid'
+		};
 	}
 	return { tone: 'caution', message: 'Signature not confirmed' };
 }

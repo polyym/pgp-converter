@@ -15,6 +15,7 @@
 		signatures,
 		wereKeysSupplied,
 		howToCheck = '',
+		hasOtherText = false,
 		isMuted = false
 	}: {
 		/** The result for each signature on the message; empty if it carries none */
@@ -23,11 +24,15 @@
 		wereKeysSupplied: boolean;
 		/** What to do to get a signature checked, shown when no key was supplied */
 		howToCheck?: string;
+		/** Whether the message box held anything besides the message, which the verdicts are not about */
+		hasOtherText?: boolean;
 		/** The verdict is about an earlier state of the form: shown without its colour, so it does not pass for a current one */
 		isMuted?: boolean;
 	} = $props();
 
-	const verdicts = $derived(describeSignatures(signatures, { wereKeysSupplied, howToCheck }));
+	const verdicts = $derived(
+		describeSignatures(signatures, { wereKeysSupplied, howToCheck, hasOtherText })
+	);
 </script>
 
 <div class={['verdicts', { muted: isMuted }]} role="status">
