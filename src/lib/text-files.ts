@@ -1,11 +1,46 @@
-/** Largest file the app will read into a text box. Keys and messages are a few kilobytes. */
+/**
+ * Most the app will read into a text box from files, all the chosen files
+ * together. Keys and messages are a few kilobytes; much more than this holds
+ * the page up for seconds or minutes while it is read.
+ */
 export const MAX_TEXT_FILE_BYTES = 1_000_000;
 
 export const FILE_TOO_LARGE_ERROR =
 	'That file is too large. Keys and messages are small text files.';
+export const FILES_TOO_LARGE_ERROR =
+	'Those files are too large together. Keys and messages are small text files.';
 export const FILE_NOT_ARMORED_ERROR =
 	'That file does not contain a PGP block in text form. Export it as text (ASCII armour), usually a .asc file.';
 export const FILE_UNREADABLE_ERROR = 'That file could not be read.';
+
+/**
+ * Marks around a file's name in a sentence, so that a name in a script written
+ * right to left keeps to itself and leaves the sentence as it is
+ */
+const ISOLATE_START = '\u{2068}';
+const ISOLATE_END = '\u{2069}';
+/**
+ * Characters that turn the text after them round: embeddings, overrides and
+ * isolates. Left in a name, they could end the marks around it early, or turn
+ * the rest of the sentence.
+ */
+const DIRECTION_CONTROLS = /[\u{202A}-\u{202E}\u{2066}-\u{2069}]/gu;
+/** Characters that draw nothing, and the blank that Braille text uses */
+const DRAWS_NOTHING = /[\p{Default_Ignorable_Code_Point}\p{Cc}\u{2800}]/gu;
+
+/**
+ * Says which of several chosen files held no PGP block. "That file" would not
+ * say which, and a key file chosen with it would seem to have been read.
+ * @param name - The name of the file
+ * @returns The note to show
+ */
+export function fileNotArmoredErrorFor(name: string): string {
+	const shown = name.replaceAll(DIRECTION_CONTROLS, '');
+	const which = shown.replaceAll(DRAWS_NOTHING, '').trim()
+		? `The file "${ISOLATE_START}${shown}${ISOLATE_END}"`
+		: 'One of the files';
+	return `${which} does not contain a PGP block in text form, so none of the files was used.`;
+}
 
 export interface TextFilesResult {
 	/** The contents of the files, one after another */
@@ -55,11 +90,16 @@ export async function readTextFiles(
 	files: Iterable<File>,
 	requiresArmor: boolean
 ): Promise<TextFilesResult> {
+	// The browser's list of chosen files is emptied when the file input is
+	// cleared, which the page does straight away so that the same file can be
+	// chosen again. Taken before the first wait, every file is still in it.
+	const chosen = [...files];
+	const totalBytes = chosen.reduce((total, file) => total + file.size, 0);
+	if (totalBytes > MAX_TEXT_FILE_BYTES) {
+		return { error: chosen.length > 1 ? FILES_TOO_LARGE_ERROR : FILE_TOO_LARGE_ERROR };
+	}
 	const parts: string[] = [];
-	for (const file of files) {
-		if (file.size > MAX_TEXT_FILE_BYTES) {
-			return { error: FILE_TOO_LARGE_ERROR };
-		}
+	for (const file of chosen) {
 		let text: string;
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
@@ -69,7 +109,9 @@ export async function readTextFiles(
 			return { error: FILE_UNREADABLE_ERROR };
 		}
 		if (requiresArmor && !text.includes('-----BEGIN PGP ')) {
-			return { error: FILE_NOT_ARMORED_ERROR };
+			return {
+				error: chosen.length > 1 ? fileNotArmoredErrorFor(file.name) : FILE_NOT_ARMORED_ERROR
+			};
 		}
 		parts.push(text.trim());
 	}

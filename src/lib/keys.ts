@@ -36,13 +36,15 @@ export interface KeyInfo {
 }
 
 /**
- * What text would bring to a box that already lists keys:
+ * What text would bring to a box of public keys that already lists some:
  * - new-key: a key that the box does not hold
  * - new-details: no further key, but something the box does not hold about one of its keys, such as a revocation
+ * - private-key: a private key, whatever else comes with it
  * - nothing-new: nothing that the box does not hold
  * - unreadable: the box with the text added cannot be read as keys
  */
-export type AdditionOutcome = 'new-key' | 'new-details' | 'nothing-new' | 'unreadable';
+export type AdditionOutcome =
+	'new-key' | 'new-details' | 'private-key' | 'nothing-new' | 'unreadable';
 
 /** What became of text that was offered to a box of keys */
 export interface Addition {
@@ -73,6 +75,8 @@ export const WEAK_KEY_PROBLEM =
 export const WEAK_VERIFYING_KEY_PROBLEM = `${WEAK_KEY_PROBLEM} Its signatures cannot be relied on.`;
 
 const PRIVATE_KEY_HEADER = '-----BEGIN PGP PRIVATE KEY BLOCK-----';
+/** Named in both the first and the last line of a private key block, so found when one of them is lost */
+const PRIVATE_KEY_BLOCK_NAME = 'PGP PRIVATE KEY BLOCK';
 
 /** The library's settings for asking a key whether it can do a job. Those calls take the whole set or none. */
 export const KEY_CHECK_CONFIG = { ...defaultConfig, ...KEY_USE_SETTINGS };
@@ -145,7 +149,11 @@ export async function readPublicKeys(armoredKeys: string): Promise<Key[]> {
  */
 export async function addToKeys(held: string, text: string): Promise<Addition> {
 	const extended = appendBlock(held, text);
-	const outcome = await judgeAddition(held, extended);
+	// A private key block that cannot be read is passed over when the box is
+	// read, so only its name gives it away. It still holds the secret part.
+	const outcome = text.includes(PRIVATE_KEY_BLOCK_NAME)
+		? 'private-key'
+		: await judgeAddition(held, extended);
 	const isKept = outcome === 'new-key' || outcome === 'new-details';
 	return { outcome, box: isKept ? extended : held };
 }
@@ -311,6 +319,13 @@ async function judgeAddition(held: string, extended: string): Promise<AdditionOu
 	try {
 		const before = await readPublicKeys(held);
 		const after = await readPublicKeys(extended);
+		// A private key is refused wherever a public one belongs. Let in beside its
+		// own public copy, it would take that copy's place and stop the page. Keys
+		// keep the place they were first read in, so a key the addition brings
+		// stands after every key the box held.
+		if (after.some((key, index) => key.isPrivate() && !before.at(index)?.isPrivate())) {
+			return 'private-key';
+		}
 		if (after.length > before.length) {
 			return 'new-key';
 		}

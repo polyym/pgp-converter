@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
 	readTextFiles,
 	detectTextEncoding,
+	fileNotArmoredErrorFor,
 	MAX_TEXT_FILE_BYTES,
 	FILE_TOO_LARGE_ERROR,
+	FILES_TOO_LARGE_ERROR,
 	FILE_NOT_ARMORED_ERROR,
 	FILE_UNREADABLE_ERROR
 } from './text-files.ts';
@@ -30,6 +32,56 @@ describe('readTextFiles', () => {
 			true
 		);
 		expect(result.text).toBe(`${KEY}\n${KEY}`);
+	});
+
+	it('should read every chosen file, though the list is emptied once reading has begun', async () => {
+		const chosen = [new File([KEY], 'alice.asc'), new File([KEY], 'bob.asc')];
+
+		const reading = readTextFiles(chosen, true);
+		// What clearing the file input does to the list the browser handed over
+		chosen.length = 0;
+		expect((await reading).text).toBe(`${KEY}\n${KEY}`);
+	});
+
+	it('should name the file with no PGP block when several were chosen, and use none of them', async () => {
+		const result = await readTextFiles(
+			[new File(['shopping list'], 'notes.txt'), new File([KEY], 'alice.asc')],
+			true
+		);
+		expect(result.text).toBeUndefined();
+		expect(result.error).toBe(fileNotArmoredErrorFor('notes.txt'));
+	});
+
+	it('should name such a file so that its name cannot turn the sentence round', () => {
+		const names = [
+			// A right-to-left override, as in "report<RLO>txt.exe.asc"
+			'report\u{202E}txt.exe.asc',
+			// The name's own end of an isolate, then an override
+			'notes\u{2069}\u{202E}.txt',
+			// A Hebrew name that leaves an isolate open
+			'\u{5E9}\u{5DC}\u{5D5}\u{5DD}\u{2067}.txt'
+		];
+		for (const name of names) {
+			const note = fileNotArmoredErrorFor(name);
+			expect(note).toMatch(/^The file "\u{2068}[^\u{2068}\u{2069}]+\u{2069}" does not contain/u);
+			expect(note).not.toMatch(/[\u{202A}-\u{202E}]/u);
+		}
+	});
+
+	it('should say "one of the files" when a name draws nothing', () => {
+		for (const name of [' '.repeat(3), '\u{200B}'.repeat(3), '\u{2800}', '\u{202E}']) {
+			expect(fileNotArmoredErrorFor(name)).toMatch(/^One of the files /);
+		}
+	});
+
+	it('should refuse files that are too large together, though each alone is not', async () => {
+		const half = new Uint8Array(MAX_TEXT_FILE_BYTES / 2 + 1);
+		const result = await readTextFiles(
+			[new File([half], 'one.asc'), new File([half], 'two.asc')],
+			true
+		);
+		expect(result.text).toBeUndefined();
+		expect(result.error).toBe(FILES_TOO_LARGE_ERROR);
 	});
 
 	it('should refuse a file with no PGP block where one is required', async () => {

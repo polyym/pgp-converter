@@ -586,11 +586,38 @@ describe('addToKeys', () => {
 		expect(await judge(reissued.publicKey, alice.toPublic().armor())).toBe('new-details');
 	}, 15_000);
 
-	it('should say that a private copy of a listed key brings new details, so that the page shows it', async () => {
+	it('should keep the private copy of a listed public key out of the box', async () => {
 		const pair = await createKeyPair('Alice');
 
-		expect(await judge(pair.publicKey, pair.privateKey)).toBe('new-details');
+		expect(await addToKeys(pair.publicKey, pair.privateKey)).toEqual({
+			outcome: 'private-key',
+			box: pair.publicKey
+		});
+		// Let in, it would turn the listed key into a private one and stop the page
 		const infos = await inspectKeys(appendBlock(pair.publicKey, pair.privateKey), 'encrypt');
 		expect(infos.map((info) => info.problem)).toEqual([PRIVATE_KEY_PROBLEM]);
+	}, 15_000);
+
+	it('should keep out a private key that comes with a new key, in either order', async () => {
+		const alice = await createKeyPair('Alice');
+		const bob = await createKeyPair('Bob');
+		const keep = { outcome: 'private-key', box: alice.publicKey };
+
+		expect(await addToKeys(alice.publicKey, `${bob.publicKey}\n${alice.privateKey}`)).toEqual(keep);
+		expect(await addToKeys(alice.publicKey, `${alice.privateKey}\n${bob.publicKey}`)).toEqual(keep);
+		// Someone else's private key, too
+		expect(await addToKeys(alice.publicKey, bob.privateKey)).toEqual(keep);
+	}, 15_000);
+
+	it('should keep out a private key that has lost its first or last line', async () => {
+		const alice = await createKeyPair('Alice');
+		const bob = await createKeyPair('Bob');
+		const lines = alice.privateKey.trim().split('\n');
+		const keep = { outcome: 'private-key', box: alice.publicKey };
+
+		for (const damaged of [lines.slice(0, -1), lines.slice(1)]) {
+			const addition = `${bob.publicKey}\n${damaged.join('\n')}`;
+			expect(await addToKeys(alice.publicKey, addition)).toEqual(keep);
+		}
 	}, 15_000);
 });
