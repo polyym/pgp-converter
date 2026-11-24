@@ -81,9 +81,6 @@ const PRIVATE_KEY_BLOCK_NAME = 'PGP PRIVATE KEY BLOCK';
 /** The library's settings for asking a key whether it can do a job. Those calls take the whole set or none. */
 export const KEY_CHECK_CONFIG = { ...defaultConfig, ...KEY_USE_SETTINGS };
 
-/** The library's settings for asking a key whether it can do a job. Those calls take the whole set or none. */
-export const KEY_CHECK_CONFIG = { ...defaultConfig, ...KEY_USE_SETTINGS };
-
 /** Names for the older algorithms, which the library reports in lower case */
 const ALGORITHM_LABELS: Record<string, string> = {
 	dsa: 'DSA',
