@@ -23,7 +23,7 @@ import {
 	enums,
 	SecretKeyPacket
 } from 'openpgp';
-import { must } from './testing.ts';
+import { everyOrder, makeDatedKey, must, revokedCopyOf } from './testing.ts';
 
 const TEST_PASSPHRASE = 'testpassphrase';
 
@@ -374,5 +374,25 @@ describe('decryptMessage, when the box holds more than the message', () => {
 		const result = await decryptMessage(pasted, privateKey, TEST_PASSPHRASE);
 		expect(result.data).toBe('Hello');
 		expect(result.hasOtherText).toBe(true);
+	}, 15_000);
+});
+
+describe("decryptMessage, when the box holds several copies of the sender's key", () => {
+	it('should not trust a signature from a key that any copy shows as revoked', async () => {
+		const alice = await makeDatedKey('Alice');
+		const bob = await makeDatedKey('Bob');
+		const encrypted: unknown = await encrypt({
+			message: await createMessage({ text: 'Hello' }),
+			encryptionKeys: bob.toPublic(),
+			signingKeys: alice
+		});
+
+		const copies = [alice.toPublic().armor(), await revokedCopyOf(alice)];
+		for (const order of everyOrder(copies)) {
+			const result = await decryptMessage(String(encrypted), bob.armor(), '', order.join('\n'));
+			expect(result.data).toBe('Hello');
+			expect(must(result.signatures)[0].status).toBe('untrusted');
+			expect(must(result.signatures)[0].detail).toContain('revoked');
+		}
 	}, 15_000);
 });

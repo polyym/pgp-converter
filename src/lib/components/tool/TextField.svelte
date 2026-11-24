@@ -1,12 +1,21 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { FIELD_NOTE_MS } from '#lib/constants.ts';
-	import { appendBlock, canReadClipboard, insertAtCursor } from '#lib/text-entry.ts';
+	import { canReadClipboard, insertAtCursor } from '#lib/text-entry.ts';
 	import { readTextFiles } from '#lib/text-files.ts';
 	import { KEEP_ASSISTANTS_OUT } from '#lib/keep-out.ts';
-	import type { KeyInfo } from '#lib/keys.ts';
+	import { addToKeys, type AdditionOutcome, type KeyInfo } from '#lib/keys.ts';
 	import Icon from '../Icon.svelte';
 	import KeyDetails from './KeyDetails.svelte';
+
+	// What to say when an addition put no new key in the list. A new key shows
+	// in the list itself.
+	const ADDITION_NOTES: Record<Exclude<AdditionOutcome, 'new-key'>, string> = {
+		'new-details': 'No new key was found in that, but it adds to a key already in the list.',
+		'private-key': 'That holds a private key, so nothing was added. Never share a private key.',
+		'nothing-new': 'No new key was found in that, so nothing was added.',
+		unreadable: 'Something in that could not be read as a key, so nothing was added.'
+	};
 
 	let {
 		id,
@@ -53,8 +62,8 @@
 	let isDragging = $state(false);
 	let note = $state('');
 	let noteTimer: ReturnType<typeof setTimeout> | undefined;
-	// While an added key is being read: what the box held before, and how many keys that was
-	let pendingAdd: { value: string; count: number } | undefined;
+	// The contents the current note was given for
+	let noteValue = $state('');
 	// True while the user is working in the box itself
 	let isEditing = $state(false);
 	// Set by a paste from the keyboard: fold the box as soon as the key is read
@@ -75,26 +84,11 @@
 	const isFolded = $derived(keys.length > 0 && !isEditing && !isErrorShown);
 	// Further keys join the ones already there
 	const isAdding = $derived(canHoldSeveral && keys.length > 0);
-
-	// Runs each time the keys in the box have been read again
-	$effect(() => {
-		settleAddition(keys.length);
-	});
-
-	// If something was added and no further key came of it, the box goes back to
-	// what it held, so that nothing unreadable is left hidden behind the list of keys
-	function settleAddition(count: number) {
-		if (!pendingAdd) {
-			return;
-		}
-		const before = pendingAdd;
-		pendingAdd = undefined;
-		if (count > before.count) {
-			return;
-		}
-		value = before.value;
-		showNote('No new key was found in that, so nothing was added.');
-	}
+	// A note is about what the box held when it was given. Once Remove or the
+	// page's Clear has changed that, it has nothing left to be about. Typing
+	// ends it for good, in the box's input handler, so that Backspace or undo
+	// cannot bring it back and have it read out a second time.
+	const shownNote = $derived(value === noteValue ? note : '');
 
 	$effect(() => {
 		if (keys.length === 0 || !shouldFoldWhenRead) {
@@ -117,6 +111,7 @@
 
 	function showNote(text: string) {
 		note = text;
+		noteValue = value;
 		clearTimeout(noteTimer);
 		noteTimer = setTimeout(() => {
 			note = '';
@@ -145,12 +140,24 @@
 			return;
 		}
 		if (isAdding) {
-			pendingAdd = { value, count: keys.length };
-			value = appendBlock(value, text);
+			void addKeys(text);
 		} else {
 			value = text;
 		}
 		isEditing = false;
+	}
+
+	async function addKeys(text: string) {
+		const held = value;
+		const { box, outcome } = await addToKeys(held, text);
+		// The answer is about what the box held. If the box has changed since, it is left as it is.
+		if (value !== held) {
+			return;
+		}
+		value = box;
+		if (outcome !== 'new-key') {
+			showNote(ADDITION_NOTES[outcome]);
+		}
 	}
 
 	async function paste() {
@@ -162,8 +169,13 @@
 				showNote('The clipboard is empty.');
 			}
 		} catch {
-			// The browser asks the user first; saying no is not an error worth alarming anyone about
-			showNote('The browser did not allow pasting. Press and hold, or use Ctrl or Command + V.');
+			// The browser asks the user first; saying no is not an error worth alarming anyone about.
+			// A folded box is out of sight, so pasting from the keyboard starts with opening it.
+			showNote(
+				isFolded
+					? 'The browser did not allow pasting. Press "Show or edit", then paste into the box.'
+					: 'The browser did not allow pasting. Press and hold, or use Ctrl or Command + V.'
+			);
 		}
 	}
 
@@ -290,6 +302,7 @@
 			{...KEEP_ASSISTANTS_OUT}
 			onfocus={() => (isEditing = true)}
 			onblur={() => (isEditing = false)}
+			oninput={() => (note = '')}
 			onpaste={() => (shouldFoldWhenRead = true)}
 			ondragover={onDragOver}
 			ondragleave={() => (isDragging = false)}
@@ -303,7 +316,7 @@
 		<p class="field-error" id="{id}-error" role="alert">{error}</p>
 	{/if}
 
-	<p class="field-note" role="status">{note}</p>
+	<p class="field-note" role="status">{shownNote}</p>
 
 	<KeyDetails title={keysTitle} {keys} hint={keysHint}>
 		{#if isFolded}
@@ -403,12 +416,14 @@
 		pointer-events: none;
 	}
 
+	/* A note can name a file, and a long name with no spaces must not push the page sideways */
 	.field-error,
 	.field-note {
 		margin: 0;
 		padding-left: 2px;
 		font-size: 13px;
 		line-height: 1.5;
+		overflow-wrap: anywhere;
 	}
 
 	.field-error {

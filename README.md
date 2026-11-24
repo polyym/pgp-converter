@@ -83,7 +83,7 @@ src/
 │   ├── constants.ts      # Shared constants and configuration
 │   ├── errors.ts         # User-friendly error mapping
 │   ├── armor.ts          # Clean-up of pasted PGP blocks (indentation, email quoting, lost line breaks)
-│   ├── keys.ts           # Reading and unlocking keys, and describing them (identity, fingerprint)
+│   ├── keys.ts           # Reading and unlocking keys, joining copies of one key, and describing them (identity, fingerprint)
 │   ├── signatures.ts     # Signing messages, verifying them, and reading signature results
 │   ├── verdicts.ts       # Puts the result for each signature into words
 │   ├── text-files.ts     # Reading dropped or chosen key and message files, UTF-8 or UTF-16

@@ -39,7 +39,19 @@ import {
 	WEAK_KEY_PROBLEM,
 	WEAK_VERIFYING_KEY_PROBLEM
 } from './keys.ts';
-import { makeKeyWithoutFlags, must, withKeyFlags, type ArmoredKeyPair } from './testing.ts';
+import {
+	copyKey,
+	daysAgo,
+	everyOrder,
+	makeDatedKey,
+	makeKeyWithoutFlags,
+	must,
+	revokedCopyOf,
+	secretPacketOf,
+	signAt,
+	withKeyFlags,
+	type ArmoredKeyPair
+} from './testing.ts';
 
 const PASSPHRASE = 'testpassphrase';
 
@@ -59,6 +71,11 @@ function quote(text: string): string {
 		.split('\n')
 		.map((line) => `> ${line}`)
 		.join('\n');
+}
+
+/** The verdict on the one signature of a message, checked against a box of keys */
+async function verdictOn(signed: string, box: string) {
+	return must(must((await verifyMessage(signed, box)).signatures).at(0));
 }
 
 type KeyPair = Awaited<ReturnType<typeof createKeyPair>>;
@@ -894,5 +911,94 @@ describe('a key that does say what it may be used for', () => {
 		const checked = await verifyMessage(signed, forged.armor());
 		expect(checked.data).toBe('Pay Mallory 1000.');
 		expect(must(checked.signatures)[0].status).toBe('invalid');
+	}, 15_000);
+});
+
+describe("verifyMessage, when the box holds several copies of the signer's key", () => {
+	const REASON = enums.reasonForRevocation;
+
+	it('should not trust a signature from a key that any copy shows as revoked', async () => {
+		const key = await makeDatedKey('Signer');
+		const signed = await signAt('Hello', key);
+
+		const copies = [key.toPublic().armor(), await revokedCopyOf(key)];
+		for (const order of everyOrder(copies)) {
+			const check = await verdictOn(signed, order.join('\n'));
+			expect(check.status).toBe('untrusted');
+			expect(check.detail).toContain('revoked');
+			expect(check.signer?.problem).toContain('revoked');
+		}
+	}, 15_000);
+
+	it('should keep a later revocation when an earlier copy already carries one', async () => {
+		const key = await makeDatedKey('Signer');
+		const signedBeforeEither = await signAt('Hello', key, daysAgo(20));
+		// The owner retired the key, and later found that it had been stolen
+		const retired = await revokedCopyOf(key, REASON.keyRetired, daysAgo(10));
+		const compromised = await revokedCopyOf(key, REASON.keyCompromised, daysAgo(5));
+		// Retiring a key leaves its earlier signatures standing. A stolen key's signatures can carry any date.
+		expect((await verdictOn(signedBeforeEither, retired)).status).toBe('valid');
+
+		for (const order of everyOrder([retired, compromised])) {
+			expect((await verdictOn(signedBeforeEither, order.join('\n'))).status).toBe('untrusted');
+		}
+	}, 15_000);
+
+	it('should not trust a signature from a subkey that any copy shows as revoked', async () => {
+		const key = await makeDatedKey('Signer', { subkeys: [{}, { sign: true }] });
+		const signed = await signAt('Hello', key);
+		const signingID = (await key.getSigningKey()).getKeyID();
+		const updated = await copyKey(key);
+		const index = updated.subkeys.findIndex((subkey) => subkey.getKeyID().equals(signingID));
+		updated.subkeys[index] = await must(updated.subkeys.at(index)).revoke(secretPacketOf(updated), {
+			flag: REASON.keyCompromised
+		});
+
+		const copies = [key.toPublic().armor(), updated.toPublic().armor()];
+		for (const order of everyOrder(copies)) {
+			expect((await verdictOn(signed, order.join('\n'))).status).toBe('untrusted');
+		}
+	}, 15_000);
+
+	it('should confirm an older signature once an older copy of the key is added', async () => {
+		// A key that signs with its main part, and one that signs with a subkey
+		for (const subkeys of [[{}], [{}, { sign: true }]]) {
+			const key = await makeDatedKey('Reissued', { subkeys });
+			const signed = await signAt('Signed twenty days ago', key, daysAgo(20));
+			// Later the owner changed the key with a tool that kept only the newest record of it
+			const reissued = await reformatKey({
+				privateKey: key,
+				userIDs: [{ name: 'Reissued' }],
+				date: daysAgo(5),
+				format: 'armored'
+			});
+			expect((await verdictOn(signed, reissued.publicKey)).detail).toBe(REISSUED_KEY_DETAIL);
+
+			const copies = [reissued.publicKey, key.toPublic().armor()];
+			for (const order of everyOrder(copies)) {
+				expect((await verdictOn(signed, order.join('\n'))).status).toBe('valid');
+			}
+		}
+	}, 15_000);
+
+	it('should come to the same verdicts whatever order three copies stand in', async () => {
+		const key = await makeDatedKey('Signer');
+		const signedEarly = await signAt('Signed twenty days ago', key, daysAgo(20));
+		const signedLate = await signAt('Signed two days ago', key, daysAgo(2));
+		const reissued = await reformatKey({
+			privateKey: key,
+			userIDs: [{ name: 'Signer' }],
+			date: daysAgo(10),
+			format: 'armored'
+		});
+		const retired = await revokedCopyOf(key, REASON.keyRetired, daysAgo(5));
+
+		const copies = [key.toPublic().armor(), reissued.publicKey, retired];
+		for (const order of everyOrder(copies)) {
+			const box = order.join('\n');
+			expect((await verdictOn(signedEarly, box)).status).toBe('valid');
+			expect((await verdictOn(signedLate, box)).status).toBe('untrusted');
+			expect((await encryptMessage('Hello', box)).success).toBe(false);
+		}
 	}, 15_000);
 });

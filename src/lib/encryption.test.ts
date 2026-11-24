@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { encryptMessage, PRIVATE_KEY_ERROR } from './encryption.ts';
 import { WEAK_RECIPIENT_KEY_ERROR } from './errors.ts';
 import { decryptMessage } from './decryption.ts';
+import { combineKeyPair } from './key-files.ts';
 import { generateKey, readMessage, revokeKey } from 'openpgp';
-import { must } from './testing.ts';
+import { daysAgo, everyOrder, makeDatedKey, must, revokedCopyOf } from './testing.ts';
 
 const TEST_PASSPHRASE = 'testpassphrase';
 
@@ -150,4 +151,41 @@ describe('encryptMessage', () => {
 		expect(result.error).toBe(WEAK_RECIPIENT_KEY_ERROR);
 		expect(result.errorField).toBe('publicKey');
 	}, 30_000);
+});
+
+describe("encryptMessage, when the box holds several copies of a recipient's key", () => {
+	it('should refuse a key that any copy shows as revoked', async () => {
+		const alice = await makeDatedKey('Alice');
+
+		const copies = [alice.toPublic().armor(), await revokedCopyOf(alice)];
+		for (const order of everyOrder(copies)) {
+			const result = await encryptMessage('Hello', order.join('\n'));
+			expect(result.success).toBe(false);
+			expect(result.error).toContain('revoked');
+			expect(result.errorField).toBe('publicKey');
+		}
+	}, 15_000);
+
+	it('should encrypt to a subkey that only another copy holds', async () => {
+		const alice = await makeDatedKey('Alice');
+		const updated = await alice.addSubkey({ date: daysAgo(5) });
+		const newID = must(updated.subkeys.at(1)).getKeyID().toHex();
+
+		const copies = [alice.toPublic().armor(), updated.toPublic().armor()];
+		for (const order of everyOrder(copies)) {
+			const result = await encryptMessage('Hello', order.join('\n'));
+			const message = await readMessage({ armoredMessage: must(result.data) });
+			expect(message.getEncryptionKeyIDs().map((id) => id.toHex())).toEqual([newID]);
+			expect(result.recipients).toHaveLength(1);
+		}
+	}, 15_000);
+
+	it('should refuse the file that holds both keys of a pair', async () => {
+		const { publicKey, privateKey } = await createTestKeyPair();
+
+		// The public key comes first in that file
+		const result = await encryptMessage('Hello', combineKeyPair(publicKey, privateKey));
+		expect(result.success).toBe(false);
+		expect(result.error).toBe(PRIVATE_KEY_ERROR);
+	}, 15_000);
 });
