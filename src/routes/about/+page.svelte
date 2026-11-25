@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Icon, PageFrame, PageHeader, SEO } from '#lib/components/index.ts';
-	import { SITE_URL } from '#lib/constants.ts';
+	import { REPOSITORY_URL, SITE_URL } from '#lib/constants.ts';
 	import { findCurrentSection } from '#lib/sections.ts';
 	import { appVersion } from '#lib/stores/app-version.svelte.ts';
 	import { siteAddress } from '#lib/stores/site-address.svelte.ts';
@@ -10,6 +10,10 @@
 	const commit = __BUILD_COMMIT__;
 	const openpgpVersion = __OPENPGP_VERSION__;
 	const releasedHost = new URL(SITE_URL).hostname;
+	// Where each release's Docker image is published, and how to run a copy
+	const IMAGE_NAME = 'ghcr.io/polyym/pgp-converter';
+	const IMAGE_PAGE_URL = `${REPOSITORY_URL}/pkgs/container/pgp-converter`;
+	const RUN_IT_YOURSELF_URL = `${REPOSITORY_URL}#run-it-yourself`;
 	// The commands below check pgp-converter.com, or on a self-hosted copy the copy itself
 	const checkedSite = $derived(siteAddress.isSelfHosted ? window.location.origin : SITE_URL);
 
@@ -116,6 +120,15 @@
 						and it carries no user data. A self-hosted copy makes none
 					</li>
 					<li>
+						You can run your own copy, on your own machine or from the <a
+							href={IMAGE_PAGE_URL}
+							target="_blank"
+							rel="noopener noreferrer">Docker image</a
+						>
+						that each release publishes. The
+						<a href={RUN_IT_YOURSELF_URL} target="_blank" rel="noopener noreferrer">README</a> says how
+					</li>
+					<li>
 						The source code is on <a
 							href="https://github.com/polyym/pgp-converter"
 							target="_blank"
@@ -193,15 +206,24 @@
 						</li>
 					</ul>
 					<p>
-						<strong>If you would rather not rely on this,</strong> a trustworthy VPN hides your IP
-						address and approximate location from Netlify's logs. A VPN moves that trust to its
-						provider and does not make you anonymous. For anonymity, use
+						<strong>If you would rather not rely on this,</strong> run your own copy, on your own
+						machine or from the
+						<a href={IMAGE_PAGE_URL} target="_blank" rel="noopener noreferrer">Docker image</a>, as
+						the
+						<a href={RUN_IT_YOURSELF_URL} target="_blank" rel="noopener noreferrer">README</a>
+						describes. Once it runs, it sends nothing to Netlify or anyone else. Otherwise, a trustworthy
+						VPN hides your IP address and approximate location from Netlify's logs. A VPN moves that trust
+						to its provider and does not make you anonymous. For anonymity, use
 						<a href="https://www.torproject.org/" target="_blank" rel="noopener noreferrer"
 							>Tor Browser</a
 						>.
 						<a href="https://www.privacyguides.org/" target="_blank" rel="noopener noreferrer"
 							>Privacy Guides</a
-						> keeps recommendations for both.
+						>
+						and
+						<a href="https://awesome-privacy.xyz/" target="_blank" rel="noopener noreferrer"
+							>Awesome Privacy</a
+						> keep recommendations for both.
 					</p>
 				</div>
 			</section>
@@ -499,6 +521,25 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 				</div>
 
 				<div class="concept">
+					<h3>The Docker image is signed too</h3>
+					<p>
+						Each release is also published as a <a
+							href={IMAGE_PAGE_URL}
+							target="_blank"
+							rel="noopener noreferrer">Docker image</a
+						>, for running your own copy. Its files are the site's own for that version, byte for
+						byte, and it is signed in the same way. To check it:
+					</p>
+					<!-- It wraps rather than scrolls, so it needs no keyboard focus -->
+					<pre
+						class="verify-cmd wraps"
+						role="group"
+						aria-label="Command that checks the Docker image"><code
+							>gh attestation verify oci://{IMAGE_NAME}:{appVersion.release} --repo polyym/pgp-converter</code
+						></pre>
+				</div>
+
+				<div class="concept">
 					<h3>Nothing is sent while you work</h3>
 					<p>
 						Open your browser's developer tools and watch the Network tab while you encrypt or
@@ -519,11 +560,13 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 				<div class="concept">
 					<h3>If the stakes are high</h3>
 					<p>
-						Run the app on your own machine, or use dedicated PGP software such as <a
-							href="https://gnupg.org/"
+						Run your own copy of the app, as the <a
+							href={RUN_IT_YOURSELF_URL}
 							target="_blank"
-							rel="noopener noreferrer">GnuPG</a
-						>.
+							rel="noopener noreferrer">README</a
+						>
+						describes, or use dedicated PGP software such as
+						<a href="https://gnupg.org/" target="_blank" rel="noopener noreferrer">GnuPG</a>.
 					</p>
 				</div>
 			</section>
@@ -584,6 +627,20 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 						<div class="resource-content">
 							<strong>Surveillance Self-Defense</strong>
 							<span>EFF's guide to digital security and privacy</span>
+						</div>
+					</a>
+					<a
+						href="https://awesome-privacy.xyz/"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="resource"
+					>
+						<div class="resource-icon">
+							<Icon name="external" size={20} />
+						</div>
+						<div class="resource-content">
+							<strong>Awesome Privacy</strong>
+							<span>A curated list of privacy-respecting alternatives to everyday apps</span>
 						</div>
 					</a>
 					<a
@@ -926,6 +983,11 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 	}
 	.verify-cmd code {
 		font-family: inherit;
+	}
+	/* A command that breaks across lines where it must, so it never needs scrolling */
+	.verify-cmd.wraps {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
 	}
 
 	@media (max-width: 380px) {
