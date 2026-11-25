@@ -26,6 +26,7 @@ In scope:
 - The application code in this repository and the site served at https://pgp-converter.com
 - The build and deployment pipeline in `.github/workflows/`
 - The wallet address proxy in `netlify/functions/`
+- The Docker image published at `ghcr.io/polyym/pgp-converter`, and how it is built (`Dockerfile`, `docker/`)
 
 Out of scope:
 
@@ -35,7 +36,7 @@ Out of scope:
 
 ## Supported versions
 
-Only the version currently deployed at https://pgp-converter.com is supported. Fixes are released as a new deploy, not backported.
+Only the version currently deployed at https://pgp-converter.com, and the Docker image of that version, are supported. Fixes are released as a new deploy, not backported.
 
 ## Other bugs
 

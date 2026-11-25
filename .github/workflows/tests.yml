@@ -6,15 +6,15 @@
 # It can also be started by hand: Actions → Tests → Run workflow. That runs the
 # checks on the chosen branch without pushing or deploying anything.
 #
-# Tests also run inline as a step in deploy.yml; the duplication is deliberate
-# so neither workflow can skip the other's validation. On push to main both
-# workflows fire in parallel; on pull_request only this workflow runs (the
-# deploy workflow's preview job also runs, but keeps its own tests inline for
-# the same reason).
+# The same checks also run in deploy.yml's build job, before anything is
+# deployed; the duplication is deliberate so neither workflow can skip the
+# other's validation. On a push to main or dev, and on a pull request into
+# main, both workflows run side by side.
 #
 # dev is where the next version is put together. A pull request into dev runs
-# this workflow and nothing else. A push to dev also starts deploy.yml, which
-# puts dev on the staging address; nothing on dev reaches the live site.
+# this workflow and zizmor.yml, and deploys nothing. A push to dev also starts
+# deploy.yml, which puts dev on the staging address; nothing on dev reaches the
+# live site.
 
 name: Tests
 
@@ -48,6 +48,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:

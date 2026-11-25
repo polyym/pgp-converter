@@ -28,7 +28,7 @@
 	</span>
 
 	<!-- Which version this is, on every page, and the commit it was built from.
-	     Everywhere but the released site it says "dev build", in its own colour. -->
+	     On a test copy it says "dev build", in its own colour. -->
 	<p class={['footer-build', { candidate: appVersion.isCandidate }]}>
 		<a
 			class="footer-version"
@@ -134,7 +134,7 @@
 		color: var(--text-dim);
 	}
 
-	/* Shown everywhere but the released site */
+	/* Shown on a test copy */
 	.footer-build.candidate .footer-version,
 	.footer-candidate {
 		color: var(--candidate);

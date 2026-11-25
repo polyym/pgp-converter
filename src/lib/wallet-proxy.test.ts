@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import * as walletProxy from '../../netlify/functions/wallet-proxy.mjs';
 
 const handler = walletProxy.default;
 const DEFAULT_ADDRESS = '/.netlify/functions/wallet-proxy';
+const FUNCTION_FILE = new URL('../../netlify/functions/wallet-proxy.mts', import.meta.url);
+// A module chosen as the code runs, which no reading of the file can name
+const LOADED_AS_IT_RUNS = /\brequire\s*\(|\bimport\s*\(|\bcreateRequire\b/;
 
 const API_URL = 'https://wallets.example';
 const upstreamBody = {
@@ -41,6 +46,22 @@ describe('wallet proxy', () => {
 		// took the donate page down; see the note in the function's file
 		const { config } = walletProxy as { config?: { path?: unknown } };
 		expect(config?.path).toBeUndefined();
+	});
+
+	it("should import nothing but Node's own modules, as the deploy installs no packages for it", () => {
+		// The code as it runs: comments and type-only imports dropped
+		const code = ts.transpileModule(readFileSync(FUNCTION_FILE, 'utf-8'), {
+			compilerOptions: {
+				removeComments: true,
+				target: ts.ScriptTarget.ESNext,
+				module: ts.ModuleKind.ESNext
+			}
+		}).outputText;
+		const imported = ts
+			.preProcessFile(code, true, true)
+			.importedFiles.map(({ fileName }) => fileName);
+		expect(imported.filter((name) => !name.startsWith('node:'))).toEqual([]);
+		expect(code).not.toMatch(LOADED_AS_IT_RUNS);
 	});
 
 	it('should always read the same upstream record, whatever was requested', async () => {

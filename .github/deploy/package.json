@@ -1,0 +1,8 @@
+{
+	"name": "pgp-converter-deploy",
+	"private": true,
+	"description": "The Netlify CLI that the deploy workflow uploads the site with, installed from the lockfile beside this file. See .github/workflows/deploy.yml.",
+	"dependencies": {
+		"netlify-cli": "27.16.3"
+	}
+}

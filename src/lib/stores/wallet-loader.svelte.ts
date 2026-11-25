@@ -17,6 +17,7 @@ import {
 export function createWalletLoader() {
 	let wallets = $state<Wallet[]>([]);
 	let isFake = $state(false);
+	let isSelfHosted = $state(false);
 	let qrDataUrls = $state<Record<string, string>>({});
 	let isQrReady = $state(false);
 	let isLoading = $state(true);
@@ -38,6 +39,17 @@ export function createWalletLoader() {
 	/** Loads the addresses, then their QR codes. Also what "Try again" does. */
 	async function load(): Promise<void> {
 		controller?.abort();
+		// Asked here, not read from the store: this page starts before the layout
+		// that fills the store in
+		const copy = readSiteAddress();
+		// A self-hosted copy has no wallet service to ask. The page sends donors to
+		// the released site instead, with no fake addresses and no error.
+		if (copy === 'self-hosted') {
+			isSelfHosted = true;
+			isLoading = false;
+			return;
+		}
+		isFake = copy === 'test';
 		const current = new AbortController();
 		controller = current;
 		const { signal } = current;
@@ -51,9 +63,6 @@ export function createWalletLoader() {
 			loadingCoinIndex = (loadingCoinIndex + 1) % COINS.length;
 		}, LOADING_COIN_CYCLE_MS);
 
-		// Asked here, not read from the store: this page starts before the layout
-		// that fills the store in
-		isFake = readSiteAddress();
 		const result = await loadWallets({
 			isFake,
 			signal,
@@ -107,9 +116,13 @@ export function createWalletLoader() {
 		get wallets() {
 			return wallets;
 		},
-		/** True when the addresses are fake ones, as on every copy but the released site */
+		/** True when the addresses are fake ones, as on a test copy */
 		get isFake() {
 			return isFake;
+		},
+		/** True on a self-hosted copy, which shows no addresses and links to the released site's */
+		get isSelfHosted() {
+			return isSelfHosted;
 		},
 		/** QR codes as data URLs, by wallet id */
 		get qrDataUrls() {

@@ -18,9 +18,9 @@
 	// the top bar scrolls away with the page instead of staying pinned.
 	onMount(watchOnScreenKeyboard);
 
-	// Everywhere but the released site (the staging copy, a preview, this
-	// machine) the app says so under the top bar and shows its version as a
-	// candidate's. Only the browser knows which address it was opened at.
+	// On a test copy (the staging address, a preview, the development server)
+	// the app says so under the top bar and shows its version as a candidate's.
+	// Only the browser knows which address it was opened at.
 	onMount(readSiteAddress);
 
 	onNavigate(crossFade);

@@ -1,0 +1,85 @@
+# The web server settings of the Docker image (see the Dockerfile). The image
+# serves build/ as the released site's host does: the same files, the same
+# headers but Strict-Transport-Security, and the same "not found" page. Like
+# that host, it sends /help on to /about, and an address ending in a slash on
+# to the one without it. Anyone serving build/ with a server of their own can
+# take this as a working example.
+#
+# scripts/caddy-headers.test.ts checks these headers and redirects against
+# netlify.toml.
+{
+	# Nothing changes the settings while the server runs, and the server speaks
+	# plain HTTP only. HTTPS belongs to whoever puts the site on a domain.
+	admin off
+	persist_config off
+	auto_https off
+	# Upkeep of the certificate store, which plain HTTP does not use. Off, the
+	# server writes nothing at all, so it also runs on a read-only file system.
+	storage_check off
+	storage_clean_interval off
+	# HTTP/2 and HTTP/3 need HTTPS, so the server is told it speaks HTTP/1.1 only
+	servers {
+		protocols h1
+	}
+}
+
+:8080 {
+	root * /srv
+
+	# The Content-Security-Policy. It names each page's start-up script by a hash
+	# that changes with every build, so it is written from the build's own
+	# headers file while the image is built (scripts/write-caddy-headers.ts).
+	import /etc/caddy/build-headers.caddy
+
+	# The other headers the released site sends, as netlify.toml sets them.
+	# Strict-Transport-Security is left out. pgp-converter.com's own header holds
+	# every subdomain to HTTPS and asks to be on the browsers' preload list, which
+	# on another domain could lock out its subdomains. Whoever serves the site
+	# over HTTPS sets one for their domain.
+	header {
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "accelerometer=(), bluetooth=(), browsing-topics=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(), midi=(), payment=(), serial=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+	}
+
+	# As the released site's host does, a browser asks again before it uses a
+	# file it has kept, so a new version reaches it. Files under /_app/immutable
+	# carry a hash of their contents in their name, so they are kept for good.
+	# Headers are set here, not deferred, so the "not found" page gets them too.
+	@revalidated not path /_app/immutable/*
+	header @revalidated Cache-Control "public, max-age=0, must-revalidate"
+	header /_app/immutable/* Cache-Control "public, immutable, max-age=31536000"
+	header /manifest.webmanifest Content-Type "application/manifest+json"
+
+	# The About page was called Help until v3.0. A query is kept, as on the
+	# released site.
+	redir /help /about{?query} permanent
+	redir /help/ /about{?query} permanent
+
+	# An address that ends in a slash is sent on to the same address without it,
+	# with its query. Only names made of the characters the site's own addresses
+	# use: with a backslash or a control character in it, a browser could read
+	# the new address as another site's.
+	@slash path_regexp slash ^((?:/[A-Za-z0-9._~-]+)+)/$
+	redir @slash {re.slash.1}{?query} permanent
+
+	encode zstd gzip
+
+	# /encrypt is served from encrypt.html
+	try_files {path} {path}.html
+	file_server {
+		# Read while the image is built; not for visitors
+		hide /srv/_headers
+	}
+
+	# An address that does not exist gets the app's own page, with a 404. So
+	# does one whose name is too long for a file, which the server reports as 400.
+	handle_errors 400 404 {
+		rewrite * /404.html
+		file_server {
+			status 404
+		}
+	}
+}

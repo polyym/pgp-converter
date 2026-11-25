@@ -4,18 +4,19 @@ import { siteAddress } from './site-address.svelte.ts';
 
 /**
  * The version as the pages show it, which depends on where the app was opened:
- * as released at the released site, and as a release candidate everywhere else
+ * as a release candidate on a test copy, and as released everywhere else,
+ * self-hosted copies included
  */
 export const appVersion = {
 	/** The version alone, as package.json has it: "4.1.0" */
 	release: version,
 	/** The number of the release candidate this code is */
 	candidate: releaseCandidate,
-	/** True everywhere but the released site */
+	/** True on a test copy: the staging address, a preview or the development server */
 	get isCandidate() {
 		return siteAddress.isTest;
 	},
-	/** What to show: "4.1.0" at the released site, "4.1.0-rc.3" everywhere else */
+	/** What to show: "4.1.0-rc.3" on a test copy, "4.1.0" everywhere else */
 	get shown() {
 		return siteAddress.isTest ? candidateVersion(version, releaseCandidate) : version;
 	},

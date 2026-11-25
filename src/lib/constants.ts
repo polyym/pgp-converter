@@ -6,6 +6,9 @@ export const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE;
 // Where the app lives
 export const SITE_URL = 'https://pgp-converter.com';
 export const REPOSITORY_URL = 'https://github.com/polyym/pgp-converter';
+// The host's own address for the project. The staging copy and the preview of
+// each pull request are served at names that end in "--" and this.
+export const HOST_PROJECT_ADDRESS = 'pgp-converter.netlify.app';
 
 // Messages that come and go
 export const LOADING_DELAY_MS = 200;

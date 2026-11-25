@@ -1,11 +1,36 @@
 # Builds, attests, and deploys the site.
 #
-# On push to main:  runs tests → builds → signs the build output with
-#                   Sigstore via GitHub's OIDC → deploys that exact output to
+# Every run builds the site in one job and deploys it in another:
+#
+# build:    installs the packages, runs the tests and checks, builds the site
+#           and keeps build/ as an artifact of the run. It is given no secret
+#           and no write permission.
+# attest:   on main only. Signs the build with Sigstore via GitHub's OIDC. It
+#           installs nothing.
+# deploy:   preview, production or staging. Downloads the build and uploads it
+#           to Netlify with the Netlify CLI; production and staging then check
+#           that the address serves it. Only these jobs are given the Netlify
+#           token. They never install the project's packages: the CLI and every
+#           package it uses come from their own lockfile (.github/deploy), with
+#           install scripts off. Their checkout is sparse: .github/deploy,
+#           netlify/ and scripts/, and the files at the top of the repository
+#           and directly in .github/, which a sparse checkout in cone mode always
+#           takes. netlify.toml, with the headers and redirects, reaches them
+#           that way.
+#
+# The build runs the code, and the install scripts, of about 300 packages. A
+# job that went on to deploy would give each of them the token, and one could
+# leave something behind to read it or to deploy on its own. The split stops
+# that for the project's packages. It does not keep the token from the CLI's
+# own packages, which the deploy runs; their lockfile fixes which versions they
+# are. Nor does it stop a package from changing the build before it is signed:
+# reproducible builds cover that (README, "Reproducing a Build").
+#
+# On push to main:  build → attest → production: deploys that exact output to
 #                   Netlify prod → checks the live site serves the signed files.
-# On push to dev:   runs tests → builds → deploys that output to the staging
-#                   address → checks the address serves it. Not signed.
-# On pull_request:  runs tests → builds → deploys a preview URL to Netlify.
+# On push to dev:   build → staging: deploys to the staging address → checks
+#                   the address serves it. Not signed.
+# On pull_request:  build → preview: deploys a preview URL to Netlify.
 #
 # main is the released site. dev, where the next version is put together, goes
 # to the staging address and never to the live site. A pull request into main
@@ -32,9 +57,12 @@
 # address (/.netlify/functions/<name>); the note in that file says why it has
 # no custom path. The final step also fails if the wallet proxy cannot be reached.
 #
-# Required GitHub repo secrets:
+# Required secrets, for the repository or for each of the environments named
+# below (preview, production, staging):
 #   NETLIFY_AUTH_TOKEN: personal access token from Netlify user settings
 #   NETLIFY_SITE_ID:    Project ID from Netlify Project configuration → General
+# Each deploy step stops if either is empty: with no project ID, the CLI would
+# create a new Netlify project and deploy there.
 
 name: Deploy
 
@@ -49,7 +77,7 @@ on:
 # release that commit is. Dependabot proposes the move to a newer release
 # (.github/dependabot.yml).
 
-# Each job asks for what it needs; previews get no signing permissions
+# Each job asks for what it needs; only attest may sign
 permissions:
   contents: read
 
@@ -58,9 +86,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Pinned so that a new CLI release cannot change what gets deployed, or run
-  # with the deploy token, without a reviewed change to this file
-  NETLIFY_CLI_VERSION: 27.16.3
+  # The Netlify CLI as .github/deploy installs it. Named by its path, so that a
+  # missing CLI fails the step instead of being fetched from anywhere else.
+  NETLIFY_CLI: .github/deploy/node_modules/.bin/netlify
   # Where dev is deployed: the Netlify project's own address with the alias in
   # front. It stays the same from one push to the next, so it can be kept open
   # on a phone. The app itself says under its top bar that this is a test address.
@@ -68,14 +96,13 @@ env:
   STAGING_URL: https://dev--pgp-converter.netlify.app
 
 jobs:
-  preview:
-    # Not for Dependabot's pull requests: they are not given the deploy secrets,
-    # so the deploy step could only fail. The Tests workflow still runs on them.
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+  build:
     # Not ubuntu-latest: see the note on the job in tests.yml
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
@@ -87,69 +114,12 @@ jobs:
       # cause. With the lockfile in sync, this installs the same pinned versions.
       - run: npm install --no-audit --no-fund
 
-      - name: Run tests
-        run: npm test
-
-      - name: Type check
-        run: npm run check
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format:check
-
-      # The same commit must always build the same files, so that anyone can
-      # repeat the build and compare (README, "Reproducing a Build"). The one
-      # thing in a build that depends on the clock, the dates it writes into the
-      # sitemap and security.txt, is taken from the commit instead.
-      - name: Take the build date from the commit
-        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
-
-      - name: Build
-        run: npm run build
-
-      - name: Deploy preview
-        # Written as a block: in a one-line YAML value, " #" starts a comment and
-        # would cut the command off at the pull request number.
-        # Up to three attempts, for the reason given on the production deploy step.
-        run: |
-          for attempt in 1 2 3; do
-            if npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --no-build --dir=build --message="PR #${{ github.event.pull_request.number }} @ ${{ github.sha }}"; then
-              exit 0
-            fi
-            echo "::warning::Deploy attempt $attempt of 3 failed"
-            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
-          done
-          exit 1
-        env:
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-
-  production:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # Not ubuntu-latest: see the note on the job in tests.yml
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      id-token: write # mint OIDC token for Sigstore
-      attestations: write # write attestation to GitHub
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: 26
-          cache: npm
-
-      - run: npm install --no-audit --no-fund
-
-      - name: Run tests
-        run: npm test
-
       # Also in the Tests workflow, which runs beside this one and cannot stop
       # it: without these steps a change that fails the type check, the lint
       # rules or the formatting check would still go live
+      - name: Run tests
+        run: npm test
+
       - name: Type check
         run: npm run check
 
@@ -174,10 +144,123 @@ jobs:
       - name: Check page weight
         run: node scripts/check-bundle.ts build
 
+      # Hidden files included: security.txt lives in .well-known
+      - name: Keep the build for the jobs that follow
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site
+          path: build
+          include-hidden-files: true
+          if-no-files-found: error
+
+  attest:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write # mint OIDC token for Sigstore
+      attestations: write # write attestation to GitHub
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: build
+
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: 'build/**/*'
+
+  preview:
+    # Not for Dependabot's pull requests: they are not given the deploy secrets,
+    # so the deploy step could only fail. The Tests workflow still runs on them.
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: preview
+    steps:
+      # Cone mode, the default, also takes every file at the top of the
+      # repository. netlify.toml arrives that way, so keep cone mode on.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/deploy
+            netlify
+            scripts
+
+      # No package cache in a job that holds the token: nothing an earlier run
+      # stored is used here
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      - name: Install the Netlify CLI from its lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: .github/deploy
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: build
+
+      - name: Deploy preview
+        # Written as a block: in a one-line YAML value, " #" starts a comment and
+        # would cut the command off at the pull request number.
+        # Up to three attempts, for the reason given on the production deploy step.
+        run: |
+          # An empty NETLIFY_SITE_ID would make the CLI create a new Netlify project
+          if [ -z "$NETLIFY_SITE_ID" ] || [ -z "$NETLIFY_AUTH_TOKEN" ]; then
+            echo "::error::NETLIFY_SITE_ID or NETLIFY_AUTH_TOKEN is empty; see the note at the top of deploy.yml"
+            exit 1
+          fi
+          for attempt in 1 2 3; do
+            if "$NETLIFY_CLI" deploy --no-build --dir=build --message="PR #$PR_NUMBER @ $GITHUB_SHA"; then
+              exit 0
+            fi
+            echo "::warning::Deploy attempt $attempt of 3 failed"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
+          done
+          exit 1
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+
+  production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Nothing goes live unsigned
+    needs: [build, attest]
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://pgp-converter.com
+    steps:
+      # Cone mode brings netlify.toml; see the preview job
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/deploy
+            netlify
+            scripts
+
+      # No package cache in a job that holds the token: nothing an earlier run
+      # stored is used here
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      - name: Install the Netlify CLI from its lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: .github/deploy
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: build
 
       - name: Deploy to production
         # Up to three attempts, 20 and then 40 seconds apart. The CLI's first calls
@@ -186,8 +269,13 @@ jobs:
         # time is harmless, so trying again is safe. Each failed attempt leaves a
         # warning on the run, so a deploy that needed a retry does not go unnoticed.
         run: |
+          # An empty NETLIFY_SITE_ID would make the CLI create a new Netlify project
+          if [ -z "$NETLIFY_SITE_ID" ] || [ -z "$NETLIFY_AUTH_TOKEN" ]; then
+            echo "::error::NETLIFY_SITE_ID or NETLIFY_AUTH_TOKEN is empty; see the note at the top of deploy.yml"
+            exit 1
+          fi
           for attempt in 1 2 3; do
-            if npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --prod --no-build --dir=build --message="Commit ${{ github.sha }}"; then
+            if "$NETLIFY_CLI" deploy --prod --no-build --dir=build --message="Commit $GITHUB_SHA"; then
               exit 0
             fi
             echo "::warning::Deploy attempt $attempt of 3 failed"
@@ -207,44 +295,38 @@ jobs:
     # dev starts this job, and a rule on GitHub lets only the maintainer push
     # there. A pull request into dev does not start it.
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
-    # Not ubuntu-latest: see the note on the job in tests.yml
+    # Built as production is, with the same checks, but not attested: the
+    # attestation is for the files that go live
+    needs: build
     runs-on: ubuntu-24.04
+    environment:
+      name: staging
+      url: https://dev--pgp-converter.netlify.app
     steps:
+      # Cone mode brings netlify.toml; see the preview job
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/deploy
+            netlify
+            scripts
 
+      # No package cache in a job that holds the token: nothing an earlier run
+      # stored is used here
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 26
-          cache: npm
+          package-manager-cache: false
 
-      - run: npm install --no-audit --no-fund
+      - name: Install the Netlify CLI from its lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: .github/deploy
 
-      # The same checks as before a production deploy: the staging address only
-      # ever shows a commit that passed them
-      - name: Run tests
-        run: npm test
-
-      - name: Type check
-        run: npm run check
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format:check
-
-      # Built as production is: named after this commit, with its dates taken
-      # from the commit
-      - name: Take the build date from the commit
-        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
-
-      - name: Build
-        run: npm run build
-
-      - name: Check page weight
-        run: node scripts/check-bundle.ts build
-
-      # Not attested: the attestation is for the files that go live.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: build
 
       # Search engines are asked to leave this copy out. The line goes into
       # build/_headers, which Netlify reads and does not serve, so the files
@@ -258,8 +340,13 @@ jobs:
       - name: Deploy to the staging address
         # Up to three attempts, for the reason given on the production deploy step
         run: |
+          # An empty NETLIFY_SITE_ID would make the CLI create a new Netlify project
+          if [ -z "$NETLIFY_SITE_ID" ] || [ -z "$NETLIFY_AUTH_TOKEN" ]; then
+            echo "::error::NETLIFY_SITE_ID or NETLIFY_AUTH_TOKEN is empty; see the note at the top of deploy.yml"
+            exit 1
+          fi
           for attempt in 1 2 3; do
-            if npx netlify-cli@${{ env.NETLIFY_CLI_VERSION }} deploy --no-build --dir=build --alias=${{ env.STAGING_ALIAS }} --message="dev @ ${{ github.sha }}"; then
+            if "$NETLIFY_CLI" deploy --no-build --dir=build --alias="$STAGING_ALIAS" --message="dev @ $GITHUB_SHA"; then
               exit 0
             fi
             echo "::warning::Deploy attempt $attempt of 3 failed"
@@ -271,4 +358,4 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
 
       - name: Check the staging address serves this build
-        run: node scripts/verify-deploy.ts ${{ env.STAGING_URL }} build --staging
+        run: node scripts/verify-deploy.ts "$STAGING_URL" build --staging

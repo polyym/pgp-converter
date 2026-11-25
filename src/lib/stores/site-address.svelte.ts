@@ -1,16 +1,20 @@
-import { isTestAddress } from '#lib/site-address.ts';
+import { siteCopy, type SiteCopy } from '#lib/site-address.ts';
 
-let isTest = $state(false);
+let copy = $state<SiteCopy>('released');
 
-/** What the pages read to know whether this is the released site */
+/** What the pages read to know which kind of copy of the app this is */
 export const siteAddress = {
 	/**
-	 * True when the app was opened anywhere but the released site. False until
-	 * the browser has said where it is, so the pages are built, and first drawn,
-	 * as the released site shows them.
+	 * True on a test copy: the staging address, the preview of a pull request or
+	 * the development server. False until the browser has said where it is, so
+	 * the pages are built, and first drawn, as the released site shows them.
 	 */
 	get isTest() {
-		return isTest;
+		return copy === 'test';
+	},
+	/** True on a copy that someone runs at an address of their own */
+	get isSelfHosted() {
+		return copy === 'self-hosted';
 	}
 };
 
@@ -19,9 +23,9 @@ export const siteAddress = {
  * ahead of time, before anyone knows which address will serve them. The
  * layout calls it for every page. A page that needs the answer as it starts
  * calls it too, because a page starts before its layout does.
- * @returns True when the app was opened anywhere but the released site
+ * @returns The kind of copy the app is
  */
-export function readSiteAddress(): boolean {
-	isTest = isTestAddress(window.location.hostname);
-	return isTest;
+export function readSiteAddress(): SiteCopy {
+	copy = siteCopy(window.location.hostname, import.meta.env.DEV);
+	return copy;
 }

@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { Icon, PageFrame, PageHeader, SEO } from '#lib/components/index.ts';
+	import { SITE_URL } from '#lib/constants.ts';
 	import { findCurrentSection } from '#lib/sections.ts';
 	import { appVersion } from '#lib/stores/app-version.svelte.ts';
+	import { siteAddress } from '#lib/stores/site-address.svelte.ts';
 	import { onMount } from 'svelte';
 
 	// The commit this build was made from, and the cryptography library it contains
 	const commit = __BUILD_COMMIT__;
 	const openpgpVersion = __OPENPGP_VERSION__;
+	const releasedHost = new URL(SITE_URL).hostname;
+	// The commands below check pgp-converter.com, or on a self-hosted copy the copy itself
+	const checkedSite = $derived(siteAddress.isSelfHosted ? window.location.origin : SITE_URL);
 
 	// The section nearest the top of the window, marked in the list of contents
 	let current = $state('about-this-app');
@@ -108,7 +113,7 @@
 					</li>
 					<li>
 						The only outside request the app makes is for the donation addresses on the Donate page,
-						and it carries no user data
+						and it carries no user data. A self-hosted copy makes none
 					</li>
 					<li>
 						The source code is on <a
@@ -122,6 +127,16 @@
 
 			<section class="section" id="hosting-privacy">
 				<h2>Privacy Policy</h2>
+				<!-- A self-hosted copy looks like the released site, but its server is
+				     someone else's, so the policy below does not describe it -->
+				{#if siteAddress.isSelfHosted}
+					<p>
+						<strong>This copy is not served from {releasedHost}.</strong>
+						The policy below is
+						<a href="{SITE_URL}/about#hosting-privacy" rel="noreferrer">{releasedHost}'s</a>.
+						Whoever runs this copy decides what its server logs.
+					</p>
+				{/if}
 				<div class="info-box">
 					<p>
 						PGP Converter is hosted on <a
@@ -462,7 +477,7 @@
 						tabindex="0"
 						role="group"
 						aria-label="Commands that check a file"><code
-							>curl -O https://pgp-converter.com/_app/version.json
+							>curl -O {checkedSite}/_app/version.json
 gh attestation verify version.json --repo polyym/pgp-converter</code
 						></pre>
 					<p>

@@ -24,14 +24,14 @@ You retain copyright ownership of your contributions, but the licence you grant 
    - `npm run build` (production build succeeds)
 6. Open a pull request against `dev`
 
-The `Tests` workflow runs the same checks on every pull request. A pull request that fails them is not merged.
+The `Tests` workflow runs the same checks on every pull request, and the `zizmor` workflow checks the workflows themselves for security problems. A pull request that fails them is not merged.
 
 ## Branches
 
 - `main` holds what is released. It changes only through a pull request, and every change to it is tested, built, signed and deployed to the live site
 - `dev` holds the next version while it is put together, as a series of release candidates (`4.1.0-rc.1`, `4.1.0-rc.2`), numbered in `package.json`. A push to it runs the `Tests` workflow and puts it on the staging address, https://dev--pgp-converter.netlify.app, never on the live site
 
-Pull requests from contributors go to `dev`. Anyone can open one, and only the maintainer merges them. In your pull request, raise `releaseCandidate` in `package.json` by one, so that your change is a candidate of its own. If `dev` has moved on by the time it is merged, raise it again. Leave the version itself as it is: the maintainer sets it. On your own machine the app shows a notice under its top bar and its version in pale yellow, as every copy that is not the released site does. When a version is ready, a pull request from `dev` into `main` runs the tests again and deploys a preview of the site, and merging it deploys to production.
+Pull requests from contributors go to `dev`. Anyone can open one, and only the maintainer merges them. In your pull request, raise `releaseCandidate` in `package.json` by one, so that your change is a candidate of its own. If `dev` has moved on by the time it is merged, raise it again. Leave the version itself as it is: the maintainer sets it. The development server (`npm run dev`) shows a notice under its top bar and its version in pale yellow, as the staging address and a preview do. When a version is ready, a pull request from `dev` into `main` runs the tests again and deploys a preview of the site, and merging it deploys to production.
 
 Rules on GitHub protect both branches. Neither can be deleted or force-pushed, and only the maintainer can push to them. A pull request into `main` cannot be merged until the `Tests` workflow passes. It is squashed into one commit, so `main` gains one commit for each release.
 

@@ -98,7 +98,7 @@
 
 			<!-- The version, set like a maker's plate under the picture. It leads to the list of releases.
              Beside it, the commit the build was made from, which leads to that commit's source.
-             Everywhere but the released site it is drawn in its own colour and named a dev build. -->
+             On a test copy it is drawn in its own colour and named a dev build. -->
 			<div class="build">
 				<a
 					class={['version-plate', { candidate: appVersion.isCandidate }]}
@@ -294,7 +294,7 @@
 		gap: 0 14px;
 	}
 
-	/* Shown everywhere but the released site */
+	/* Shown on a test copy */
 	.build-candidate {
 		font-family: var(--mono);
 		font-size: 12px;
@@ -337,7 +337,7 @@
 		background: var(--text);
 	}
 
-	/* Away from the released site the version has its own colour, which it keeps
+	/* On a test copy the version has its own colour, which it keeps
      under the pointer, a little dimmer at rest */
 	.version-plate.candidate .pip.lit {
 		background: var(--candidate);

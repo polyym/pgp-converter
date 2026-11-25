@@ -5,6 +5,10 @@
 # The pull requests go to dev, like every other change, so an update is on the
 # staging address before it is released. GitHub reads this file from main, and
 # opens security updates against main whatever is written here.
+#
+# A release is proposed once it is a week old, not on the day it comes out.
+# A release that turns out to be malicious is usually found and pulled within
+# days. Security updates are not held back.
 version: 2
 updates:
   # The workflows name each action by the commit it was reviewed at. A commit
@@ -14,6 +18,8 @@ updates:
     target-branch: dev
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
 
   # The packages in package.json. Minor and patch releases arrive together in one
   # pull request a month; a new major version gets a pull request of its own,
@@ -23,6 +29,8 @@ updates:
     target-branch: dev
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     groups:
       minor-and-patch:
         update-types:
@@ -35,3 +43,22 @@ updates:
       - dependency-name: typescript
         update-types:
           - version-update:semver-major
+
+  # The Netlify CLI that the deploy workflow uses, and the packages it brings,
+  # from their own lockfile
+  - package-ecosystem: npm
+    directory: /.github/deploy
+    target-branch: dev
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+
+  # The base images in the Dockerfile, named by version and digest
+  - package-ecosystem: docker
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7

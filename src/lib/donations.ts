@@ -90,7 +90,7 @@ const ADDRESS_FORMATS: Record<keyof ApiAddresses, RegExp> = {
 	bitcoin_native_segwit: /^bc1q(?:[02-9ac-hj-np-z]{38}|[02-9ac-hj-np-z]{58})$/
 };
 
-// What every copy but the released site shows in place of the real addresses.
+// What a test copy shows in place of the real addresses.
 // Each is about as long as a real one, so the cards keep their shape, and has
 // characters no chain allows, so no wallet will send to it. No two are alike:
 // the page tells which address was copied by its text.
@@ -136,7 +136,7 @@ export interface FetchWalletsOptions {
 }
 
 export interface LoadWalletsOptions extends FetchWalletsOptions {
-	/** True on every copy that is not the released site: it shows fake addresses */
+	/** True on a test copy: it shows fake addresses */
 	isFake: boolean;
 }
 
@@ -154,8 +154,9 @@ export interface WalletsResult {
 
 /**
  * Gets the wallets the Donate page shows. Only the released site asks the
- * wallet service. A copy anywhere else has no key for the service and must
- * not pass for somewhere to send money, so it gets fake addresses.
+ * wallet service. A test copy has no key for the service and must not pass
+ * for somewhere to send money, so it gets fake addresses. A self-hosted copy
+ * has no wallet service at all, and the Donate page does not ask for any.
  * @param options - Whether this is such a copy, and how to cancel the request
  * @returns The wallets to show, or the message to show in their place
  */

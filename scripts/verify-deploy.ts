@@ -12,19 +12,34 @@
 // differ: the staging copy must ask search engines to leave it out, where the
 // released site must not; the preload list is no concern of an address that
 // belongs to the host; and the wallet proxy is not asked, because the Donate
-// page shows fake addresses everywhere but on the released site.
+// page of a staging copy shows fake addresses.
+//
+// With --self-hosted it checks a copy that someone runs at an address of their
+// own, such as the Docker image: .github/workflows/image.yml checks the image
+// this way before it pushes it, and the pushed x86 image before it attests it.
+// The files are held to the same standard, and every page must arrive with
+// exactly the policy in the build's own headers file, as on the released site.
+// Search engines, the wallet proxy and the HTTPS-only header are not checked:
+// they belong to the released site.
+//
+// Every copy is also asked for a few addresses made to turn a redirect into a
+// way off the site, and the check fails if one leads elsewhere.
 //
 // After a production deploy it also checks that the host's own address for
 // the project sends visitors on to the released site.
 //
-// Usage: node scripts/verify-deploy.ts <site-origin> [build-dir] [--staging]
+// Usage: node scripts/verify-deploy.ts <site-origin> [build-dir] [--staging | --self-hosted]
 //   e.g. node scripts/verify-deploy.ts https://pgp-converter.com build
+//        node scripts/verify-deploy.ts http://localhost:8080 build --self-hosted
 
 import { createHash } from 'node:crypto';
+import { statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { readCheckArgs } from './check-args.ts';
 import { inlineScripts, policyProblem, scriptHash } from './csp.ts';
 import { listFiles } from './list-files.ts';
+import { leavesSite } from './off-site.ts';
 import { missingForPreload } from './preload-header.ts';
 import { asksNotToBeListed } from './robots-header.ts';
 
@@ -58,7 +73,10 @@ interface ListingCheck {
 }
 
 // Netlify reads these as configuration and does not serve them
-const NOT_SERVED: ReadonlySet<string> = new Set(['_headers', '_redirects']);
+const HEADERS_FILE = '_headers';
+const NOT_SERVED: ReadonlySet<string> = new Set([HEADERS_FILE, '_redirects']);
+// The line of the headers file that holds the policy (scripts/write-csp.ts)
+const POLICY_LINE = /^\s+Content-Security-Policy:\s*(.+?)\s*$/im;
 // The page for an address that does not exist. It is compared as a file like
 // the rest, and then at an address made up for the purpose, which is how it
 // is really served; it has no address of its own to check.
@@ -70,6 +88,8 @@ const FUNCTION_DEPLOYED = 'Wallet proxy function is deployed.';
 // The Donate page asks the proxy on the released site alone (src/lib/donations.ts)
 const FUNCTION_NOT_ASKED =
 	'Wallet proxy function is not checked: the Donate page of a staging copy shows fake addresses.';
+const FUNCTION_NOT_ASKED_SELF_HOSTED =
+	'Wallet proxy function is not checked: the Donate page of a self-hosted copy links to the released site.';
 // The app manifest, and the type a rule in netlify.toml gives it
 const MANIFEST_PATH = '/manifest.webmanifest';
 const MANIFEST_TYPE = 'application/manifest+json';
@@ -93,26 +113,44 @@ const HASH_LENGTH = 64;
 const POLICY_PREFIX = 'content policy';
 const FORWARDS_ELSEWHERE = /<meta http-equiv="refresh"/i;
 const ROBOTS_HEADER = 'x-robots-tag';
-const STAGING_FLAG = '--staging';
-const USAGE = 'Usage: node scripts/verify-deploy.ts <site-origin> [build-dir] [--staging]';
+// Addresses that a careless redirect would send to off-site.example. A browser
+// reads a backslash as a slash and drops a tab, so each could lead off the site.
+const OFF_SITE_PROBES: readonly string[] = [
+	'/%5Coff-site.example/',
+	'/%5C%5Coff-site.example/',
+	'/%09/off-site.example/'
+];
+const REQUEST_FAILED = 'request failed';
+const SELF_HOSTED_HINT = [
+	'',
+	'The copy is not serving the same files, or the same policy, as this build. Check that both were',
+	'built from the same commit, with GITHUB_SHA and SOURCE_DATE_EPOCH set as the README shows under',
+	'"Reproducing a Build", and that the server takes its policy from build/_headers (as docker/Caddyfile does).'
+].join('\n');
+const USAGE =
+	'Usage: node scripts/verify-deploy.ts <site-origin> [build-dir] [--staging | --self-hosted]';
 const EXIT_USAGE = 2;
 
-const args = process.argv.slice(2);
-const isStaging = args.includes(STAGING_FLAG);
-const [origin = '', buildDir = 'build'] = args.filter((arg) => arg !== STAGING_FLAG);
+const checkArgs = readCheckArgs(process.argv.slice(2), isFolder);
+if (!checkArgs.data) {
+	console.error(`${checkArgs.error ?? 'The arguments cannot be used.'}\n${USAGE}`);
+	process.exit(EXIT_USAGE);
+}
+const { origin, buildDir, isStaging, isSelfHosted } = checkArgs.data;
+// The policy a self-hosted copy must send, word for word; read from the build in main()
+let expectedPolicy: string | undefined;
 
 await main();
 
 async function main(): Promise<void> {
-	if (!origin) {
-		console.error(USAGE);
-		process.exit(EXIT_USAGE);
-	}
 	const built = await listFiles(buildDir);
 	const files = built.filter((path) => !NOT_SERVED.has(path));
 	if (files.length === 0) {
 		console.error(`No files found in ${buildDir}; build the site first.`);
 		process.exit(EXIT_USAGE);
+	}
+	if (isSelfHosted) {
+		expectedPolicy = await builtPolicy();
 	}
 
 	const targets = await listTargets(files);
@@ -126,6 +164,21 @@ async function main(): Promise<void> {
 		`All ${String(files.length)} files on ${origin} match the build in ${buildDir}/, as do the ${String(pageCount)} page addresses that serve them.` +
 			'\nEvery page arrives with a content policy that names its own start-up script and allows no other inline script.'
 	);
+	const offSite = await findOffSiteRedirects();
+	if (offSite.length > 0) {
+		console.error(
+			`${origin} sends visitors to another site from ${offSite.join(', ')}. A redirect there copies the address as it came` +
+				(isSelfHosted ? '; see the slash rule in docker/Caddyfile.' : '.')
+		);
+		process.exit(1);
+	}
+	console.log('No address tried led off the site.');
+	if (isSelfHosted) {
+		console.log(`Every page arrives with exactly the policy in ${buildDir}/${HEADERS_FILE}.`);
+		console.log(FUNCTION_NOT_ASKED_SELF_HOSTED);
+		await checkEverywhere();
+		return;
+	}
 
 	const listing = await checkSearchListing();
 	if (listing.failure) {
@@ -157,21 +210,7 @@ async function main(): Promise<void> {
 		}
 	}
 
-	const errorPageProblem = await checkErrorPage();
-	if (errorPageProblem) {
-		warn(errorPageProblem);
-	} else {
-		console.log(
-			"An address that does not exist is answered with the build's own 404 page, under the same policy."
-		);
-	}
-
-	const manifestProblem = await checkManifestType();
-	if (manifestProblem) {
-		warn(manifestProblem);
-	} else {
-		console.log('The app manifest is served as a manifest.');
-	}
+	await checkEverywhere();
 
 	// Browsers take the HTTPS-only header from HTTPS alone, so a local preview is
 	// not asked for it. Nor is the staging copy: its address belongs to the host,
@@ -196,6 +235,61 @@ async function main(): Promise<void> {
 	} else {
 		console.log("The host's own address for the project sends visitors on to the released site.");
 	}
+}
+
+/** Says whether a path is a folder that exists */
+function isFolder(path: string): boolean {
+	return statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
+}
+
+/**
+ * Asks for the addresses in OFF_SITE_PROBES without following redirects.
+ * @returns Each address whose redirect would take a visitor to another site, with where it leads
+ */
+async function findOffSiteRedirects(): Promise<string[]> {
+	const found: string[] = [];
+	for (const probe of OFF_SITE_PROBES) {
+		const res = await fetch(new URL(probe, origin), {
+			redirect: 'manual',
+			cache: 'no-store',
+			signal: AbortSignal.timeout(FILE_TIMEOUT_MS)
+		}).catch(() => null);
+		const location = res?.headers.get('location') ?? null;
+		if (leavesSite(location, origin)) {
+			found.push(`${probe} (to ${String(location)})`);
+		}
+	}
+	return found;
+}
+
+/** The checks that hold for every copy: the "not found" page, and the manifest's type */
+async function checkEverywhere(): Promise<void> {
+	const errorPageProblem = await checkErrorPage();
+	if (errorPageProblem) {
+		warn(errorPageProblem);
+	} else {
+		console.log(
+			"An address that does not exist is answered with the build's own 404 page, under the same policy."
+		);
+	}
+
+	const manifestProblem = await checkManifestType();
+	if (manifestProblem) {
+		warn(manifestProblem);
+	} else {
+		console.log('The app manifest is served as a manifest.');
+	}
+}
+
+/** Reads the policy the build wrote into its headers file, or stops if there is none */
+async function builtPolicy(): Promise<string> {
+	const file = join(buildDir, HEADERS_FILE);
+	const policy = POLICY_LINE.exec(await readFile(file, 'utf-8').catch(() => ''))?.[1];
+	if (!policy) {
+		console.error(`${file} holds no Content-Security-Policy; build the site first.`);
+		process.exit(EXIT_USAGE);
+	}
+	return policy;
 }
 
 /**
@@ -250,13 +344,18 @@ async function findMismatches(targets: readonly Target[]): Promise<Mismatch[]> {
 			actual = res.ok ? sha256(Buffer.from(await res.arrayBuffer())) : `HTTP ${String(res.status)}`;
 			policy = res.headers.get('content-security-policy');
 		} catch (e: unknown) {
-			actual = `request failed (${describeError(e)})`;
+			actual = `${REQUEST_FAILED} (${describeError(e)})`;
 		}
 		if (actual !== expected) {
 			mismatches.push({ address, actual });
 		} else if (file.endsWith(HTML_ENDING)) {
-			// The right page with the wrong policy is a page that cannot start
-			const problem = policyProblem(policy, await pageHashes(local));
+			// The right page with the wrong policy is a page that cannot start, or on a
+			// self-hosted copy one that is not protected as the released site is
+			const problem =
+				policyProblem(policy, await pageHashes(local)) ??
+				(expectedPolicy === undefined || policy === expectedPolicy
+					? undefined
+					: `not the policy in ${HEADERS_FILE}`);
 			if (problem) {
 				mismatches.push({ address, actual: `${POLICY_PREFIX}: ${problem}` });
 			}
@@ -287,7 +386,7 @@ function reportMismatches(mismatches: readonly Mismatch[], targetCount: number):
 	// else is comparing it with a build of their own (see "Reproducing a Build"
 	// in the README), and the likely reasons for a difference are not the same.
 	const isWorkflow = Boolean(process.env.GITHUB_ACTIONS);
-	const deployed = isStaging ? 'the build that was just deployed' : 'the signed build';
+	const deployed = deployedBuild();
 	const build = isWorkflow ? deployed : `the build in ${buildDir}/`;
 	console.error(
 		`\n${String(mismatches.length)} of ${String(targetCount)} addresses on ${origin} do not match ${build}:`
@@ -296,6 +395,20 @@ function reportMismatches(mismatches: readonly Mismatch[], targetCount: number):
 		console.error(
 			`  ${address}  (${actual.length === HASH_LENGTH ? 'different content' : actual})`
 		);
+	}
+	// When nothing answered, the advice below about builds does not apply
+	if (
+		mismatches.length === targetCount &&
+		mismatches.every(({ actual }) => actual.startsWith(REQUEST_FAILED))
+	) {
+		console.error(
+			`\nNothing answered at ${origin}. Check that the site is running and that the address and port are right.`
+		);
+		return;
+	}
+	if (isSelfHosted) {
+		console.error(SELF_HOSTED_HINT);
+		return;
 	}
 	if (mismatches.some(({ actual }) => !actual.startsWith(POLICY_PREFIX))) {
 		console.error(
@@ -318,6 +431,14 @@ function reportMismatches(mismatches: readonly Mismatch[], targetCount: number):
 				'\ndashboard puts the site right while this is looked into.'
 		);
 	}
+}
+
+/** What the workflow compares the site with, in words */
+function deployedBuild(): string {
+	if (isSelfHosted) {
+		return 'the production build of this commit';
+	}
+	return isStaging ? 'the build that was just deployed' : 'the signed build';
 }
 
 /**
@@ -467,7 +588,7 @@ async function checkPreloadHeader(): Promise<string | undefined> {
 		const missing = missingForPreload(header);
 		return missing.length === 0
 			? undefined
-			: `The Strict-Transport-Security header (${header ? `"${header}"` : 'not sent'}) lacks ${missing.join(' and ')}. The domain is on the HSTS preload list, which drops a site that stops sending them.`;
+			: `The Strict-Transport-Security header (${header ? `"${header}"` : 'not sent'}) lacks ${missing.join(' and ')}. The domain was submitted to the HSTS preload list, which drops a site that stops sending them.`;
 	} catch (e: unknown) {
 		return `Could not check the Strict-Transport-Security header (${describeError(e)}).`;
 	}
@@ -512,5 +633,17 @@ function sha256(data: Buffer): string {
 }
 
 function describeError(e: unknown): string {
-	return e instanceof Error ? e.message : String(e);
+	if (!(e instanceof Error)) {
+		return String(e);
+	}
+	// fetch says only "fetch failed"; the reason, such as a refused connection,
+	// is its cause. A failure on every address of a host, as with localhost,
+	// has no message of its own, only a code.
+	const own = e.message || errorCode(e);
+	return e.cause === undefined ? own : `${own}: ${describeError(e.cause)}`;
+}
+
+/** The code Node gives a system error, such as ECONNREFUSED, or an empty string */
+function errorCode(e: Error): string {
+	return 'code' in e && typeof e.code === 'string' ? e.code : '';
 }

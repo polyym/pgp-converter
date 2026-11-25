@@ -4,6 +4,11 @@
 // priority, and a function that claims "/*" then wins over a custom path here.
 // That took the Donate page down in v3.3.1. The default address is always
 // this function's alone.
+//
+// It imports nothing but Node's own modules. The deploy jobs package it without
+// installing the project's packages (.github/workflows/deploy.yml), so a package
+// imported here would go live missing, and the function could not start. A test
+// in src/lib/wallet-proxy.test.ts checks this.
 
 /** The only upstream record this site may read; the proxy cannot be pointed anywhere else */
 const ACCOUNT = 'pgp-converter';
