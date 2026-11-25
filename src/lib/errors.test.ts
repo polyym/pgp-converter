@@ -11,38 +11,38 @@ import {
 const GENERIC = 'Something went wrong. Please check your inputs and try again.';
 
 describe('getUserFriendlyError', () => {
-	it('should return friendly message for misformed armored text', () => {
+	it('should report misformed armour as an invalid key', () => {
 		const msg = getUserFriendlyError('Misformed armored text', 'encrypt');
 		expect(msg).toContain('invalid or corrupted');
 	});
 
-	it('should return friendly message for incorrect passphrase', () => {
+	it('should report an incorrect passphrase', () => {
 		const msg = getUserFriendlyError('Incorrect key passphrase', 'decrypt');
 		expect(msg).toContain('Incorrect passphrase');
 	});
 
-	it('should return friendly message for session key decryption failure', () => {
+	it('should report a failed session key decryption as the wrong key', () => {
 		const msg = getUserFriendlyError('Session key decryption failed', 'decrypt');
 		expect(msg).toContain('not encrypted with the private key');
 	});
 
-	it('should return friendly message for invalid public key', () => {
+	it('should report an invalid public key', () => {
 		const msg = getUserFriendlyError('not a valid OpenPGP public key', 'encrypt');
 		expect(msg).toContain('valid PGP public key');
 	});
 
-	it('should return friendly message for invalid private key', () => {
+	it('should report an invalid private key', () => {
 		const msg = getUserFriendlyError('not a valid OpenPGP private key', 'decrypt');
 		expect(msg).toContain('valid PGP private key');
 	});
 
-	it('should return friendly message for invalid curve in keygen', () => {
+	it('should report an unsupported curve in keygen', () => {
 		const msg = getUserFriendlyError('invalid curve', 'keygen');
 		expect(msg).toContain('not supported');
 	});
 
-	it('should respect context filtering', () => {
-		// "Incorrect key passphrase" is only mapped for 'decrypt' context
+	it('should apply a mapping only in its own contexts', () => {
+		// "Incorrect key passphrase" is mapped for decrypt and sign only
 		const decryptMsg = getUserFriendlyError('Incorrect key passphrase', 'decrypt');
 		expect(decryptMsg).toContain('Incorrect passphrase');
 
@@ -50,7 +50,7 @@ describe('getUserFriendlyError', () => {
 		expect(encryptMsg).toBe(GENERIC);
 	});
 
-	it('should return generic fallback for unknown errors', () => {
+	it('should fall back to a generic message for unknown errors', () => {
 		const msg = getUserFriendlyError('some unknown error xyz', 'encrypt');
 		expect(msg).toBe(GENERIC);
 	});
@@ -156,7 +156,7 @@ describe('getUserFriendlyError', () => {
 		).toBe(NOT_ENCRYPTED_MESSAGE_ERROR);
 	});
 
-	it('should explain that an old kind of key is no longer accepted, for the box it was pasted into', () => {
+	it('should word a weak-key error for the box the key was pasted into', () => {
 		const rsa =
 			'Error encrypting message: Could not verify primary key: RSA keys shorter than 2047 bits are considered too weak.';
 		const dsa = 'Could not verify primary key: dsa keys are considered too weak.';
@@ -167,16 +167,16 @@ describe('getUserFriendlyError', () => {
 	});
 });
 
-describe('getUserFriendlyError, for a message that unpacks to too much', () => {
+describe('getUserFriendlyError, for a message over the decompression limit', () => {
 	const RAW =
 		'Error decrypting message: Parsing CompressedDataPacket failed: Maximum decompressed message size exceeded';
 
-	it('should say so whatever step of decrypting reports it', () => {
+	it('should blame the message at any decryption stage', () => {
 		expect(getUserFriendlyError(RAW, 'decrypt', 'operation')).toBe(OVERSIZED_MESSAGE_ERROR);
 		expect(getUserFriendlyError(RAW, 'decrypt', 'message')).toBe(OVERSIZED_MESSAGE_ERROR);
 	});
 
-	it('should say so on the Verify page too, where any other fault in the message gets one answer', () => {
+	it('should take precedence over the Verify catch-all', () => {
 		expect(getUserFriendlyError(RAW, 'verify', 'message')).toBe(OVERSIZED_MESSAGE_ERROR);
 	});
 

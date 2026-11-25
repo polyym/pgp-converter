@@ -3,93 +3,89 @@ export const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60 * MS_PER_SECOND;
 export const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE;
 
-// Where the app lives
+// Addresses
 export const SITE_URL = 'https://pgp-converter.com';
 export const REPOSITORY_URL = 'https://github.com/polyym/pgp-converter';
-// The host's own address for the project. The staging copy and the preview of
-// each pull request are served at names that end in "--" and this.
+// The project's default Netlify hostname. Branch deploys and deploy previews are
+// served at <name>--pgp-converter.netlify.app.
 export const HOST_PROJECT_ADDRESS = 'pgp-converter.netlify.app';
 
-// Messages that come and go
+// Feedback timing
+// Pause before a tool's work starts, so the loading state paints first
 export const LOADING_DELAY_MS = 200;
 export const SUCCESS_TOAST_MS = 2500;
 export const ERROR_TOAST_MS = 4000;
 export const COPY_FEEDBACK_MS = 1500;
 export const COPY_ERROR_MS = 3000;
-// How long a note under a key or message box stays before it goes away again
+// How long a note under a text field stays visible
 export const FIELD_NOTE_MS = 5000;
 
 // Keys and passphrases
-// How long to wait after the last keystroke before reading a pasted public key
+// Debounce between the last edit to a key field and parsing its contents
 export const KEY_INSPECT_DELAY_MS = 250;
 export const MIN_PASSPHRASE_LENGTH = 8;
-// Intentionally permissive: rejects empty parts and whitespace, but does not enforce
-// full RFC 5322. PGP user IDs tolerate free-form emails, and the recipient's client
-// is the authoritative validator.
+// Checks only the overall shape (name@domain.tld, no whitespace), not RFC 5322:
+// an OpenPGP user ID is free-form text.
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Keys
-// What OpenPGP.js is told about a key, or a subkey, that does not say what it
-// is for. Each normally carries flags that name its uses: signing, encrypting.
-// One that carries none is refused by the library for everything, and a good
-// signature from it would not be confirmed. With this option it is
-// used for whatever its algorithm allows, as GnuPG uses one. A subkey must
-// still be cross-certified before its signatures count. Flags are obeyed where
-// the library reads them: on the main user ID, and on the signature that binds
-// a subkey. Every call that asks what a key may do takes this option, so that
-// the pages agree.
+// OpenPGP.js config for every call that checks what a key may be used for, so all
+// pages agree. By default OpenPGP.js refuses a key or subkey that has no key flags
+// subpacket, as older software writes them, so valid signatures from it fail to
+// verify. With this option such a key may do whatever its algorithm supports, as in
+// GnuPG. Flags that are present still apply, and a signing subkey still needs its
+// cross-certification.
 export const KEY_USE_SETTINGS = { allowMissingKeyFlags: true };
 
-// Large messages and results
-// How much a message may unpack to when it is opened. A message can be
-// compressed, and one built for the purpose is a few kilobytes that unpack to
-// gigabytes. No real message comes near this.
+// Size limits
+// Decompression limit for messages: a crafted compressed message of a few
+// kilobytes can inflate to gigabytes. No legitimate message comes near it.
 export const MAX_UNPACKED_MESSAGE_MB = 16;
 export const MAX_UNPACKED_MESSAGE_BYTES = MAX_UNPACKED_MESSAGE_MB * 1024 * 1024;
-// The same limit, as the option OpenPGP.js takes wherever it reads a message
+// The same limit as OpenPGP.js config, for every call that reads a message
 export const MESSAGE_READING_LIMITS = { maxDecompressedMessageSize: MAX_UNPACKED_MESSAGE_BYTES };
 
-// How much of a result is put on the page. Where a screen reader or a similar
-// tool is attached, a browser takes four times as long each time the text
-// doubles: a third of a second for this much, over a minute for two megabytes.
-// Copying and downloading always give the whole result.
+// Longest result rendered into the page, in UTF-16 code units. With a screen reader
+// or other assistive technology attached, rendering time grows with the square of
+// the length: about a third of a second at this size, over a minute at 2 MB. Copy
+// and download always use the whole result.
 export const RESULT_PREVIEW_CHARS = 100_000;
 
-// Clearing a page
-// How long the Clear button stays armed while it waits for a second press
+// Clearing
+// How long the Clear button waits for a confirming second press
 export const CLEAR_CONFIRM_MS = 4000;
-// How long a tool page may sit untouched before its idle clear runs
+// Inactivity after which a tool page clears its fields
 export const IDLE_CLEAR_MS = 15 * MS_PER_MINUTE;
-// The same wait in minutes, for telling people about it
 export const IDLE_CLEAR_MINUTES = IDLE_CLEAR_MS / MS_PER_MINUTE;
-// How often the page looks at the clock while it waits
 export const IDLE_CHECK_MS = 30 * MS_PER_SECOND;
-// What some browsers report as the key code of any key pressed while an input
-// method is composing text
+// keyCode that some browsers report for a keydown that belongs to IME composition,
+// sometimes with isComposing already false (Safari does this for the Enter that
+// commits the text)
 export const COMPOSING_KEY_CODE = 229;
 
-// Moving around
-// How long a page change waits for the browser to start its cross-fade before
-// the new page is shown without one
+// Navigation
+// How long crossFade waits for the view transition callback before showing the
+// new page without a fade
 export const PAGE_FADE_WAIT_MS = 250;
-// On the About page, how far below the top bar a heading has to pass before
-// its section counts as the one being read
+// How far below the top bar a section heading must scroll before the About page's
+// table of contents marks that section as current
 export const SECTION_MARK_OFFSET_PX = 40;
-// How close to the foot of a page still counts as the very bottom
+// Distance from the end of the page that still counts as scrolled to the bottom,
+// to absorb subpixel rounding
 export const PAGE_BOTTOM_TOLERANCE_PX = 2;
 
-// On-screen keyboards
-// How much of the window has to be covered before it is taken for a keyboard.
-// The row of shortcuts a tablet shows for a hardware keyboard is about 55px
-// tall, and the lowest phone keyboards about 160px.
+// On-screen keyboard
+// Smallest covered height taken for an on-screen keyboard. It sits between the
+// shortcut bar a tablet shows for a hardware keyboard (about 55px) and the
+// shortest phone keyboards (about 160px).
 export const KEYBOARD_MIN_HEIGHT_PX = 120;
 
-// Updating the app
-// How often an open app asks whether there is a newer version, at most
+// App updates
+// Minimum time between update checks when the app is brought back into view
 export const UPDATE_CHECK_INTERVAL_MS = 60 * MS_PER_MINUTE;
-// How long to wait for the new version to take over before reloading anyway
+// How long to wait for the new service worker to take control before reloading anyway
 export const UPDATE_TAKEOVER_TIMEOUT_MS = 4000;
-// How long after asking for a reload the page counts as having stayed
+// If the page still exists this long after location.reload(), the visitor
+// cancelled the leave-page prompt or the reload is slow
 export const UPDATE_STAYED_AFTER_MS = 1500;
 
 // Donations
@@ -97,7 +93,9 @@ export const DONATION_COOLDOWN_MS = MS_PER_DAY;
 export const DONATION_STORAGE_KEY = 'pgp_donation_dismissed_at';
 // How often the Donate page changes the coin it shows while addresses load
 export const LOADING_COIN_CYCLE_MS = 2000;
-// The wallet service sleeps when unused. While it wakes, the Donate page asks
-// again this often, and this many times at most: about two and a half minutes.
+// The wallet service sleeps when idle and answers 502 to 504 while it starts up,
+// which the proxy passes on as 503. The Donate page retries this often, this many
+// times: two and a half minutes of waiting, plus the time each request takes, up
+// to the proxy's UPSTREAM_TIMEOUT_MS when the service does not answer.
 export const WALLET_RETRY_DELAY_MS = 10 * MS_PER_SECOND;
 export const WALLET_MAX_RETRIES = 15;

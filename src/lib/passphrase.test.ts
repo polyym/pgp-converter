@@ -21,11 +21,11 @@ describe('ratePassphrase', () => {
 		expect(ratePassphrase('Tr0ub4dor&3-and-then-some').strength).toBe('strong');
 	});
 
-	it('should not be fooled by one character repeated', () => {
+	it('should call one character repeated weak', () => {
 		expect(ratePassphrase('aaaaaaaaaaaaaaaaaaaaaaaa').strength).toBe('weak');
 	});
 
-	it('should hold digits alone to a higher bar', () => {
+	it('should need more length for digits alone and never call them strong', () => {
 		expect(ratePassphrase('836492017345').strength).toBe('weak');
 		expect(ratePassphrase('83649201734598216').strength).toBe('fair');
 		expect(ratePassphrase('8364920173459821600472').strength).toBe('fair');

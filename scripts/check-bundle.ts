@@ -1,10 +1,10 @@
-// Fails the build if a page that does no cryptography would download the
-// cryptography library. The homepage, About and Donate load every component in
-// src/lib/components (the tool pages' own are in its tool folder), so one of
-// those importing a file that imports OpenPGP.js is enough. Nothing else
-// notices: the pages still work, only slower.
+// Fails if the homepage, About or Donate would preload OpenPGP.js. Those pages
+// load the shared components in src/lib/components (tool-only ones are in
+// src/lib/components/tool), so one shared component that imports OpenPGP.js,
+// even indirectly, puts the library on them. Nothing else would catch it: the
+// pages still work, only slower.
 //
-// Usage: node scripts/check-bundle.ts [build directory]
+// Usage: node scripts/check-bundle.ts [build-dir]
 
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,7 +14,6 @@ interface ScriptSize {
 	bytes: number;
 }
 
-// Pages with no cryptography on them
 const LIGHT_PAGES: readonly string[] = ['index.html', 'about.html', 'donate.html'];
 // Their script comes to between 120 and 150 kB before compression; OpenPGP.js
 // alone is about 390 kB. The limit sits between the two, with room for the app to grow.
@@ -35,7 +34,9 @@ function main(): void {
 	if (results.includes(false)) {
 		process.exit(1);
 	}
-	console.log('Pages without cryptography do not load the cryptography library.');
+	console.log(
+		`${LIGHT_PAGES.join(', ')} each preload at most ${inKilobytes(LIMIT_BYTES)} of script, less than OpenPGP.js alone.`
+	);
 }
 
 /** Checks one page, says what it found, and returns whether the page passed */
@@ -43,7 +44,7 @@ function isLightEnough(page: string): boolean {
 	const scripts = preloadedScripts(readFileSync(join(buildDir, page), 'utf-8'));
 	if (scripts.length === 0) {
 		console.error(
-			`${page}: found no preloaded scripts. Has the page's markup changed? This check needs updating.`
+			`${page}: found no modulepreload links. If SvelteKit's output has changed, update preloadedScripts().`
 		);
 		return false;
 	}
@@ -55,7 +56,7 @@ function isLightEnough(page: string): boolean {
 	if (total > LIMIT_BYTES) {
 		const largest = sizes.toSorted((a, b) => b.bytes - a.bytes)[0];
 		console.error(
-			`${page} loads ${inKilobytes(total)} of script, over the ${inKilobytes(LIMIT_BYTES)} limit. ` +
+			`${page} preloads ${inKilobytes(total)} of script, over the ${inKilobytes(LIMIT_BYTES)} limit. ` +
 				`The largest file is ${largest.path} (${inKilobytes(largest.bytes)}). ` +
 				'A component outside src/lib/components/tool is probably importing a file that imports OpenPGP.js.'
 		);
@@ -65,7 +66,7 @@ function isLightEnough(page: string): boolean {
 	return true;
 }
 
-/** Every script the page tells the browser to fetch up front */
+/** Returns the build-relative paths of the page's modulepreload links */
 function preloadedScripts(html: string): string[] {
 	const paths = new Set<string>();
 	const links = html.match(LINK_ELEMENT) ?? [];

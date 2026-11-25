@@ -8,8 +8,7 @@
 	import Icon from '../Icon.svelte';
 	import KeyDetails from './KeyDetails.svelte';
 
-	// What to say when an addition put no new key in the list. A new key shows
-	// in the list itself.
+	// No note for 'new-key': the new key appears in the list
 	const ADDITION_NOTES: Record<Exclude<AdditionOutcome, 'new-key'>, string> = {
 		'new-details': 'No new key was found in that, but it adds to a key already in the list.',
 		'private-key': 'That holds a private key, so nothing was added. Never share a private key.',
@@ -35,24 +34,27 @@
 		label: string;
 		value?: string;
 		placeholder?: string;
-		/** Monospaced text, for keys and PGP messages */
+		/** For keys and PGP messages: monospace font, dir="ltr", no autocapitalize or autocorrect */
 		isMonospace?: boolean;
-		/** Offer "Open file" and accept dropped files; only for boxes that hold a PGP block */
+		/**
+		 * Shows Open file and accepts dropped files. It also marks the box as holding
+		 * a PGP block, so the Paste button replaces the contents instead of
+		 * inserting at the cursor.
+		 */
 		canOpenFiles?: boolean;
-		/** The keys recognised in the box. Once there are some, the box folds into a card that names them. */
+		/** Keys the page parsed from the box. While there are any, the textarea folds into a KeyDetails card. */
 		keys?: KeyInfo[];
 		/** What the keys are being used for, for example "Encrypting to" */
 		keysTitle?: string;
-		/** Advice shown with the keys */
 		keysHint?: string;
 		/**
 		 * The box may hold several keys (recipients, or possible signers). Once it
 		 * holds one, Paste and Open file add to it instead of replacing it.
 		 */
 		canHoldSeveral?: boolean;
-		/** Tells the user that further keys can be added, shown with the keys */
+		/** Shown in the folded card when canHoldSeveral is set */
 		addHint?: string;
-		/** What is wrong with the contents, shown under the box until they are changed */
+		/** Shown under the box until the value differs from the one it was reported for */
 		error?: string;
 	} = $props();
 
@@ -64,30 +66,30 @@
 	let noteTimer: ReturnType<typeof setTimeout> | undefined;
 	// The contents the current note was given for
 	let noteValue = $state('');
-	// True while the user is working in the box itself
+	// Keeps the textarea unfolded while the user works in it
 	let isEditing = $state(false);
-	// Set by a paste from the keyboard: fold the box as soon as the key is read
+	// Set by a paste event; the effect below folds the box once the page has
+	// parsed the pasted key. A plain let, so setting it does not re-run the effect.
 	let shouldFoldWhenRead = false;
 	// The contents the current error was reported for
 	let errorValue = $state('');
 
+	// Re-runs only when error changes: value is untracked, so typing does not move the snapshot
 	$effect(() => {
 		if (error) {
 			errorValue = untrack(() => value);
 		}
 	});
 
-	// An error stays until the contents it was about are changed
 	const isErrorShown = $derived(!!error && value === errorValue);
-	// A recognised key is shown by name instead of as a block of characters:
-	// shorter, and a private key is not left in plain view
+	// Show recognised keys by user ID and fingerprint instead of as armoured
+	// text: shorter, and a private key is not left on screen
 	const isFolded = $derived(keys.length > 0 && !isEditing && !isErrorShown);
-	// Further keys join the ones already there
+	// Paste and Open file append to the existing keys instead of replacing them
 	const isAdding = $derived(canHoldSeveral && keys.length > 0);
-	// A note is about what the box held when it was given. Once Remove or the
-	// page's Clear has changed that, it has nothing left to be about. Typing
-	// ends it for good, in the box's input handler, so that Backspace or undo
-	// cannot bring it back and have it read out a second time.
+	// Hide the note once the value changes (Remove, or the page's Clear). The
+	// input handler also clears the note itself, so undoing back to the old value
+	// does not show it, and announce it, a second time.
 	const shownNote = $derived(value === noteValue ? note : '');
 
 	$effect(() => {
@@ -100,8 +102,8 @@
 		textarea?.blur();
 	});
 
-	// Reading the clipboard is not available in every browser; the button only
-	// appears where it can work
+	// Some browsers lack navigator.clipboard.readText, so the Paste button
+	// appears only after mount and only where it exists
 	onMount(() => {
 		canPaste = canReadClipboard();
 		return () => {
@@ -118,9 +120,8 @@
 		}, FIELD_NOTE_MS);
 	}
 
-	// Adds text to a box the user writes in, where the cursor is. Putting it in
-	// place of what they had typed would lose their writing, and nothing could
-	// bring it back.
+	// For a free-text box. Replacing the value would lose the user's writing with
+	// no way to undo it; insertAtCursor edits through the browser, so undo works.
 	function addAtCursor(text: string) {
 		if (!textarea) {
 			value += text;
@@ -130,9 +131,9 @@
 		value = textarea.value;
 	}
 
-	// Puts text into the box. A key or a PGP message replaces what was there,
-	// or joins the keys already listed; in a box for the user's own writing
-	// it goes in where the cursor is.
+	// The Paste button, Open file and drops all come through here. In a PGP box
+	// the text replaces the value or, with isAdding, joins the key list; in a
+	// free-text box it is inserted at the cursor.
 	function put(text: string) {
 		note = '';
 		if (!canOpenFiles && value) {
@@ -150,7 +151,7 @@
 	async function addKeys(text: string) {
 		const held = value;
 		const { box, outcome } = await addToKeys(held, text);
-		// The answer is about what the box held. If the box has changed since, it is left as it is.
+		// Drop the result if the box changed while addToKeys was running
 		if (value !== held) {
 			return;
 		}
@@ -169,8 +170,9 @@
 				showNote('The clipboard is empty.');
 			}
 		} catch {
-			// The browser asks the user first; saying no is not an error worth alarming anyone about.
-			// A folded box is out of sight, so pasting from the keyboard starts with opening it.
+			// readText rejects when the user or the browser denies clipboard access,
+			// which gets a hint, not an error. A folded box has no visible textarea to
+			// paste into, so the hint says to open it first.
 			showNote(
 				isFolded
 					? 'The browser did not allow pasting. Press "Show or edit", then paste into the box.'
@@ -183,7 +185,7 @@
 		if (!list?.length) {
 			return;
 		}
-		const result = await readTextFiles(list, true);
+		const result = await readTextFiles(list, /* requiresArmor */ true);
 		if (result.text === undefined) {
 			showNote(result.error ?? 'That file could not be read.');
 		} else {
@@ -272,7 +274,7 @@
 					accept=".asc,.txt,.key,.pgp,.gpg,.pub,.sig,text/plain,application/pgp-keys,application/pgp-encrypted,application/pgp-signature"
 					onchange={(e) => {
 						void useFiles(e.currentTarget.files);
-						// So that choosing the same file again is noticed
+						// Reset so that choosing the same file again still fires change
 						e.currentTarget.value = '';
 					}}
 				/>
@@ -280,9 +282,11 @@
 		</div>
 	</div>
 
-	<!-- The box stays in the page while folded, so its label and value still work.
-	     A phone's keyboard capitalises sentences in a message the user writes, and
-	     leaves a PGP block exactly as it is. -->
+	<!-- Folding hides the textarea with CSS instead of unmounting it, so the label
+	     and bind:value keep working. spellcheck and translate are off in every box
+	     because a browser's spelling and translation services can send the text to
+	     a server. autocapitalize is "sentences" for a message the user writes and
+	     "off" for a PGP block. -->
 	<div class={['drop-zone', { dragging: isDragging, folded: isFolded }]}>
 		<textarea
 			bind:this={textarea}
@@ -401,7 +405,7 @@
 		border-color: var(--error);
 	}
 
-	/* Sits over the box while a file is held above it; lets the drop through */
+	/* pointer-events: none lets the drop land on the textarea underneath */
 	.drop-hint {
 		position: absolute;
 		inset: 1px;
@@ -434,7 +438,6 @@
 		color: var(--warning);
 	}
 
-	/* Says that the list of keys can grow; quieter than the advice above it */
 	.add-hint {
 		margin: 10px 0 0;
 		font-size: 12px;
@@ -442,8 +445,7 @@
 		color: var(--text-dim);
 	}
 
-	/* Takes no room until there is something to say, but stays in the page: a
-     screen reader announces a change to a place it already knew about */
+	/* Visually hidden while empty but kept in the DOM, as .live:empty in app.css */
 	.field-note:empty {
 		position: absolute;
 		width: 1px;
@@ -453,7 +455,6 @@
 		clip-path: inset(50%);
 	}
 
-	/* Fingers need a larger target than a mouse pointer does */
 	@media (pointer: coarse) {
 		.field-head {
 			min-height: 44px;

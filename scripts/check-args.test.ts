@@ -5,7 +5,7 @@ const SITE = 'https://pgp-converter.com';
 const isBuild = (path: string): boolean => path === 'build' || path === 'other-build';
 
 describe('readCheckArgs', () => {
-	it('should read the calls the workflows and the README make', () => {
+	it('should parse the commands the workflows and the README run', () => {
 		expect(readCheckArgs([SITE, 'build'], isBuild).data).toEqual({
 			origin: SITE,
 			buildDir: 'build',
@@ -21,7 +21,7 @@ describe('readCheckArgs', () => {
 		).toBe(true);
 	});
 
-	it('should take the build folder as build when none is named', () => {
+	it('should default the build directory to build', () => {
 		expect(readCheckArgs([SITE], isBuild).data?.buildDir).toBe('build');
 	});
 
@@ -36,7 +36,7 @@ describe('readCheckArgs', () => {
 		});
 	});
 
-	it('should refuse an option it does not know, rather than run the wrong check', () => {
+	it('should refuse an unknown option', () => {
 		for (const option of ['--selfhosted', '--help', '-h']) {
 			expect(readCheckArgs([SITE, 'build', option], isBuild)).toEqual({
 				success: false,
@@ -45,19 +45,19 @@ describe('readCheckArgs', () => {
 		}
 	});
 
-	it('should refuse both modes at once', () => {
+	it('should refuse --staging with --self-hosted', () => {
 		expect(readCheckArgs([SITE, '--staging', '--self-hosted'], isBuild).error).toContain(
 			'cannot be used together'
 		);
 	});
 
-	it('should refuse more than a site and a build folder', () => {
+	it('should refuse more than an origin and a build directory', () => {
 		expect(readCheckArgs([SITE, 'build', 'extra'], isBuild).error).toBe(
 			'Too many arguments: extra'
 		);
 	});
 
-	it('should refuse a site that is not a web address', () => {
+	it('should refuse a missing origin or one that is not http or https', () => {
 		expect(readCheckArgs([], isBuild).error).toBe('No site to check.');
 		expect(readCheckArgs(['not-a-url'], isBuild).error).toBe('Not a web address: not-a-url');
 		expect(readCheckArgs(['ftp://example.org'], isBuild).error).toBe(
@@ -65,7 +65,7 @@ describe('readCheckArgs', () => {
 		);
 	});
 
-	it('should refuse a build folder that is not there as a folder', () => {
+	it('should refuse a build directory that does not exist', () => {
 		expect(readCheckArgs([SITE, 'nowhere'], isBuild).error).toBe(
 			'No nowhere directory; build the site first.'
 		);

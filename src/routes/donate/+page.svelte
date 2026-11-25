@@ -89,6 +89,8 @@
 						<div class="wallet-card">
 							<div class="wallet-header">
 								<div class="wallet-icon" style="background: {wallet.bg}; color: {wallet.color}">
+									<!-- A bundled SVG from donations.ts; the fetched data
+									     supplies only the address -->
 									{@html wallet.icon}
 								</div>
 								<div class="wallet-title">
@@ -182,7 +184,6 @@
 		margin-bottom: 0;
 	}
 
-	/* A self-hosted copy sends donors to the released site for the addresses */
 	.elsewhere strong {
 		font-weight: 600;
 		color: var(--text);
@@ -193,8 +194,8 @@
 		text-underline-offset: 3px;
 	}
 
-	/* On a test copy the addresses are fake, and are shown in the colour of a
-     dev build so that they look it */
+	/* A test copy shows fake addresses, in the yellow that marks test copies, so they
+     are not mistaken for real ones */
 	.fake-note {
 		font-size: 14px;
 		line-height: 1.6;
@@ -270,22 +271,20 @@
 		gap: 12px;
 	}
 
-	/* With room for it, the four wallets sit two by two. The loading and error
-     states are a single item and take the full width. */
 	@media (min-width: 768px) {
 		.wallets {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			gap: 16px;
 		}
 
+		/* The loading and error states replace the cards and span both columns */
 		.wallets > .wallet-loading,
 		.wallets > .info-box {
 			grid-column: 1 / -1;
 		}
 
-		/* Cards in a row are the same height. A long address takes two lines and a
-       short one takes one, so each QR code sits at the foot of its card: that
-       keeps the codes in a row level with each other. */
+		/* Cards in a row stretch to the same height, but addresses wrap to one or
+       two lines. Pinning each QR code to the foot of its card keeps the codes level. */
 		.wallet-card {
 			display: flex;
 			flex-direction: column;
@@ -300,8 +299,8 @@
 		}
 	}
 
-	/* Desktop: the same two columns and the same gap as the tool pages, with the
-     explanation set in those two columns above the wallets */
+	/* Desktop: matches the 28px column gap of the tool pages' .workspace grid in
+     app.css, and sets the intro's two paragraphs in the same columns */
 	@media (min-width: 1024px) {
 		.wallets {
 			gap: 28px;
@@ -517,7 +516,6 @@
 		}
 	}
 
-	/* Fingers need a larger target than a mouse pointer does */
 	@media (pointer: coarse) {
 		.retry-btn {
 			min-height: 44px;

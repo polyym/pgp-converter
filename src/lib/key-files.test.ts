@@ -24,12 +24,12 @@ describe('keyFileName', () => {
 		expect(keyFileName('a/b\\c:d*e?f"g<h>i|j', 'public')).toBe('a_b_c_d_e_f_g_h_i_j_public.asc');
 	});
 
-	it('should not let a name climb out of the folder or hide the file', () => {
+	it('should strip path traversal and leading dots', () => {
 		expect(keyFileName('../../etc/passwd', 'private')).toBe('etc_passwd_private.asc');
 		expect(keyFileName('.hidden', 'public')).toBe('hidden_public.asc');
 	});
 
-	it('should leave out control characters and the marks that reverse text', () => {
+	it('should replace control characters and bidi overrides with underscores', () => {
 		const reverse = String.fromCodePoint(0x20_2e);
 		const nul = String.fromCodePoint(0);
 		expect(keyFileName(`Ada${reverse}Lovelace${nul}`, 'public')).toBe('Ada_Lovelace_public.asc');
@@ -40,7 +40,7 @@ describe('keyFileName', () => {
 		expect(keyFileName('', 'keypair')).toBe('key_keypair.txt');
 	});
 
-	it('should cut a very long name, without cutting a character in half', () => {
+	it('should cut a long name without splitting a surrogate pair', () => {
 		expect(keyFileName('x'.repeat(500), 'public')).toBe(`${'x'.repeat(80)}_public.asc`);
 		expect(keyFileName(`a${'😀'.repeat(100)}`, 'public')).toBe(`a${'😀'.repeat(39)}_public.asc`);
 	});

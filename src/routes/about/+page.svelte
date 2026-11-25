@@ -1,23 +1,22 @@
 <script lang="ts">
 	import { Icon, PageFrame, PageHeader, SEO } from '#lib/components/index.ts';
-	import { REPOSITORY_URL, SITE_URL } from '#lib/constants.ts';
+	import { IDLE_CLEAR_MINUTES, REPOSITORY_URL, SITE_URL } from '#lib/constants.ts';
 	import { findCurrentSection } from '#lib/sections.ts';
 	import { appVersion } from '#lib/stores/app-version.svelte.ts';
 	import { siteAddress } from '#lib/stores/site-address.svelte.ts';
 	import { onMount } from 'svelte';
 
-	// The commit this build was made from, and the cryptography library it contains
 	const commit = __BUILD_COMMIT__;
 	const openpgpVersion = __OPENPGP_VERSION__;
 	const releasedHost = new URL(SITE_URL).hostname;
-	// Where each release's Docker image is published, and how to run a copy
 	const IMAGE_NAME = 'ghcr.io/polyym/pgp-converter';
 	const IMAGE_PAGE_URL = `${REPOSITORY_URL}/pkgs/container/pgp-converter`;
 	const RUN_IT_YOURSELF_URL = `${REPOSITORY_URL}#run-it-yourself`;
-	// The commands below check pgp-converter.com, or on a self-hosted copy the copy itself
+	// The verify commands check SITE_URL, or a self-hosted copy's own origin.
+	// isSelfHosted is false while prerendering, so window is only read in the browser.
 	const checkedSite = $derived(siteAddress.isSelfHosted ? window.location.origin : SITE_URL);
 
-	// The section nearest the top of the window, marked in the list of contents
+	// id of the section highlighted in the table of contents
 	let current = $state('about-this-app');
 
 	function markCurrentSection() {
@@ -140,8 +139,7 @@
 
 			<section class="section" id="hosting-privacy">
 				<h2>Privacy Policy</h2>
-				<!-- A self-hosted copy looks like the released site, but its server is
-				     someone else's, so the policy below does not describe it -->
+				<!-- The policy covers the Netlify-hosted site, not a self-hosted copy's server -->
 				{#if siteAddress.isSelfHosted}
 					<p>
 						<strong>This copy is not served from {releasedHost}.</strong>
@@ -174,8 +172,9 @@
 							Once the app is on your device, the host sees that request but not which tool you open
 						</li>
 						<li>
-							A tool page left untouched for 15 minutes clears itself. The Generate page clears only
-							the passphrase and keeps the new keys, because nothing can bring a cleared key back
+							A tool page left untouched for {IDLE_CLEAR_MINUTES} minutes clears itself. The Generate
+							page clears only the passphrase and keeps the new keys, because nothing can bring a cleared
+							key back
 						</li>
 						<li>No client-side tracking scripts are loaded</li>
 						<li>
@@ -530,7 +529,7 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 						>, for running your own copy. Its files are the site's own for that version, byte for
 						byte, and it is signed in the same way. To check it:
 					</p>
-					<!-- It wraps rather than scrolls, so it needs no keyboard focus -->
+					<!-- .wraps makes this one wrap instead of scroll, so it needs no tabindex -->
 					<pre
 						class="verify-cmd wraps"
 						role="group"
@@ -682,8 +681,8 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 </PageFrame>
 
 <style>
-	/* Desktop: the list of sections stays beside the text, as the inputs stay
-     beside the result on the tool pages */
+	/* Desktop: the table of contents sticks beside the text, at the same offset
+     as the tool pages' result column (.workspace .result-column in app.css) */
 	@media (min-width: 1024px) {
 		.doc {
 			display: grid;
@@ -703,7 +702,8 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 		}
 	}
 
-	/* Jumps from "On this page" stop a little below the top bar, which the page keeps clear of */
+	/* Added to html's scroll-padding-top, which already keeps jumps clear of the
+     top bar, so a heading reached from the table of contents sits 12px below it */
 	.section {
 		margin-bottom: 40px;
 		scroll-margin-top: 12px;
@@ -740,7 +740,7 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 		color: var(--text);
 	}
 
-	/* Desktop only: there the list stays on screen beside the text */
+	/* The current-section highlight is desktop only, where the table of contents stays in view */
 	@media (min-width: 1024px) {
 		.toc-link {
 			padding: 4px 10px;
@@ -984,7 +984,6 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 	.verify-cmd code {
 		font-family: inherit;
 	}
-	/* A command that breaks across lines where it must, so it never needs scrolling */
 	.verify-cmd.wraps {
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
@@ -1004,7 +1003,6 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 		}
 	}
 
-	/* Fingers need a larger target than a mouse pointer does */
 	@media (pointer: coarse) {
 		.toc-grid {
 			row-gap: 0;

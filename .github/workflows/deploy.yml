@@ -1,68 +1,18 @@
-# Builds, attests, and deploys the site.
+# Only the deploy jobs get the Netlify token, so they must install none of the
+# project's packages, any of which could read it. README, "Security", says what
+# this does not cover.
 #
-# Every run builds the site in one job and deploys it in another:
+# The signature covers what goes live only because --no-build stops the CLI
+# rebuilding the site, and because the Netlify project has no linked repository
+# (Project configuration > Developer settings > Continuous deployment). If one
+# is ever linked, Netlify will publish its own unsigned build over the signed one.
 #
-# build:    installs the packages, runs the tests and checks, builds the site
-#           and keeps build/ as an artifact of the run. It is given no secret
-#           and no write permission.
-# attest:   on main only. Signs the build with Sigstore via GitHub's OIDC. It
-#           installs nothing.
-# deploy:   preview, production or staging. Downloads the build and uploads it
-#           to Netlify with the Netlify CLI; production and staging then check
-#           that the address serves it. Only these jobs are given the Netlify
-#           token. They never install the project's packages: the CLI and every
-#           package it uses come from their own lockfile (.github/deploy), with
-#           install scripts off. Their checkout is sparse: .github/deploy,
-#           netlify/ and scripts/, and the files at the top of the repository
-#           and directly in .github/, which a sparse checkout in cone mode always
-#           takes. netlify.toml, with the headers and redirects, reaches them
-#           that way.
-#
-# The build runs the code, and the install scripts, of about 300 packages. A
-# job that went on to deploy would give each of them the token, and one could
-# leave something behind to read it or to deploy on its own. The split stops
-# that for the project's packages. It does not keep the token from the CLI's
-# own packages, which the deploy runs; their lockfile fixes which versions they
-# are. Nor does it stop a package from changing the build before it is signed:
-# reproducible builds cover that (README, "Reproducing a Build").
-#
-# On push to main:  build → attest → production: deploys that exact output to
-#                   Netlify prod → checks the live site serves the signed files.
-# On push to dev:   build → staging: deploys to the staging address → checks
-#                   the address serves it. Not signed.
-# On pull_request:  build → preview: deploys a preview URL to Netlify.
-#
-# main is the released site. dev, where the next version is put together, goes
-# to the staging address and never to the live site. A pull request into main
-# gets a preview; a pull request into dev is tested by tests.yml and not deployed.
-#
-# Anyone can verify a deployed file with:
-#   gh attestation verify <file-from-built-site> --repo polyym/pgp-converter
-#
-# The attestation only means something if the signed files are the ones that go
-# live, so two things matter here:
-#   1. The Netlify CLI rebuilds the project by default. --no-build makes it
-#      upload build/ exactly as it is.
-#   2. Netlify must not build the site itself. The Netlify project has no
-#      repository linked (Project configuration → Developer settings →
-#      Continuous deployment), so every deploy comes from this workflow. If
-#      one is ever linked, Netlify will publish its own unsigned build over
-#      the signed one.
-# The final step of the production job fails if the live site differs from build/.
-#
-# The site is files only: every page is built ahead of time (SvelteKit's static
-# adapter), 404.html included, which Netlify serves for an address that does
-# not exist. The one function is the wallet proxy in netlify/functions, which
-# the CLI packages itself under --no-build and which is reached at its default
-# address (/.netlify/functions/<name>); the note in that file says why it has
-# no custom path. The final step also fails if the wallet proxy cannot be reached.
-#
-# Required secrets, for the repository or for each of the environments named
-# below (preview, production, staging):
-#   NETLIFY_AUTH_TOKEN: personal access token from Netlify user settings
-#   NETLIFY_SITE_ID:    Project ID from Netlify Project configuration → General
-# Each deploy step stops if either is empty: with no project ID, the CLI would
-# create a new Netlify project and deploy there.
+# Secrets, set on the repository or on the preview, production and staging
+# environments:
+#   NETLIFY_AUTH_TOKEN: a Netlify personal access token
+#   NETLIFY_SITE_ID:    the Project ID, from Project configuration > General
+# Each deploy step stops if either is empty, because with no project ID the CLI
+# creates a new Netlify project and deploys there.
 
 name: Deploy
 
@@ -72,12 +22,7 @@ on:
   pull_request:
     branches: [main]
 
-# Actions are named by commit, not by tag: a tag can be moved to different code
-# after it was reviewed, a commit cannot. The comment beside each one gives the
-# release that commit is. Dependabot proposes the move to a newer release
-# (.github/dependabot.yml).
-
-# Each job asks for what it needs; only attest may sign
+# Read-only for every job but attest, which sets its own
 permissions:
   contents: read
 
@@ -86,12 +31,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # The Netlify CLI as .github/deploy installs it. Named by its path, so that a
-  # missing CLI fails the step instead of being fetched from anywhere else.
+  # By path, not through npx, so a missing CLI fails the step instead of being
+  # downloaded from the registry
   NETLIFY_CLI: .github/deploy/node_modules/.bin/netlify
-  # Where dev is deployed: the Netlify project's own address with the alias in
-  # front. It stays the same from one push to the next, so it can be kept open
-  # on a phone. The app itself says under its top bar that this is a test address.
+  # A fixed alias, so the staging URL stays the same from one push to the next
   STAGING_ALIAS: dev
   STAGING_URL: https://dev--pgp-converter.netlify.app
 
@@ -109,14 +52,11 @@ jobs:
           node-version: 26
           cache: npm
 
-      # npm install, not npm ci: npm ci refuses to run when it judges the lockfile
-      # incomplete, which npm's handling of other platforms' optional packages can
-      # cause. With the lockfile in sync, this installs the same pinned versions.
+      # npm install, not npm ci: see the note in tests.yml
       - run: npm install --no-audit --no-fund
 
-      # Also in the Tests workflow, which runs beside this one and cannot stop
-      # it: without these steps a change that fails the type check, the lint
-      # rules or the formatting check would still go live
+      # The Tests workflow runs the same checks, but in parallel, so it cannot
+      # stop a failing change from being deployed
       - name: Run tests
         run: npm test
 
@@ -129,18 +69,15 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      # The same commit must always build the same files, so that anyone can
-      # repeat the build and compare (README, "Reproducing a Build"). The one
-      # thing in a build that depends on the clock, the dates it writes into the
-      # sitemap and security.txt, is taken from the commit instead.
+      # The build writes the sitemap and security.txt dates from SOURCE_DATE_EPOCH,
+      # so the same commit always builds the same files (README, "Reproducing a Build")
       - name: Take the build date from the commit
         run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
 
       - name: Build
         run: npm run build
 
-      # Before anything is signed or published: the homepage, About and Donate
-      # must not download the cryptography library
+      # Fails if the homepage, About or Donate would preload OpenPGP.js
       - name: Check page weight
         run: node scripts/check-bundle.ts build
 
@@ -158,8 +95,8 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     permissions:
-      id-token: write # mint OIDC token for Sigstore
-      attestations: write # write attestation to GitHub
+      id-token: write # sign with Sigstore
+      attestations: write # store the attestation
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -172,14 +109,13 @@ jobs:
           subject-path: 'build/**/*'
 
   preview:
-    # Not for Dependabot's pull requests: they are not given the deploy secrets,
-    # so the deploy step could only fail. The Tests workflow still runs on them.
+    # Dependabot's pull requests get no deploy secrets, so this job could only fail
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     needs: build
     runs-on: ubuntu-24.04
     environment: preview
     steps:
-      # Cone mode, the default, also takes every file at the top of the
+      # Cone mode, the default, also checks out every file at the top of the
       # repository. netlify.toml arrives that way, so keep cone mode on.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -189,8 +125,7 @@ jobs:
             netlify
             scripts
 
-      # No package cache in a job that holds the token: nothing an earlier run
-      # stored is used here
+      # No package cache: a job that holds the token uses nothing an earlier run stored
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 26
@@ -206,11 +141,8 @@ jobs:
           path: build
 
       - name: Deploy preview
-        # Written as a block: in a one-line YAML value, " #" starts a comment and
-        # would cut the command off at the pull request number.
-        # Up to three attempts, for the reason given on the production deploy step.
+        # The retries are explained on the production deploy step
         run: |
-          # An empty NETLIFY_SITE_ID would make the CLI create a new Netlify project
           if [ -z "$NETLIFY_SITE_ID" ] || [ -z "$NETLIFY_AUTH_TOKEN" ]; then
             echo "::error::NETLIFY_SITE_ID or NETLIFY_AUTH_TOKEN is empty; see the note at the top of deploy.yml"
             exit 1
@@ -230,14 +162,14 @@ jobs:
 
   production:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # Nothing goes live unsigned
+    # Deploys only the build that attest has signed
     needs: [build, attest]
     runs-on: ubuntu-24.04
     environment:
       name: production
       url: https://pgp-converter.com
     steps:
-      # Cone mode brings netlify.toml; see the preview job
+      # Set up as in the preview job; the notes there apply here too
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
@@ -246,8 +178,6 @@ jobs:
             netlify
             scripts
 
-      # No package cache in a job that holds the token: nothing an earlier run
-      # stored is used here
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 26
@@ -263,13 +193,10 @@ jobs:
           path: build
 
       - name: Deploy to production
-        # Up to three attempts, 20 and then 40 seconds apart. The CLI's first calls
-        # to Netlify's API can fail for a moment, and it then reports "Project not
-        # found" whatever the real cause was. Uploading the same files a second
-        # time is harmless, so trying again is safe. Each failed attempt leaves a
-        # warning on the run, so a deploy that needed a retry does not go unnoticed.
+        # Up to three attempts, 20 and then 40 seconds apart. The CLI's first API
+        # calls sometimes fail briefly, and it then reports "Project not found"
+        # whatever the cause. Uploading the same files again is harmless.
         run: |
-          # An empty NETLIFY_SITE_ID would make the CLI create a new Netlify project
           if [ -z "$NETLIFY_SITE_ID" ] || [ -z "$NETLIFY_AUTH_TOKEN" ]; then
             echo "::error::NETLIFY_SITE_ID or NETLIFY_AUTH_TOKEN is empty; see the note at the top of deploy.yml"
             exit 1
@@ -290,20 +217,17 @@ jobs:
         run: node scripts/verify-deploy.ts https://pgp-converter.com build
 
   staging:
-    # dev is deployed to one fixed address, so that the next version can be
-    # tried in a browser and on a phone before it is released. Only a push to
-    # dev starts this job, and a rule on GitHub lets only the maintainer push
-    # there. A pull request into dev does not start it.
+    # A branch rule lets only the maintainer push to dev, and a pull request into
+    # dev does not start this job, so only the maintainer's pushes reach the token
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
-    # Built as production is, with the same checks, but not attested: the
-    # attestation is for the files that go live
+    # Not attested: the attestation is for the files that go live
     needs: build
     runs-on: ubuntu-24.04
     environment:
       name: staging
-      url: https://dev--pgp-converter.netlify.app
+      url: ${{ env.STAGING_URL }}
     steps:
-      # Cone mode brings netlify.toml; see the preview job
+      # Set up as in the preview job; the notes there apply here too
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
@@ -312,8 +236,6 @@ jobs:
             netlify
             scripts
 
-      # No package cache in a job that holds the token: nothing an earlier run
-      # stored is used here
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 26
@@ -328,19 +250,16 @@ jobs:
           name: site
           path: build
 
-      # Search engines are asked to leave this copy out. The line goes into
-      # build/_headers, which Netlify reads and does not serve, so the files
-      # stay those a production build of this commit would have.
-      # Written as a block: in a one-line YAML value the ": " inside the header
-      # would be read as the start of a mapping.
+      # Netlify reads build/_headers but does not serve it, so the served files
+      # stay identical to a production build of this commit. A block, not a
+      # one-line value: in plain YAML the ": " in the header starts a mapping.
       - name: Ask search engines not to list the staging copy
         run: |
           printf '\n/*\n  X-Robots-Tag: noindex\n' >> build/_headers
 
       - name: Deploy to the staging address
-        # Up to three attempts, for the reason given on the production deploy step
+        # The retries are explained on the production deploy step
         run: |
-          # An empty NETLIFY_SITE_ID would make the CLI create a new Netlify project
           if [ -z "$NETLIFY_SITE_ID" ] || [ -z "$NETLIFY_AUTH_TOKEN" ]; then
             echo "::error::NETLIFY_SITE_ID or NETLIFY_AUTH_TOKEN is empty; see the note at the top of deploy.yml"
             exit 1

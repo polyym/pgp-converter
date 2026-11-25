@@ -11,7 +11,7 @@
 
 	let closeButton = $state<HTMLButtonElement>();
 
-	// Move focus into the dialog when it opens and hand it back when it closes
+	// Focus Close on open, and restore the previous focus on close
 	$effect(() => {
 		if (!isOpen || !closeButton) {
 			return;
@@ -26,7 +26,7 @@
 	});
 
 	function keepFocusInDialog(e: KeyboardEvent) {
-		// Close is the only control in the dialog, so Tab has nowhere else to go
+		// Focus trap: Close is the only focusable control (the backdrop button has tabindex="-1")
 		if (e.key === 'Tab') {
 			e.preventDefault();
 		}

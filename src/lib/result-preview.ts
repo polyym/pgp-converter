@@ -1,25 +1,24 @@
 import { RESULT_PREVIEW_CHARS } from './constants.ts';
 
-/** What part of a result to put on the page */
+/** The part of a result to render into the page */
 export interface ResultPreview {
 	/** The whole text, or its beginning if it is very long */
 	shown: string;
 	/** Whether the text was too long to show whole */
 	isCut: boolean;
-	/** How long the whole text is, in characters */
+	/** Length of the whole text, in UTF-16 code units */
 	length: number;
 }
 
-// How far back from the limit a line break may be and still be where the text is cut
+// Cut at the last line break if it falls within the final tenth of the limit
 const LINE_BREAK_REACH = 0.9;
 
 /**
- * Chooses how much of a result to show. A very long text is cut, at a line
- * break if one is near, so that showing it cannot hold the page up. The whole
- * text stays with the caller for copying and downloading.
- * @param text - The whole result
- * @param limit - The most characters to show
- * @returns The part to show, and whether anything was left out
+ * Returns the text whole if it is at most `limit` UTF-16 code units long.
+ * Otherwise returns its beginning, cut at the last line break in the final tenth
+ * of the limit or else at the limit itself, without splitting a surrogate pair.
+ * Rendering a very long result can stall the page (see RESULT_PREVIEW_CHARS);
+ * the caller keeps the whole text for copying and downloading.
  */
 export function previewOf(text: string, limit: number = RESULT_PREVIEW_CHARS): ResultPreview {
 	if (text.length <= limit) {
@@ -30,7 +29,7 @@ export function previewOf(text: string, limit: number = RESULT_PREVIEW_CHARS): R
 	if (lastBreak >= limit * LINE_BREAK_REACH) {
 		shown = shown.slice(0, lastBreak);
 	} else if (!shown.isWellFormed()) {
-		// The cut fell between the two halves of a character such as an emoji
+		// The cut split a surrogate pair, such as an emoji
 		shown = shown.slice(0, -1);
 	}
 	return { shown, isCut: true, length: text.length };

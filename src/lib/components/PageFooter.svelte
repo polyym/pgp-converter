@@ -1,14 +1,15 @@
+<!--
+@component
+The footer PageFrame puts on every page: project links, and this build's version and commit.
+-->
 <script lang="ts">
 	import { REPOSITORY_URL } from '#lib/constants.ts';
 	import { appVersion } from '#lib/stores/app-version.svelte.ts';
 
-	// The commit this build was made from. A build that was not given one shows none.
 	const commit = __BUILD_COMMIT__;
 </script>
 
-<!-- The same footer on every page, so the bottom of the app never changes shape -->
 <footer class="footer">
-	<!-- About the project on the left, places to go on the right -->
 	<p class="footer-note">
 		<span>Free and open source since 2023</span>
 		<span class="footer-dot" aria-hidden="true">&middot;</span>
@@ -27,8 +28,6 @@
 		<a href="/donate">Donate</a>
 	</span>
 
-	<!-- Which version this is, on every page, and the commit it was built from.
-	     On a test copy it says "dev build", in its own colour. -->
 	<p class={['footer-build', { candidate: appVersion.isCandidate }]}>
 		<a
 			class="footer-version"
@@ -68,7 +67,6 @@
 		font-size: 13px;
 	}
 
-	/* Each part stays whole: on a narrow screen the line breaks at the dot, not inside a phrase */
 	.footer-note {
 		display: flex;
 		flex-wrap: wrap;
@@ -78,12 +76,12 @@
 		color: var(--text-dim);
 	}
 
+	/* Wrap at the dot, never inside a phrase */
 	.footer-note span {
 		white-space: nowrap;
 	}
 
-	/* The narrowest phones cannot fit both parts on one line. There they go on two
-     lines, and the dot, which would be left hanging at the end of the first, goes. */
+	/* The two phrases stack here, and the dot would dangle at the end of the first line */
 	@media (max-width: 370px) {
 		.footer-note {
 			flex-direction: column;
@@ -111,16 +109,13 @@
 		color: var(--text);
 	}
 
-	/* A link inside a sentence is underlined: its colour alone is too close to
-     the words around it to tell them apart */
+	/* Colour alone does not set an inline link apart from the text around it (WCAG 1.4.1) */
 	.footer-note a {
 		text-decoration: underline;
 		text-decoration-color: var(--text-dim);
 		text-underline-offset: 3px;
 	}
 
-	/* The version has a line of its own under the rest, so the two parts above
-     keep their shape on every screen */
 	.footer-build {
 		display: flex;
 		flex-basis: 100%;
@@ -134,14 +129,14 @@
 		color: var(--text-dim);
 	}
 
-	/* Shown on a test copy */
+	/* Test copies: staging, deploy previews and the dev server */
 	.footer-build.candidate .footer-version,
 	.footer-candidate {
 		color: var(--candidate);
 	}
 
-	/* Fingers need a larger target than a mouse pointer does. The extra width is
-     padding that the margin takes back, so the gaps between the words stay even. */
+	/* 44px touch targets. The negative margin cancels the extra padding, so the
+	   gaps between the links stay the same. */
 	@media (pointer: coarse) {
 		.footer-build a {
 			display: inline-flex;

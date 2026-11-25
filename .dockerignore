@@ -1,5 +1,5 @@
-# Kept out of the Docker image's build: what the build installs or makes for
-# itself, wherever it is, and local settings that could change the files it makes
+# The image build installs and builds from scratch, and a local .env could
+# change what it builds
 .git
 **/node_modules
 build

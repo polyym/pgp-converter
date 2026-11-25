@@ -1,49 +1,48 @@
-// Turns the headers file that the build writes for Netlify (build/_headers)
-// into the same rules for Caddy, the web server in the Docker image. The
-// Content-Security-Policy in that file changes with every build
-// (scripts/write-csp.ts), so the image takes it from the build it serves
-// instead of keeping a copy that would go stale.
-//
-// It takes text and returns text; write-caddy-headers.ts reads and writes the
-// files. So the tests can try any headers file without one on disk.
+// Converts the Netlify headers file that the build writes (build/_headers)
+// into Caddy header directives for the Docker image. The CSP in that file
+// lists script hashes that change with every build (scripts/write-csp.ts), so
+// the image converts it from the build it serves instead of keeping a copy in
+// docker/Caddyfile.
 
-/** What converting a headers file gave */
+/** The Caddy directives, or why the headers file cannot be converted safely */
 export interface Conversion {
 	success: boolean;
-	/** The rules, ready to be imported into a Caddyfile */
+	/** One `header` block per path, for docker/Caddyfile to import */
 	data?: string;
 	error?: string;
 }
 
-/** One rule of a headers file: the addresses it covers and the headers it sets */
 interface Rule {
 	path: string;
 	headers: [name: string, value: string][];
 }
 
-// The image must never serve the site without its policy, on every address
+// The conversion fails unless the file sets a CSP for /*, so the image cannot
+// serve a page without one
 const REQUIRED_HEADER = 'content-security-policy';
 const EVERY_ADDRESS = '/*';
 const LINE_BREAK = /\r?\n/;
 const COMMENT = /^\s*#/;
 const INDENTED = /^\s/;
-// A name starts with a letter. Caddy reads a leading "-", "+", "?" or ">" as an
-// instruction to delete, add, default or replace a header, not as part of its name.
+// Captures the name and value of an indented header line. The name must start
+// with a letter: Caddy reads a leading +, -, ? or > as add, delete, set if
+// missing, or set and defer, so "-Content-Security-Policy" would delete the CSP.
 const HEADER_LINE = /^\s+([A-Za-z][A-Za-z0-9-]*):\s*(.*?)\s*$/;
-// Words that Caddy reads inside a header block as something other than a
-// header: settings of the block, and "import", which reads in another file
+// Inside a header block Caddy reads these as subdirectives (defer, match) or
+// as an import of another file, not as header names
 const RESERVED_NAMES: ReadonlySet<string> = new Set(['defer', 'match', 'import']);
-// A path that means the same to Caddy as to Netlify: no placeholders, and no
-// character that Caddy would read as the end of the path
+// Paths both servers read the same way: no Netlify :placeholders, and no
+// character that ends a token or opens a placeholder in a Caddyfile
 const SAFE_PATH = /^\/[\w.~/*-]*$/;
 // Caddy reads braces as placeholders, and quotes and backslashes as the end of
 // the value or an escape. No header the build writes has any of them.
 const UNSAFE_IN_VALUE = /["\\{}]/;
 
 /**
- * Writes the rules of a Netlify headers file as Caddy `header` directives.
- * @param headersFile - The text of the file, as the build wrote it
- * @returns The directives, or what in the file they could not carry over safely
+ * Converts the text of a Netlify `_headers` file into Caddy `header`
+ * directives, one block per path in file order. Returns an error instead for
+ * a line it cannot parse, a path, name or value Caddy would read differently,
+ * an empty value, a header set more than once, or a file with no CSP for `/*`.
  */
 export function toCaddyHeaders(headersFile: string): Conversion {
 	const rules: Rule[] = [];
@@ -70,22 +69,22 @@ export function toCaddyHeaders(headersFile: string): Conversion {
 	return { success: true, data: rules.map((rule) => directive(rule)).join('') };
 }
 
-/** Says what would keep the rules from working the same way in Caddy, if anything */
+/** Returns the first reason the rules would behave differently in Caddy, or undefined */
 function findProblem(rules: readonly Rule[]): string | undefined {
-	// Netlify sends every value of a header that two lines set, and Caddy only
-	// one, so a header may be set once in the whole file
+	// Where two rules set the same header for one path, Netlify sends both values
+	// and Caddy only one, so each header may be set once in the whole file
 	const seen = new Set<string>();
 	for (const { path, headers } of rules) {
 		if (!SAFE_PATH.test(path)) {
-			return `The path "${path}" cannot be carried over to Caddy as it is.`;
+			return `The path "${path}" has a placeholder or a character that Caddy would read differently.`;
 		}
 		for (const [name, value] of headers) {
 			const lowerName = name.toLowerCase();
 			if (RESERVED_NAMES.has(lowerName)) {
-				return `"${lowerName}" for "${path}" is a word Caddy reads as something other than a header.`;
+				return `"${lowerName}" for "${path}" is a Caddy subdirective or import, not a header name.`;
 			}
 			if (seen.has(lowerName)) {
-				return `${name} is set more than once. Where two rules cover one address, Caddy and Netlify send it differently, so each header may be set once.`;
+				return `${name} is set more than once. Where two rules cover one path, Caddy and Netlify send it differently, so each header may be set once.`;
 			}
 			seen.add(lowerName);
 			// Netlify refuses an empty value, and Caddy would send one
@@ -102,7 +101,7 @@ function findProblem(rules: readonly Rule[]): string | undefined {
 		.some(({ headers }) => headers.some(([name]) => name.toLowerCase() === REQUIRED_HEADER));
 	return hasPolicy
 		? undefined
-		: `The headers file sets no Content-Security-Policy for every address (${EVERY_ADDRESS}).`;
+		: `The headers file sets no Content-Security-Policy for every path (${EVERY_ADDRESS}).`;
 }
 
 /** One rule as a Caddy `header` directive */

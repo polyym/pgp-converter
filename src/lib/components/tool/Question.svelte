@@ -6,9 +6,9 @@
 		q,
 		children
 	}: {
-		/** The question, as someone would ask it */
+		/** The question, rendered as an h3 */
 		q: string;
-		/** The answer, as one or more paragraphs */
+		/** The answer: paragraphs, and optionally lists */
 		children: Snippet;
 	} = $props();
 </script>
@@ -71,12 +71,12 @@
 		transform: rotate(90deg);
 	}
 
-	/* As wide as the "How to" panel above, so the two read as one block */
+	/* 18px matches the Explainer's side padding, so the text lines up with the panel above */
 	.answer {
 		padding: 0 18px 16px;
 	}
 
-	/* The answer's paragraphs are written on the page that uses this component */
+	/* :global because the answer markup comes from the parent page's snippet */
 	.answer :global(p) {
 		margin: 0 0 10px;
 		font-size: 14px;

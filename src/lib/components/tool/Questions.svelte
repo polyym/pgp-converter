@@ -1,3 +1,8 @@
+<!--
+@component
+Questions and answers under a tool. Each Question starts closed, so the page stays short for
+those who only came to use the tool.
+-->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
@@ -5,15 +10,12 @@
 		title,
 		children
 	}: {
-		/** Heading for the section, naming what the questions are about */
 		title: string;
-		/** The Question components */
+		/** Question components */
 		children: Snippet;
 	} = $props();
 </script>
 
-<!-- Answers to what people ask about the tool above. Closed by default, so the
-     page stays short for those who only came to use it. -->
 <section class="questions">
 	<h2>{title}</h2>
 	<div class="questions-list">

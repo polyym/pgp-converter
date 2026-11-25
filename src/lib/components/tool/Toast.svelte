@@ -6,13 +6,12 @@
 		message
 	}: {
 		type: 'success' | 'error';
-		/** What to say; nothing is shown while this is empty */
+		/** An empty string hides the toast */
 		message: string;
 	} = $props();
 </script>
 
-<!-- The place stays in the page while there is nothing to say, so that a
-     screen reader hears the message when one arrives -->
+<!-- Live region stays mounted while empty, so the message is announced when it arrives -->
 <div role={type === 'error' ? 'alert' : 'status'}>
 	{#if message}
 		<div class="toast {type}">

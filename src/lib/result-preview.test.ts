@@ -27,12 +27,12 @@ describe('previewOf', () => {
 		expect(previewOf(text, 100).shown).toBe('a'.repeat(95));
 	});
 
-	it('should not go far back for a line break', () => {
+	it('should ignore a line break far before the limit', () => {
 		const text = `${'a'.repeat(10)}\n${'b'.repeat(200)}`;
 		expect(previewOf(text, 100).shown).toHaveLength(100);
 	});
 
-	it('should not leave half a character at the end', () => {
+	it('should not split a surrogate pair', () => {
 		const text = `${'a'.repeat(99)}😀${'b'.repeat(50)}`;
 		const preview = previewOf(text, 100);
 		expect(preview.shown).toBe('a'.repeat(99));

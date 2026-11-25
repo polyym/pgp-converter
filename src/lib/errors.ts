@@ -1,5 +1,6 @@
 import { MAX_UNPACKED_MESSAGE_MB } from './constants.ts';
 
+/** The operation that failed, which selects the mappings that apply */
 export type ErrorContext = 'encrypt' | 'decrypt' | 'keygen' | 'sign' | 'verify';
 
 /**
@@ -9,6 +10,10 @@ export type ErrorContext = 'encrypt' | 'decrypt' | 'keygen' | 'sign' | 'verify';
  */
 export type ErrorStage = 'public-key' | 'private-key' | 'passphrase' | 'message' | 'operation';
 
+/**
+ * Maps an OpenPGP.js error to the message to show. Omitted contexts or stages
+ * match any, but a mapping with stages never matches a call that passes no stage.
+ */
 interface ErrorMapping {
 	pattern: RegExp;
 	message: string;
@@ -16,8 +21,8 @@ interface ErrorMapping {
 	stages?: readonly ErrorStage[];
 }
 
-const ARMOR_ERROR =
-	/misformed armored text|ascii armor integrity check failed|could not find armored text/i;
+/** What OpenPGP.js 6 throws for armour it cannot parse */
+const ARMOR_ERROR = /misformed armored text/i;
 
 const INVALID_PUBLIC_KEY =
 	'The public key appears to be invalid or incomplete. Check that you copied the whole key, including the BEGIN and END lines.';
@@ -45,9 +50,9 @@ export const WEAK_SIGNING_KEY_ERROR =
 const GENERIC_ERROR = 'Something went wrong. Please check your inputs and try again.';
 
 const errorMappings: readonly ErrorMapping[] = [
-	// First, because it is about the message whatever step reports it
+	// Before the Verify catch-all below: the message is at fault at any stage
 	{ pattern: /maximum decompressed message size exceeded/i, message: OVERSIZED_MESSAGE_ERROR },
-	// Whatever else the library says about the text in the signed message box, the advice is the same
+	// On the Verify page, any other error while reading the message gets the same advice
 	{ pattern: /./, message: INVALID_SIGNED_MESSAGE, contexts: ['verify'], stages: ['message'] },
 	{
 		pattern: /not a valid.*public key|armored text not of type.*(public|key)/i,
@@ -55,7 +60,9 @@ const errorMappings: readonly ErrorMapping[] = [
 			"This doesn't appear to be a valid PGP public key. Make sure you're using the sender's public key, not a message.",
 		contexts: ['verify']
 	},
-	// Before the other signing-key mappings: the library words this as a failure to find a signing key
+	// Before the signing-key mappings below, which would also match a weak signing
+	// subkey: OpenPGP.js reports it as "Could not find valid signing key packet in
+	// key ...: ... considered too weak"
 	{ pattern: WEAK_KEY_PATTERN, message: WEAK_SIGNING_KEY_ERROR, contexts: ['sign'] },
 	{ pattern: WEAK_KEY_PATTERN, message: WEAK_RECIPIENT_KEY_ERROR, contexts: ['encrypt'] },
 	{
@@ -167,11 +174,10 @@ const stageFallbacks: Partial<Record<ErrorStage, string>> = {
 };
 
 /**
- * Maps a raw OpenPGP.js error message to a user-friendly string
- * @param rawMessage - The raw error message from the library
- * @param context - The operation context (encrypt, decrypt, keygen, sign or verify)
- * @param stage - The step that failed, used to name the input that caused the error
- * @returns A plain-language error message suitable for display
+ * Returns the message to show for an OpenPGP.js error. The first entry in
+ * errorMappings that matches wins, so their order matters. With no match it
+ * falls back to a message about the input read at `stage`, then to a generic one.
+ * @param stage - the step that failed; mappings limited to stages never match without it
  */
 export function getUserFriendlyError(
 	rawMessage: string,

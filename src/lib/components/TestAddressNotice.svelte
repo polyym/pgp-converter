@@ -5,8 +5,7 @@
 	const releasedHost = new URL(SITE_URL).hostname;
 </script>
 
-<!-- Shown on a test copy: the staging address, a preview and the development
-     server. Nobody should take one of those for the real one. -->
+<!-- Shown on staging, deploy previews and the dev server, so none of them is mistaken for the released site -->
 {#if siteAddress.isTest}
 	<aside class="test-address" aria-label="Test address">
 		<p>

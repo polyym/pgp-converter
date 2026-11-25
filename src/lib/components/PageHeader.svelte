@@ -11,11 +11,11 @@
 		children
 	}: {
 		title: string;
-		/** One line under the title saying what the page is for */
 		subtitle?: string;
 		icon: IconName;
+		/** Shows the keyboard shortcuts button when set */
 		onShortcutsClick?: () => void;
-		/** A control that belongs to the whole page, such as the Sign / Verify switch */
+		/** A page-wide control in the header, such as the Sign / Verify switch */
 		children?: Snippet;
 	} = $props();
 </script>

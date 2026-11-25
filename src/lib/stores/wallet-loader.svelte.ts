@@ -10,9 +10,9 @@ import {
 } from '#lib/donations.ts';
 
 /**
- * Creates the state behind the Donate page: the addresses and their QR
- * codes, how the loading is going, and which address was just copied.
- * @returns Reactive state for the page's markup, with the actions it offers
+ * Creates the Donate page state: the wallet addresses and their QR codes,
+ * loading progress, and which address was just copied. Call load() on mount
+ * and stop() on destroy.
  */
 export function createWalletLoader() {
 	let wallets = $state<Wallet[]>([]);
@@ -36,14 +36,17 @@ export function createWalletLoader() {
 		coinTimer = undefined;
 	}
 
-	/** Loads the addresses, then their QR codes. Also what "Try again" does. */
+	/**
+	 * Loads the addresses, then their QR codes, aborting any load in progress.
+	 * Also the "Try again" action.
+	 */
 	async function load(): Promise<void> {
 		controller?.abort();
-		// Asked here, not read from the store: this page starts before the layout
-		// that fills the store in
+		// Not read from siteAddress: this page's onMount runs before the layout's,
+		// which fills that store in
 		const copy = readSiteAddress();
-		// A self-hosted copy has no wallet service to ask. The page sends donors to
-		// the released site instead, with no fake addresses and no error.
+		// A self-hosted copy has no wallet proxy, so the page links donors to the
+		// released site instead of showing fake addresses or an error
 		if (copy === 'self-hosted') {
 			isSelfHosted = true;
 			isLoading = false;
@@ -81,9 +84,9 @@ export function createWalletLoader() {
 		}
 		wallets = result.data;
 
-		// A failed QR code must never hide an address that loaded fine
+		// A QR failure must not hide addresses that loaded, so it falls back to no codes
 		const urls = await generateQrDataUrls(result.data, { isFake }).catch(() => ({}));
-		// The visitor may have left, or tried again, while the codes were drawn
+		// The visitor may have left, or tried again, while the codes were generated
 		if (controller !== current) {
 			return;
 		}
@@ -91,7 +94,7 @@ export function createWalletLoader() {
 		isQrReady = true;
 	}
 
-	/** Copies an address and marks it as copied for a moment */
+	/** Copies an address and marks it as copied for COPY_FEEDBACK_MS */
 	async function copyAddress(address: string): Promise<void> {
 		if (!(await copyText(address))) {
 			return;
@@ -103,7 +106,7 @@ export function createWalletLoader() {
 		}, COPY_FEEDBACK_MS);
 	}
 
-	/** Call when the page is left: nothing is still loading or waiting afterwards */
+	/** Aborts any load and its retries and clears the timers; call it on destroy */
 	function stop(): void {
 		controller?.abort();
 		controller = undefined;
@@ -135,7 +138,10 @@ export function createWalletLoader() {
 		get isLoading() {
 			return isLoading;
 		},
-		/** True while the wallet service is being woken, which takes a while */
+		/**
+		 * True once the wallet service has answered with a cold-start status, so the
+		 * load waits and retries; reset by the next load
+		 */
 		get isWaking() {
 			return isWaking;
 		},

@@ -34,13 +34,13 @@ const app = {
 describe('selectPrecache', () => {
 	const kept = selectPrecache(app);
 
-	it('should keep all of the built code and styles', () => {
+	it('should precache all of the built code and styles', () => {
 		for (const path of app.build) {
 			expect(kept).toContain(path);
 		}
 	});
 
-	it('should keep every page', () => {
+	it('should precache every page', () => {
 		for (const page of [
 			'/',
 			'/encrypt',
@@ -55,7 +55,7 @@ describe('selectPrecache', () => {
 		}
 	});
 
-	it('should keep the Latin fonts and leave other alphabets to be fetched when needed', () => {
+	it('should precache the Latin font subsets and no others', () => {
 		expect(kept).toContain('/fonts/inter-latin.woff2');
 		expect(kept).toContain('/fonts/plex-mono-400-latin.woff2');
 		expect(kept).toContain('/fonts/plex-mono-500-latin.woff2');
@@ -64,7 +64,7 @@ describe('selectPrecache', () => {
 		expect(kept).not.toContain('/fonts/plex-mono-500-vietnamese.woff2');
 	});
 
-	it('should keep what installing the app needs', () => {
+	it('should precache the manifest and icons', () => {
 		expect(kept).toContain('/manifest.webmanifest');
 		expect(kept).toContain('/icons/icon-192.png');
 		expect(kept).toContain('/icons/icon-512.png');
@@ -74,7 +74,7 @@ describe('selectPrecache', () => {
 	it('should leave out files the app itself never shows', () => {
 		expect(kept).not.toContain('/sitemap.xml');
 		expect(kept).not.toContain('/robots.txt');
-		// Only apps that preview a shared link ever fetch this
+		// Only link-preview crawlers fetch this
 		expect(kept).not.toContain('/og-image.png');
 		expect(kept).not.toContain('/archive/old_pgp_key_icon_v2.png');
 	});
@@ -86,12 +86,12 @@ describe('selectPrecache', () => {
 });
 
 describe('isKeptOnceUsed', () => {
-	it('should allow the fonts for other alphabets', () => {
+	it('should allow the non-Latin font subsets', () => {
 		expect(isKeptOnceUsed('/fonts/inter-cyrillic.woff2')).toBe(true);
 		expect(isKeptOnceUsed('/fonts/plex-mono-400-latin-ext.woff2')).toBe(true);
 	});
 
-	it('should never allow the wallet service or anything else', () => {
+	it('should not allow the wallet proxy or any path other than a font', () => {
 		expect(isKeptOnceUsed('/.netlify/functions/wallet-proxy')).toBe(false);
 		expect(isKeptOnceUsed('/_app/version.json')).toBe(false);
 		expect(isKeptOnceUsed('/fonts/../secret.woff2')).toBe(false);

@@ -1,32 +1,10 @@
-# Publishes the Docker image to GitHub's container registry for each release,
-# for 64-bit x86 and ARM machines (linux/amd64 and linux/arm64):
-#   ghcr.io/polyym/pgp-converter:<version>  the release's version, for example 4.2.0
-#   ghcr.io/polyym/pgp-converter:<commit>   the full hash of the release's commit
+# The image is pushed by digest only. It is tagged after verify has checked
+# what was pushed and attest has signed it, so a run that fails before the
+# release job leaves no tag.
 #
-# Publishing a release on GitHub starts it, and so does publishing one again
-# with a patch's tag (README, "Releases"). The tag must be the version in
-# package.json. Anyone can check the image's attestation with:
-#   gh attestation verify oci://ghcr.io/polyym/pgp-converter:<version> --repo polyym/pgp-converter
-#
-# check:   builds the site as a production deploy does, and keeps it for verify.
-#          Builds the image, runs it, and compares what it serves with that
-#          build, file for file and policy for policy (scripts/verify-deploy.ts
-#          --self-hosted), before anything is pushed. It runs the project's
-#          packages, so it is given no write permission.
-# publish: builds the image for both platforms and pushes it by its digest,
-#          with no tag yet. The project's packages run only inside the
-#          image's build, which cannot reach this job's token.
-# verify:  checks what was pushed against check's build: the x86 image is run
-#          and compared address by address, and the ARM image's files are
-#          compared with that build and its server settings with the x86
-#          image's. It installs nothing.
-# attest:  signs the checked image with Sigstore, by its name and digest.
-# release: tags the checked, signed image with the version and the commit.
-# A run that fails before release leaves no tag on anything, so nobody pulls an
-# image that did not pass.
-#
-# GitHub makes the package private the first time an image is pushed. It has
-# to be made public once, in the package's settings.
+# The release's tag must equal the version in package.json. GitHub does not
+# take a new package's visibility from the repository, so after the first
+# release, check that the image pulls without signing in.
 
 name: Image
 
@@ -34,7 +12,6 @@ on:
   release:
     types: [published]
 
-# Actions are named by commit, not by tag; see the note in deploy.yml
 permissions: {}
 
 concurrency:
@@ -45,8 +22,10 @@ env:
   IMAGE: ghcr.io/polyym/pgp-converter
 
 jobs:
+  # Builds the site and the image, and checks the image serves exactly that
+  # build. It runs the project's packages, so it gets no write permission.
   check:
-    # The runner image that builds the live site in deploy.yml
+    # deploy.yml's runner, so check builds the site as production does
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -69,7 +48,7 @@ jobs:
         env:
           TAG: ${{ github.event.release.tag_name }}
 
-      # No package cache: a release is built from nothing that an earlier run left
+      # No package cache: a release build takes nothing from earlier runs
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 26
@@ -77,24 +56,31 @@ jobs:
 
       - run: npm install --no-audit --no-fund
 
-      # Named after this commit, with its dates taken from the commit, as in deploy.yml
       - name: Take the build date from the commit
         run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
 
       - name: Build the site
         run: npm run build
 
-      # A build argument given with no value is taken from the environment
       - name: Build the image
         run: docker build --build-arg GITHUB_SHA --build-arg SOURCE_DATE_EPOCH --tag pgp-converter .
 
+      # A short health interval, so the HEALTHCHECK is tested without waiting 30 seconds
       - name: Start the image
-        run: docker run --detach --publish 8080:8080 pgp-converter
+        run: docker run --detach --name site --health-interval=2s --publish 8080:8080 pgp-converter
+
+      - name: Wait for the image to report healthy
+        env:
+          HEALTHY_WITHIN_SECONDS: 60
+        run: |
+          timeout "$HEALTHY_WITHIN_SECONDS" bash -c \
+            'until [ "$(docker inspect --format "{{.State.Health.Status}}" site)" = healthy ]; do sleep 1; done' ||
+            { docker inspect --format '{{json .State.Health}}' site; exit 1; }
 
       - name: Check the image serves the build
         run: node scripts/verify-deploy.ts http://localhost:8080 build --self-hosted
 
-      # Hidden files included: security.txt lives in .well-known
+      # include-hidden-files: security.txt is in .well-known
       - name: Keep the build for verify
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -103,6 +89,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
 
+  # The project's packages run only inside the image build, which cannot reach
+  # this job's token
   publish:
     needs: check
     runs-on: ubuntu-24.04
@@ -128,14 +116,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build the image and push it by its digest
+      - name: Build the image and push it by digest
         id: push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          # The checked-out files, not a fresh fetch of the repository
           context: .
           platforms: linux/amd64,linux/arm64
-          # The attestation in attest is the signed one; BuildKit's own would be unsigned
+          # attest signs the provenance; BuildKit's own would be unsigned
           provenance: false
           build-args: |
             GITHUB_SHA=${{ github.sha }}
@@ -143,18 +130,18 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ needs.check.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
-          # The package's page shows the description it finds on the image's index
+          # The package page reads its description from the index
           annotations: |
             index:org.opencontainers.image.description=PGP Converter: encrypt, decrypt, sign and verify with PGP in the browser
-          # No tag: release adds the tags once the image has been checked and signed
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
+  # Checks the pushed image against check's build. It installs nothing.
   verify:
     needs: [check, publish]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      packages: read # pull the image while the package is still private
+      packages: read # pull the image while the package is private
     env:
       DIGEST: ${{ needs.publish.outputs.digest }}
     steps:
@@ -185,9 +172,10 @@ jobs:
           node scripts/verify-deploy.ts http://localhost:8080 build --self-hosted
           docker cp x86:/etc/caddy x86-server
 
-      # The runner cannot start an ARM image, but it can open one and read its
-      # files. Its Docker keeps one image for each digest, so the x86 one goes first.
-      - name: Check the pushed ARM image holds the same files and server settings
+      # The x86 runner cannot run the ARM image, so its files are compared
+      # instead. The runner's Docker stores one image per digest, so the x86
+      # image has to be removed before the ARM one can be pulled.
+      - name: Check the pushed ARM image has the same files and server settings
         run: |
           docker rm --force x86
           docker image rm "$IMAGE@$DIGEST"
@@ -201,8 +189,8 @@ jobs:
     needs: [publish, verify]
     runs-on: ubuntu-24.04
     permissions:
-      id-token: write # mint OIDC token for Sigstore
-      attestations: write # write attestation to GitHub
+      id-token: write # sign with Sigstore
+      attestations: write # store the attestation
     steps:
       - name: Attest the image
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -225,20 +213,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # The tags must name the very image that was checked and signed. The
-      # index the tags would point at is compared with it before any tag moves,
-      # and both tags are read back after.
-      - name: Tag the image with the version and the commit
-        # bash with pipefail, so that a failed dry run stops the step with its own error
-        shell: bash
+      # The minor, major and latest tags move only for a full release, and never
+      # back. A pre-release gets only its version and commit tags, and
+      # re-publishing the 4.1 release after 4.2.0 tags it 4.1 but leaves 4 and
+      # latest on 4.2.0.
+      - name: Choose the tags
+        id: tags
+        shell: bash # unlike the default shell, sets pipefail
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          # Fetched on its own, so that a failed fetch stops the step instead of
+          # leaving the list empty, which would make this release the newest
+          refs=$(git ls-remote --tags --refs "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY")
+          versions=$(sed 's|.*refs/tags/||' <<< "$refs" | grep --line-regexp --extended-regexp '[0-9]+\.[0-9]+\.[0-9]+' || true)
+          newest() {
+            printf '%s\n' "$VERSION" "$versions" | grep "^$1" | sort --version-sort | tail --lines=1
+          }
+          IFS=. read -r major minor _ <<< "$VERSION"
+          tags="$VERSION $GITHUB_SHA"
+          if [ "$PRERELEASE" = false ]; then
+            if [ "$(newest "$major\.$minor\.")" = "$VERSION" ]; then tags="$tags $major.$minor"; fi
+            if [ "$(newest "$major\.")" = "$VERSION" ]; then tags="$tags $major"; fi
+            if [ "$(newest '')" = "$VERSION" ]; then tags="$tags latest"; fi
+          fi
+          echo "Tags: $tags"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+      # imagetools create writes a new index for the tags, which could differ
+      # from the one that was checked and signed. The dry run prints that index;
+      # its hash (without the trailing newline) must be the checked digest.
+      - name: Tag the checked image
+        shell: bash # unlike the default shell, sets pipefail
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
         run: |
           would=$(docker buildx imagetools create --dry-run "$IMAGE@$DIGEST" | head --bytes=-1 | sha256sum | cut --delimiter=' ' --fields=1)
           if [ "sha256:$would" != "$DIGEST" ]; then
             echo "::error::Tagging would point at sha256:$would, not the checked image $DIGEST; no tag was moved"
             exit 1
           fi
-          docker buildx imagetools create --tag "$IMAGE:$VERSION" --tag "$IMAGE:$GITHUB_SHA" "$IMAGE@$DIGEST"
-          for tag in "$VERSION" "$GITHUB_SHA"; do
+          read -r -a tags <<< "$TAGS"
+          args=()
+          for tag in "${tags[@]}"; do args+=(--tag "$IMAGE:$tag"); done
+          docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
+          for tag in "${tags[@]}"; do
             tagged=$(docker buildx imagetools inspect "$IMAGE:$tag" --format '{{.Manifest.Digest}}')
             if [ "$tagged" != "$DIGEST" ]; then
               echo "::error::$IMAGE:$tag names $tagged, not the checked image $DIGEST"

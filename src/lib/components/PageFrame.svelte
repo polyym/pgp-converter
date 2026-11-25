@@ -12,19 +12,17 @@
 		overlays,
 		children
 	}: {
-		/** The page being shown; leave out where no entry in the top bar should be marked */
+		/** Passed to NavBar. Omit on pages with no link in the top bar, such as the error page. */
 		currentPage?: PageName;
-		/** Whether the page has a bar of actions, which on a phone is pinned to the bottom and needs room */
+		/** Reserves bottom padding for the action bar, which is fixed to the bottom on phones */
 		hasActionBar?: boolean;
-		/** Dialogs that cover the page, kept outside its content */
+		/** Modal dialogs, rendered outside <main> */
 		overlays?: Snippet;
 		children: Snippet;
 	} = $props();
 </script>
 
-<!-- The same frame on every page, so that moving between them changes only the
-     content. While a phone's keyboard is over the page, the top bar gives up its
-     place (see app.css). -->
+<!-- keyboard-open un-sticks the top bar while an on-screen keyboard is up (see .app.keyboard-open in app.css) -->
 <div class={['app', { 'no-actions': !hasActionBar, 'keyboard-open': onScreenKeyboard.isOpen }]}>
 	<NavBar {currentPage} />
 	<TestAddressNotice />

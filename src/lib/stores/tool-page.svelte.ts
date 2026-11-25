@@ -42,28 +42,25 @@ export interface ToolPageOptions {
 	 * single result.
 	 */
 	copyable?: () => string;
-	/**
-	 * What to do when the page has sat untouched for too long. Defaults to
-	 * clearing the whole form, the same as onClear.
-	 */
+	/** Runs after IDLE_CLEAR_MS without activity; defaults to onClear */
 	onIdle?: () => void;
-	/** Whether anything is on the page that an idle clear would remove; defaults to canClear */
+	/** The idle clear runs only while this returns true; defaults to canClear */
 	hasSecrets?: () => boolean;
 	/** What to tell the user after an idle clear */
 	idleNotice?: string;
 	/**
 	 * The inputs the result depends on, in a fixed order. Once any of them is
-	 * changed after a run, the result on screen is out of date. Leave out
+	 * changed after a run, the result on screen is stale. Leave out
 	 * anything that does not change the result, such as a passphrase.
 	 */
 	resultInputs?: () => readonly string[];
 }
 
-/** What every operation in src/lib reports back */
+/** The success-or-error shape that the src/lib operations return, as run() expects it */
 export interface RunOutcome {
 	success: boolean;
 	error?: string;
-	/** The id of the input the failure is about, when it is about one */
+	/** The id of the field to show the error under; without it the error shows as a toast */
 	errorField?: string;
 }
 
@@ -72,8 +69,8 @@ export interface RunReport {
 	/** For example "Encrypted" */
 	message: string;
 	/**
-	 * The run worked but its result is not good news, such as a signature that
-	 * does not match. The message is then shown as a problem.
+	 * Set when the run succeeded but the outcome is bad news, such as a
+	 * signature that does not verify. The message then shows as an error.
 	 */
 	isProblem?: boolean;
 }
@@ -92,8 +89,8 @@ export interface ToolRun<T extends RunOutcome> {
 	/** What to say about a failure that came with no explanation */
 	fallbackError: string;
 	/**
-	 * Whether to wait a moment before the work starts, so that the busy state
-	 * is drawn before the cryptography takes over the page. On by default.
+	 * Waits LOADING_DELAY_MS before `work`, so the busy state paints before the
+	 * cryptography blocks the main thread. Defaults to true.
 	 */
 	shouldPaintFirst?: boolean;
 }
@@ -104,15 +101,11 @@ export type ToolPage = ReturnType<typeof createToolPage>;
 const DEFAULT_IDLE_NOTICE = `Cleared after ${String(IDLE_CLEAR_MINUTES)} minutes without activity, so your keys and messages are not left on screen.`;
 
 /**
- * Creates the behaviour that the tool pages share: running the main action
- * and reporting how it ended, copying the result, keyboard shortcuts and
- * their dialog, the donation banner, clearing after a time without activity,
- * and marking a result whose inputs have changed since it was made.
- *
- * Call it while the page component is being set up: it starts listening when
- * the page is shown and stops when the page is left.
- * @param options - The page's actions and what is currently possible
- * @returns Reactive state for the page's markup, plus the helpers its handlers call
+ * Creates the behaviour the tool pages share: running the main action and
+ * reporting the outcome, copying the result, keyboard shortcuts and their
+ * dialog, the donation banner, the idle clear and stale-result tracking.
+ * Uses onMount and $effect, so call it during component initialisation; the
+ * keyboard and idle listeners are added on mount and removed on destroy.
  */
 export function createToolPage(options: ToolPageOptions) {
 	const feedback = createFeedback();
@@ -121,8 +114,8 @@ export function createToolPage(options: ToolPageOptions) {
 	const freshness = createResultFreshness(options.resultInputs);
 	let isShortcutsOpen = $state(false);
 	let isDonationOffered = $state(false);
-	// Shortcut hints stay hidden until the page is running in a browser and knows
-	// whether it is on a touch device, so nobody sees hints that then disappear
+	// Hidden until mount, when touch support is known, so the prerendered page
+	// never shows hints that a touch device then removes
 	let areHintsVisible = $state(false);
 	let isApple = $state(false);
 	let isLoading = $state(false);
@@ -130,7 +123,9 @@ export function createToolPage(options: ToolPageOptions) {
 	let fieldError = $state<{ field: string; message: string }>();
 	let idleNotice = $state('');
 	let resultElement = $state<HTMLElement>();
-	// True only while a shortcut pressed inside a multi-line field is starting a run
+	// True only during the synchronous submit() call made by a shortcut pressed in
+	// a textarea. It works because each page's onSubmit calls run() at once, and
+	// run() reads the flag before its first await.
 	let isSubmitFromTextarea = false;
 	const keys = $derived(getShortcutKeys(isApple));
 	const shortcuts = $derived([
@@ -165,7 +160,6 @@ export function createToolPage(options: ToolPageOptions) {
 		};
 	});
 
-	/** Runs the main action, if the form is ready for it and nothing is running */
 	function submit(): void {
 		if (isLoading || !options.canSubmit()) {
 			return;
@@ -196,18 +190,16 @@ export function createToolPage(options: ToolPageOptions) {
 	}
 
 	/**
-	 * Runs the page's main action once and reports how it ended. A result that
-	 * arrives after the form was cleared, or after a newer run began, is
-	 * discarded and never reappears.
-	 * @param steps - The work, and what the page does with its result
+	 * Runs the page's main action and reports the outcome. Does nothing while a
+	 * run is in progress. A result that arrives after reset() or a newer run is
+	 * discarded.
 	 */
 	async function run<T extends RunOutcome>(steps: ToolRun<T>): Promise<void> {
 		if (isLoading) {
 			return;
 		}
 		const id = ++runId;
-		// A run started with the shortcut from inside a multi-line field leaves
-		// focus there: that user is still typing
+		// Leave focus in a textarea the run was started from: the user may still be typing
 		const shouldMoveFocus = !isSubmitFromTextarea;
 		idleNotice = '';
 		isLoading = true;
@@ -221,6 +213,8 @@ export function createToolPage(options: ToolPageOptions) {
 			}
 		}
 
+		// Snapshot the inputs as `work` sees them, so edits made while it runs mark
+		// the result stale
 		const used = freshness.read();
 		const result = await steps.work();
 		if (id !== runId) {
@@ -234,7 +228,6 @@ export function createToolPage(options: ToolPageOptions) {
 				feedback.showError(report.message);
 			} else {
 				feedback.showSuccess(report.message);
-				// Offered after a successful operation, unless it was dismissed recently
 				isDonationOffered ||= isDonationBannerAllowed();
 			}
 		} else {
@@ -274,8 +267,8 @@ export function createToolPage(options: ToolPageOptions) {
 	}
 
 	/**
-	 * The user wants the out-of-date result as it is. Its buttons come back,
-	 * and focus goes to the first of them so that the next key press can use it.
+	 * Accepts a stale result as it is: its buttons come back, and focus moves to
+	 * the first of them so the next key press can use it.
 	 */
 	async function useStaleResult(): Promise<void> {
 		freshness.accept();
@@ -289,8 +282,8 @@ export function createToolPage(options: ToolPageOptions) {
 		if (!text) {
 			return;
 		}
-		// A stray shortcut must not copy an out-of-date result. It leads to the
-		// choice instead, where a mindless copy would have taken the old result.
+		// The Copy button is hidden while the result is withheld, so only the
+		// shortcut gets here. Focus the stale note's button instead of copying.
 		if (freshness.isWithheld) {
 			revealControl('.stale-note button');
 			return;
@@ -316,11 +309,11 @@ export function createToolPage(options: ToolPageOptions) {
 			isShortcutsOpen = false;
 			return;
 		}
-		// A dialog that is asking a question has the keyboard to itself
+		// An open confirmation dialog keeps the keyboard to itself
 		if (document.querySelector('dialog[open]')) {
 			return;
 		}
-		// Carrying on with anything else withdraws a half-made request to clear
+		// Any key but Esc cancels a first press of Clear
 		if (e.key !== 'Escape') {
 			clearConfirm.disarm();
 		}
@@ -398,15 +391,15 @@ export function createToolPage(options: ToolPageOptions) {
 			return options.copyable?.() ?? '';
 		},
 		/**
-		 * True when an input has changed since the result was made. The result is
-		 * then no longer what the form would produce, and must not pass for it.
+		 * True when an input has changed since the result was made, so the result
+		 * no longer matches the form
 		 */
 		get isResultStale() {
 			return freshness.isStale;
 		},
 		/**
-		 * True while an out-of-date result's Copy, Download and Share buttons are
-		 * put away, which is until the user asks for them or runs the action again
+		 * True while a stale result's Copy, Download and Share buttons are hidden,
+		 * until the user accepts the result or runs the action again
 		 */
 		get isResultWithheld() {
 			return freshness.isWithheld;
@@ -448,8 +441,9 @@ function describeKey(e: KeyboardEvent): KeyStroke {
 		hasModifier: e.metaKey || e.ctrlKey,
 		hasShift: e.shiftKey,
 		hasAlt: e.altKey,
-		// Some browsers report a composition only through the old key code, which
-		// is why the deprecated property is still read here
+		// keyCode 229 marks a keydown that an IME handled. Some browsers send the
+		// key that ends a composition with isComposing false, so the deprecated
+		// keyCode is still checked.
 		isComposing: e.isComposing || e.keyCode === COMPOSING_KEY_CODE,
 		target
 	};

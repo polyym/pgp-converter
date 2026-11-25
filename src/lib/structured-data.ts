@@ -1,10 +1,10 @@
 import { SITE_URL } from './constants.ts';
 
-// A "<" inside the data could end the script element early. Written as an
-// escape it means the same to whoever reads the JSON.
+// Every "<" is written as \u003c, so a string such as "</script>" cannot close the
+// element early. JSON parsers read the escape as the same character.
 const ESCAPED_LESS_THAN = '\\u003c';
 
-/** What the homepage tells search engines about the app, in schema.org's vocabulary */
+/** The homepage's schema.org WebApplication data for search engines */
 export const WEB_APPLICATION_DATA = {
 	'@context': 'https://schema.org',
 	'@type': 'WebApplication',
@@ -39,10 +39,9 @@ export const WEB_APPLICATION_DATA = {
 } as const;
 
 /**
- * Writes structured data as the script element that carries it in a page's
- * head. The element holds data, not code: browsers do not run it.
- * @param data - The data, as schema.org describes it
- * @returns The element as HTML, safe to place in the page as it is
+ * Serialises JSON-LD data into a script element of type application/ld+json,
+ * which browsers do not execute. With every "<" escaped, the result is safe to
+ * insert into the page with {@html}.
  */
 export function toStructuredDataScript(data: object): string {
 	const json = JSON.stringify(data).replaceAll('<', () => ESCAPED_LESS_THAN);

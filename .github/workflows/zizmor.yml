@@ -1,8 +1,4 @@
-# Checks the workflows, and Dependabot's settings, for security problems with
-# zizmor (https://docs.zizmor.sh), and fails on any finding. Its settings are in
-# .github/zizmor.yml. It runs beside the Tests workflow, on every push to main
-# or dev and on every pull request into either.
-
+# Settings: .github/zizmor.yml
 name: zizmor
 
 on:
@@ -10,10 +6,8 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
-  # Adds the "Run workflow" button on the Actions page
   workflow_dispatch:
 
-# Actions are named by commit, not by tag; see the note in deploy.yml
 permissions: {}
 
 concurrency:
@@ -22,7 +16,6 @@ concurrency:
 
 jobs:
   zizmor:
-    # The same runner image as the other workflows
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -31,9 +24,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # The action installs the version of zizmor that its own commit names, from
-      # a list of hashes. A new release of zizmor, which can bring new checks,
-      # therefore arrives only with a reviewed update of the action.
+      # The action installs the newest zizmor its own release knows about, so a
+      # new zizmor, with new checks, arrives only through a reviewed update of
+      # the action
       - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           # Findings go to the run's log and annotations, not to the Security tab

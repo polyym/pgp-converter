@@ -1,6 +1,6 @@
-// Writes the headers in the build's own headers file (build/_headers) as rules
-// for Caddy, the web server in the Docker image. The Dockerfile runs it after
-// the build, and docker/Caddyfile imports what it writes.
+// Converts build/_headers into Caddy header directives for the Docker image.
+// The Dockerfile runs this after the build, and docker/Caddyfile imports the
+// output.
 //
 // Usage: node scripts/write-caddy-headers.ts <build-dir> <output-file>
 
@@ -10,9 +10,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { toCaddyHeaders } from './caddy-headers.ts';
 import { isInside } from './paths.ts';
 
-// What the script ends with: the file could not be converted, the script was
-// not given what it needs, or the result could not be written
-const EXIT_WRONG = 1;
+const EXIT_CANNOT_CONVERT = 1;
 const EXIT_USAGE = 2;
 const EXIT_CANNOT_WRITE = 3;
 const USAGE = 'Usage: node scripts/write-caddy-headers.ts <build-dir> <output-file>';
@@ -27,8 +25,9 @@ async function main(): Promise<void> {
 	if (!buildDir || !outputFile) {
 		stop(USAGE, EXIT_USAGE);
 	}
-	// Inside the build it would be served to visitors, and the build would no
-	// longer be the one a production deploy makes. Links are followed first.
+	// Inside the build the output would be served to visitors, and the build
+	// would no longer match the production deploy. Symbolic links are resolved
+	// first so that a link cannot point the output back into the build.
 	const realOutput = join(realOrResolved(dirname(outputFile)), basename(outputFile));
 	if (isInside(realOutput, realOrResolved(buildDir))) {
 		stop(`${outputFile} is inside ${buildDir}; write the rules outside the build.`, EXIT_USAGE);
@@ -47,7 +46,7 @@ async function main(): Promise<void> {
 	console.log(`Headers from ${source} written to ${outputFile} for Caddy.`);
 }
 
-/** The path with every link in it followed, or as it is written if it does not exist yet */
+/** Returns the path with symbolic links resolved, or just made absolute if it does not exist yet */
 function realOrResolved(path: string): string {
 	try {
 		return realpathSync(path);
@@ -57,7 +56,7 @@ function realOrResolved(path: string): string {
 }
 
 /** Says what is wrong and ends the script */
-function stop(message: string, exitCode = EXIT_WRONG): never {
+function stop(message: string, exitCode = EXIT_CANNOT_CONVERT): never {
 	console.error(message);
 	process.exit(exitCode);
 }

@@ -1,10 +1,9 @@
 /**
- * Says whether a result still belongs to the form it sits beside. Once an
- * input is edited the result stays on screen, but copying it would send the
- * earlier message, or one for the earlier recipient.
- * @param madeFrom - The inputs the result was made from; undefined when there is no result
- * @param now - The same inputs as they are now, in the same order
- * @returns True when any of them has changed since the result was made
+ * Returns true when any input differs, by exact comparison and position by
+ * position, from the inputs the result was made from. A result stays on screen
+ * after an edit, and copying a stale one would send the earlier message, or one
+ * encrypted for the earlier recipient. `madeFrom` is undefined when there is no
+ * result, which is never out of date.
  */
 export function isOutOfDate(
 	madeFrom: readonly string[] | undefined,

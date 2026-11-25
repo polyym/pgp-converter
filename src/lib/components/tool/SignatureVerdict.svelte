@@ -18,15 +18,15 @@
 		hasOtherText = false,
 		isMuted = false
 	}: {
-		/** The result for each signature on the message; empty if it carries none */
+		/** One check per signature on the message; empty if it carries none */
 		signatures: SignatureCheck[];
 		/** Whether the user supplied a public key to check against */
 		wereKeysSupplied: boolean;
 		/** What to do to get a signature checked, shown when no key was supplied */
 		howToCheck?: string;
-		/** Whether the message box held anything besides the message, which the verdicts are not about */
+		/** Adds a caution that text in the box outside the PGP message is not covered by the verdicts */
 		hasOtherText?: boolean;
-		/** The verdict is about an earlier state of the form: shown without its colour, so it does not pass for a current one */
+		/** Set while the result is stale: greys the verdicts so an old one does not look current */
 		isMuted?: boolean;
 	} = $props();
 
@@ -149,10 +149,9 @@
 		color: var(--warning);
 	}
 
-	/* A verdict on what the boxes held before they were changed. It keeps its
-     words and loses its colour: green beside a message it never judged would
-     be the one thing this component must not show. Grey, not faded, so that it
-     can still be read. */
+	/* Stale verdict: grey instead of green or red, so a verdict on earlier input
+	   never reads as a pass for what the boxes hold now. Grey rather than reduced
+	   opacity keeps the text at readable contrast. */
 	.verdicts.muted .verdict {
 		background: none;
 	}

@@ -27,38 +27,35 @@ export interface KeyInfo {
 	fingerprint: string;
 	/** Short algorithm label, for example "Curve25519" or "RSA 4096" */
 	algorithm: string;
-	/** Creation date as YYYY-MM-DD */
+	/** Creation date as YYYY-MM-DD, in UTC */
 	created: string;
-	/** True when the pasted block is a private key */
 	isPrivate: boolean;
-	/** Why the key cannot be used for its purpose, if it cannot */
+	/** User-facing reason the key is unfit for the purpose it was checked for; undefined if fit */
 	problem?: string;
 }
 
 /**
- * What text would bring to a box of public keys that already lists some:
- * - new-key: a key that the box does not hold
- * - new-details: no further key, but something the box does not hold about one of its keys, such as a revocation
- * - private-key: a private key, whatever else comes with it
- * - nothing-new: nothing that the box does not hold
- * - unreadable: the box with the text added cannot be read as keys
+ * What appending text to a public key field that already holds keys would do:
+ * - new-key: adds a key whose fingerprint the field does not hold
+ * - new-details: adds no key, but changes one the field holds, for example with a revocation
+ * - private-key: the text contains a private key, whatever else it holds
+ * - nothing-new: adds nothing the field does not already hold
+ * - unreadable: the field with the text appended no longer parses as keys
  */
 export type AdditionOutcome =
 	'new-key' | 'new-details' | 'private-key' | 'nothing-new' | 'unreadable';
 
-/** What became of text that was offered to a box of keys */
+/** The result of addToKeys */
 export interface Addition {
-	/** What the text would bring */
 	outcome: AdditionOutcome;
-	/** What the box is to hold now. The text is in it only if it brought something. */
+	/** The new field value: `held` with the text appended for new-key and new-details, else `held` */
 	box: string;
 }
 
-/** One part of a key: the key itself, a user ID, a user attribute or a subkey */
+/** A key component (primary key, user ID, user attribute or subkey) and its signatures */
 interface KeyPart {
-	/** The packet that holds the part */
 	packet: AnyPacket;
-	/** Every signature about the part, each one once, under its own bytes */
+	/** Keyed by the serialised signature packet, so a duplicate signature is stored once */
 	signatures: Map<string, SignaturePacket>;
 }
 
@@ -75,10 +72,14 @@ export const WEAK_KEY_PROBLEM =
 export const WEAK_VERIFYING_KEY_PROBLEM = `${WEAK_KEY_PROBLEM} Its signatures cannot be relied on.`;
 
 const PRIVATE_KEY_HEADER = '-----BEGIN PGP PRIVATE KEY BLOCK-----';
-/** Named in both the first and the last line of a private key block, so found when one of them is lost */
+/** In both the BEGIN and the END armour line, so it still matches when one of them is missing */
 const PRIVATE_KEY_BLOCK_NAME = 'PGP PRIVATE KEY BLOCK';
 
-/** The library's settings for asking a key whether it can do a job. Those calls take the whole set or none. */
+/**
+ * KEY_USE_SETTINGS spread over the OpenPGP.js defaults. Key methods such as
+ * getSigningKey and getEncryptionKey use their config argument as given,
+ * without merging in the defaults, so they need a complete config.
+ */
 export const KEY_CHECK_CONFIG = { ...defaultConfig, ...KEY_USE_SETTINGS };
 
 /** Names for the older algorithms, which the library reports in lower case */
@@ -110,23 +111,19 @@ const problemFinders: Record<KeyPurpose, (key: Key) => Promise<string | undefine
 	verify: findVerificationProblem
 };
 
-/**
- * Formats a key fingerprint for reading aloud or comparing by eye
- * @param hex - The fingerprint as a hexadecimal string
- * @returns The fingerprint in upper case, in space-separated blocks of four
- */
+/** Upper-cases a hex fingerprint and splits it into space-separated groups of four. */
 export function formatFingerprint(hex: string): string {
 	return (hex.toUpperCase().match(/.{1,4}/g) ?? []).join(' ');
 }
 
 /**
- * Reads every key in a pasted block of text.
- * Tolerates indentation and email quoting, and accepts several keys pasted
- * one after another. Copies of one key are joined into one key, so that what
- * any copy says about the key counts, wherever that copy stands.
- * @param armoredKeys - Text containing one or more armored PGP keys
- * @returns The parsed keys, one for each fingerprint, in the order they were first pasted
- * @throws If the text does not contain a readable PGP key
+ * Parses every armoured key in pasted text, after normaliseArmor has removed
+ * indentation and email quoting. Copies of one key (same fingerprint) are
+ * merged, so a revocation or a newer self-signature in any copy applies. A
+ * private key is returned as it is, so that callers can reject it.
+ * @returns One key per fingerprint, in the order each was first pasted
+ * @throws If the text holds no key, a key block fails to parse, or a merged key
+ *   does not survive being written and parsed again (see joinCopies)
  */
 export async function readPublicKeys(armoredKeys: string): Promise<Key[]> {
 	const blocks = splitKeyBlocks(normaliseArmor(armoredKeys));
@@ -140,17 +137,16 @@ export async function readPublicKeys(armoredKeys: string): Promise<Key[]> {
 }
 
 /**
- * Adds text to a box that already lists keys, if the text brings a key or says
- * more about a listed one: a revoked copy of that key, for one. Any other text
- * stays out of the box, where it would sit unseen behind the list of keys.
- * @param held - What the box holds
- * @param text - The text to add
- * @returns What the text would bring, and what the box is to hold now
+ * Appends pasted text to a public key field's value when it adds a key or
+ * changes one the field holds (with a revocation, for example). Other text is
+ * left out, because the field is shown as a list of keys and the text would be
+ * hidden behind it. Never throws: text that does not parse gives 'unreadable'.
+ * @param held - The field's current value
  */
 export async function addToKeys(held: string, text: string): Promise<Addition> {
 	const extended = appendBlock(held, text);
-	// A private key block that cannot be read is passed over when the box is
-	// read, so only its name gives it away. It still holds the secret part.
+	// Match the armour name instead of parsing: splitKeyBlocks skips a private key
+	// block that has lost its BEGIN or END line, but the text still holds the secret key.
 	const outcome = text.includes(PRIVATE_KEY_BLOCK_NAME)
 		? 'private-key'
 		: await judgeAddition(held, extended);
@@ -159,12 +155,13 @@ export async function addToKeys(held: string, text: string): Promise<Addition> {
 }
 
 /**
- * Reads a private key and unlocks it if it is protected by a passphrase
- * @param armoredPrivateKey - Text containing an armored PGP private key
- * @param passphrase - The key's passphrase; ignored if the key is not protected
- * @param onStage - Told which step is running, so a failure can name the input at fault
- * @returns The private key, ready to decrypt or sign
- * @throws PassphraseRequiredError if the key is protected and no passphrase was given
+ * Parses the private key in pasted text, which may also hold the public key,
+ * and decrypts it with the passphrase if it is protected.
+ * @param passphrase - Ignored when the key is not protected
+ * @param onStage - Called with 'private-key' before parsing and 'passphrase' before
+ *   decrypting, so the caller can tell which input a later error is about
+ * @throws PassphraseRequiredError if the key is protected and the passphrase is
+ *   empty; the OpenPGP.js error if the key does not parse or the passphrase is wrong
  */
 export async function readUsablePrivateKey(
 	armoredPrivateKey: string,
@@ -175,8 +172,7 @@ export async function readUsablePrivateKey(
 	const privateKey = await readPrivateKey({ armoredKey: pickPrivateKeyBlock(armoredPrivateKey) });
 
 	onStage?.('passphrase');
-	// A key exported without a passphrase is already unlocked; asking the library
-	// to unlock it again fails, so only do so when the key is protected.
+	// A key exported without a passphrase is not encrypted, and decryptKey throws on one
 	if (privateKey.isDecrypted()) {
 		return privateKey;
 	}
@@ -187,10 +183,8 @@ export async function readUsablePrivateKey(
 }
 
 /**
- * Summarises a key so the user can check whose it is before relying on it
- * @param key - A parsed OpenPGP key
- * @param purpose - What the key is about to be used for
- * @returns The key's identity, fingerprint, algorithm and any problem with using it
+ * Summarises a key for display and checks whether it is fit for `purpose` at
+ * the current time. `problem` holds the user-facing reason when it is not.
  */
 export async function describeKey(key: Key, purpose: KeyPurpose = 'encrypt'): Promise<KeyInfo> {
 	return {
@@ -204,15 +198,13 @@ export async function describeKey(key: Key, purpose: KeyPurpose = 'encrypt'): Pr
 }
 
 /**
- * Describes every key in a pasted block of text without throwing.
- * Used to show whose keys they are while the user is still typing or pasting.
- * @param armoredKeys - Text that may contain one or more armored PGP keys
- * @param purpose - What the keys are about to be used for
- * @returns Details of each readable key; an empty list if none can be read yet
+ * Runs describeKey on every key in pasted text, but returns an empty array
+ * instead of throwing, because it runs on every edit while the input may be
+ * incomplete. For 'sign' and 'decrypt' only the private key block is read, so
+ * the combined key pair file from the Generate page shows one key.
  */
 export async function inspectKeys(armoredKeys: string, purpose: KeyPurpose): Promise<KeyInfo[]> {
 	try {
-		// Someone signing or decrypting pastes one private key, possibly inside the "both keys" file
 		const isOwnKey = purpose === 'sign' || purpose === 'decrypt';
 		const keys = await readPublicKeys(isOwnKey ? pickPrivateKeyBlock(armoredKeys) : armoredKeys);
 		return await Promise.all(keys.map((key) => describeKey(key, purpose)));
@@ -222,31 +214,24 @@ export async function inspectKeys(armoredKeys: string, purpose: KeyPurpose): Pro
 }
 
 /**
- * Joins the copies of one key into one key that holds every signature any of
- * them holds. Copies can differ: a later one can carry a revocation, a new
- * expiry date or a new subkey. Using the first copy alone would lose what the
- * others say.
+ * Merges the copies of one key into a key that holds every component and every
+ * distinct signature from all of them, so that a revocation, new expiry or new
+ * subkey in any copy applies whatever order the copies were pasted in.
+ * Signatures are not verified here: OpenPGP.js verifies them each time it uses
+ * the key, so a forged one is carried along but never counts.
  *
- * No signature is checked here. OpenPGP.js checks each one whenever it uses
- * the key, so a signature that the owner did not make is carried along and
- * never counts. A signature that the library cannot write, or cannot read
- * back as it wrote it, is not carried along: the key is then not read, or it
- * is read without that signature. Records dated the same second are told
- * apart only by where they stand, so there the order of the copies still
- * decides.
- *
- * The library's own Key.update is not used, because it leaves signatures out:
- * it keeps one binding signature for a subkey without checking it, and it
- * turns away every further revocation once a key holds one.
- *
- * A key that came once is built again too, so that a key reads the same
- * however many copies of it there are.
- * @param copies - Every copy of one key, in the order they were read
- * @returns The joined key, or the first private copy if there is one
+ * Key.update is not used because it drops signatures: it keeps one subkey
+ * binding signature without verifying it, and ignores further revocations once
+ * the key has one. A key with a single copy is rebuilt too, so that one copy
+ * and several give the same result. Where two self-signatures have the same
+ * creation time, OpenPGP.js falls back to their position, so there the copy
+ * order still decides.
+ * @param copies - Every copy of one key, in the order they were parsed
+ * @returns The merged key, or the first private copy if there is one
  */
 async function joinCopies(copies: Key[]): Promise<Key> {
-	// A private key is refused wherever a public one belongs, whatever else is
-	// known about it, and it must stay private for the pages to see that
+	// Return a private copy unmerged so that isPrivate() stays true: callers
+	// reject a private key wherever a public key belongs
 	const privateCopy = copies.find((copy) => copy.isPrivate());
 	if (privateCopy) {
 		return privateCopy;
@@ -257,17 +242,15 @@ async function joinCopies(copies: Key[]): Promise<Key> {
 	for (const part of parts.values()) {
 		packets.push(part.packet, ...part.signatures.values());
 	}
-	// The key is read again from the bytes that were compared. The library keeps
-	// a number as it was pasted, leading zeros and all, checks it in that form
-	// and writes it without them. Two signatures with the same bytes could
-	// otherwise differ in what the library makes of them, and one that fails its
-	// check could stand in for one that passes.
+	// Parse again from the serialised packets so each signature is the one its
+	// bytes describe. OpenPGP.js keeps an MPI's leading zero bytes when parsing, and
+	// enough of them make verification fail, but strips them when writing. So a
+	// zero-padded copy of a revocation dedupes with the real one and could replace it.
 	const joined = await readKey({ binaryKey: packets.write() });
-	// The library does not always read a part as it wrote it: each time it reads
-	// a user ID it drops a byte order mark from the front. A part that changed
-	// can now equal another part, and the library keeps the two apart, each with
-	// its own signatures: a revoked user ID beside itself unrevoked. No honest
-	// key is written that way, so such a key is not read.
+	// OpenPGP.js strips one leading byte order mark from a user ID each time it
+	// parses one, so parsing again can make two distinct user IDs equal, each with
+	// its own signatures: a revoked user ID next to an unrevoked copy of itself.
+	// A key whose components change when it is parsed again was crafted, so reject it.
 	if (fileParts([joined]).size !== parts.size) {
 		throw new Error('A part of the key reads differently from its own bytes');
 	}
@@ -275,24 +258,26 @@ async function joinCopies(copies: Key[]): Promise<Key> {
 }
 
 /**
- * Files every packet of the copies of one key by the part it is about
- * @param copies - Copies of one key, none of them private
- * @returns The parts in the order they first came, each with its signatures
+ * Groups the packets of every copy by key component, deduplicating components
+ * and signatures by their serialised bytes. Relies on the transferable key
+ * packet order, where each component is followed by its own signatures
+ * (RFC 9580 section 10.1: https://www.rfc-editor.org/rfc/rfc9580#section-10.1).
+ * @param copies - Copies of one public key
+ * @returns The components in first-seen order
  */
 function fileParts(copies: Key[]): Map<string, KeyPart> {
 	const parts = new Map<string, KeyPart>();
 	for (const copy of copies) {
 		let part: KeyPart | undefined;
-		// A key lists its parts in turn, each followed by the signatures about it
 		for (const packet of copy.toPacketList()) {
 			const bytes = packet.write().join(',');
 			if (packet instanceof SignaturePacket) {
 				part?.signatures.set(bytes, packet);
 				continue;
 			}
-			// The same part of another copy has the same bytes. Its kind is named as
-			// well, because a subkey can hold the bytes of the key itself, and a
-			// user attribute those of a user ID.
+			// write() returns the packet body without its tag, and a subkey can have
+			// the same body as the primary key, or a user attribute the same body as
+			// a user ID, so the kind is part of the identity.
 			const kind =
 				packet === copy.keyPacket
 					? 'key'
@@ -310,28 +295,24 @@ function fileParts(copies: Key[]): Map<string, KeyPart> {
 }
 
 /**
- * Says what an addition to a box of keys would bring
- * @param held - What the box holds
- * @param extended - The same text with the addition after it
- * @returns What the addition brings
+ * Classifies an addition by parsing the field before and after it. `extended`
+ * is `held` with the addition appended.
  */
 async function judgeAddition(held: string, extended: string): Promise<AdditionOutcome> {
 	try {
 		const before = await readPublicKeys(held);
 		const after = await readPublicKeys(extended);
-		// A private key is refused wherever a public one belongs. Let in beside its
-		// own public copy, it would take that copy's place and stop the page. Keys
-		// keep the place they were first read in, so a key the addition brings
-		// stands after every key the box held.
+		// Reject a private key at any index that did not hold one before. Merging
+		// returns the private copy of a key, so a private key pasted with its public
+		// key takes that key's index, and a new key comes after every held one.
 		if (after.some((key, index) => key.isPrivate() && !before.at(index)?.isPrivate())) {
 			return 'private-key';
 		}
 		if (after.length > before.length) {
 			return 'new-key';
 		}
-		// Whole keys are compared, not their summaries. A copy can change what a
-		// key does and leave the summary as it was: one of two encryption subkeys
-		// revoked, for one.
+		// Compare the serialised keys, not describeKey summaries: revoking one of two
+		// encryption subkeys changes the key but not its summary.
 		const isChanged = after.some((key, index) => key.armor() !== before.at(index)?.armor());
 		return isChanged ? 'new-details' : 'nothing-new';
 	} catch {
@@ -339,7 +320,6 @@ async function judgeAddition(held: string, extended: string): Promise<AdditionOu
 	}
 }
 
-/** Builds a short, human-readable label for a key's algorithm */
 function describeAlgorithm(key: Key): string {
 	const info = key.getAlgorithmInfo();
 	if (info.algorithm.startsWith('rsa')) {
@@ -423,8 +403,8 @@ async function findVerificationProblem(key: Key): Promise<string | undefined> {
 		}
 		return 'This key cannot be used to check signatures.';
 	}
-	// A key that is valid but of a kind the library no longer accepts: every
-	// signature it made will be turned away, so say so before the user tries
+	// verifyPrimaryKey does not check key strength, but OpenPGP.js rejects every
+	// signature from a weak key, so warn before the user tries to verify one
 	try {
 		await key.getSigningKey(undefined, undefined, undefined, KEY_CHECK_CONFIG);
 	} catch (e: unknown) {
@@ -436,11 +416,9 @@ async function findVerificationProblem(key: Key): Promise<string | undefined> {
 }
 
 /**
- * Picks the private key out of pasted text that may hold other blocks too.
- * The "Download Both Keys" file from the generate page puts the public key
- * first, and the library would otherwise read only that one.
- * @param text - Raw text pasted into a private key box
- * @returns The private key block if there is one, otherwise the cleaned-up text
+ * Returns the first private key block in pasted text, or the normalised text if
+ * there is none. The combined key pair file from the Generate page puts the
+ * public key first, and OpenPGP.js parses only the first armoured block.
  */
 function pickPrivateKeyBlock(text: string): string {
 	const normalised = normaliseArmor(text);

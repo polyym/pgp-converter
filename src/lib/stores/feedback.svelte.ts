@@ -1,10 +1,9 @@
 import { SUCCESS_TOAST_MS, ERROR_TOAST_MS } from '#lib/constants.ts';
 
 /**
- * Creates the success and error message state behind a page's toasts.
- * Each new message restarts its own timer, so the timer of an earlier
- * message can never hide a newer one early.
- * @returns Reactive message state with helpers to show and clear messages
+ * Creates the success and error toast state for a page. One message shows at
+ * a time, and showing one cancels the earlier message's timer, so that timer
+ * cannot hide the new message early.
  */
 export function createFeedback() {
 	let success = $state('');
@@ -29,7 +28,7 @@ export function createFeedback() {
 		get error() {
 			return error;
 		},
-		/** Shows a success message, replacing any message already on screen */
+		/** Shows a success message for `duration` ms, replacing any message on screen */
 		showSuccess(message: string, duration = SUCCESS_TOAST_MS) {
 			clearSuccess();
 			clearError();
@@ -38,7 +37,7 @@ export function createFeedback() {
 				success = '';
 			}, duration);
 		},
-		/** Shows an error message, replacing any message already on screen */
+		/** Shows an error message for `duration` ms, replacing any message on screen */
 		showError(message: string, duration = ERROR_TOAST_MS) {
 			clearSuccess();
 			clearError();

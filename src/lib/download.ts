@@ -1,8 +1,7 @@
 /**
- * Saves text as a file on the user's device, through a temporary link.
- * Nothing is uploaded: the file is made by the browser from text it already holds.
- * @param content - The text to save, such as a key or a message
- * @param filename - The name to give the file
+ * Saves text as a plain-text file by clicking a temporary link to a Blob URL,
+ * which is revoked straight after. The browser builds the file from text it
+ * already holds, so nothing is uploaded.
  */
 export function downloadText(content: string, filename: string): void {
 	const blob = new Blob([content], { type: 'text/plain' });

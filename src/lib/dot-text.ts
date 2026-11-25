@@ -28,9 +28,9 @@ export interface DotText {
 }
 
 /**
- * Lays out a short piece of text, such as "v4.0.0", as a grid of dots
- * @param text - Digits, full stops and the letter v; anything else is left out
- * @returns The width of the grid and which of its dots are lit
+ * Renders text such as "v4.0.0" in the dot font. Only digits, full stops and a
+ * lower-case v are drawn; other characters are skipped, and empty text gives a
+ * grid of no columns.
  */
 export function toDotText(text: string): DotText {
 	const glyphs: (readonly string[])[] = [];

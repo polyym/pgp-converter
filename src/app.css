@@ -1,5 +1,6 @@
-/* Self-hosted fonts; see static/fonts/. Subsets mirror Google Fonts v20 output so
-   unicode-range hints still skip subsets that aren't needed on a given page. */
+/* Self-hosted fonts (see static/fonts/); the CSP's font-src allows 'self' only.
+   The subsets mirror Google Fonts v20 output, so unicode-range still skips
+   subsets that a page does not need. */
 
 /* IBM Plex Mono 400 */
 @font-face {
@@ -99,7 +100,7 @@
 		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* Inter 400 / 500 / 600. Variable font: same subset file serves all three weights */
+/* Inter is a variable font: one file per subset covers weights 400 to 600 */
 @font-face {
 	font-family: 'Inter';
 	font-style: normal;
@@ -176,14 +177,12 @@ html {
 	/* Keeps room for the scrollbar on every page, so the layout does not shift
      sideways between a short page and a long one */
 	scrollbar-gutter: stable;
-	/* Whatever the page scrolls to (a jump within it, a new result, the next
-     stop of the Tab key) stops clear of the bar pinned to the top. Without
-     this, a control reached with Shift+Tab can sit hidden underneath it. */
+	/* Keeps anchor jumps, scrollIntoView and keyboard focus clear of the sticky
+	   top bar (WCAG 2.4.11). The fallback applies until NavBar sets --nav-height. */
 	scroll-padding-top: var(--nav-height, calc(76px + var(--safe-top)));
 }
 
-/* The same for the action bar at the foot of the tool pages, which is taller
-   than some of the controls that Tab would bring to rest behind it */
+/* Likewise for the fixed action bar, so Tab does not bring a control to rest behind it */
 html:has(.bottom-actions) {
 	scroll-padding-bottom: calc(84px + var(--safe-bottom));
 }
@@ -193,11 +192,7 @@ html:has(.bottom-actions) {
 	}
 }
 
-/* Design tokens. Defined once on the root so every page, including the error
-   page, uses the same values. */
 :root {
-	/* Tells the browser the page is dark, so scrollbars, resize handles and
-     other built-in controls are drawn dark as well */
 	color-scheme: dark;
 	--bg: #09090b;
 	--surface: #0f0f12;
@@ -209,26 +204,23 @@ html:has(.bottom-actions) {
      --surface-2 (WCAG AA for text). Check any change against all three. */
 	--text-secondary: #9494a0;
 	--text-dim: #80808a;
-	/* Keyboard focus ring on links and buttons */
 	--focus: #9494a0;
-	/* Edge of a box you type in or choose from. At least 3:1 against the page and
-     against the box itself (WCAG 1.4.11), so the box can be found without
-     relying on its placeholder. Panels that only show things keep --border.
-     A focused box takes --text for its edge, which is 3:1 against this one. */
+	/* Input borders keep at least 3:1 against the page and the input's own
+	   background (WCAG 1.4.11), so a field can be found without its placeholder.
+	   Read-only panels use --border. The focus border, --text, is 3:1 against this. */
 	--field-border: #66666f;
 	--field-border-hover: #80808a;
 	--accent: #fff;
 	--success: #22c55e;
 	--error: #ef4444;
 	--warning: #f59e0b;
-	/* The version, everywhere but the released site */
+	/* Version number on test copies (staging, deploy previews, dev server) */
 	--candidate: #fde68a;
 	--info: #3b82f6;
 	--purple: #a78bfa;
 
-	/* Width of the page content on a desktop screen */
 	--page-width: 1120px;
-	/* Corner sizes: panels and fields, controls inside them, and small parts */
+	/* Border radii: panels and fields, controls inside them, and small parts */
 	--radius-lg: 14px;
 	--radius: 10px;
 	--radius-sm: 8px;
@@ -246,14 +238,14 @@ html:has(.bottom-actions) {
 	background: rgba(255, 255, 255, 0.2);
 }
 
-/* One keyboard focus ring for every link and button. Text fields have their own. */
+/* Shared focus ring. :where() adds no specificity, so only :focus-visible counts (0-1-0)
+   and a component's own selector overrides it. Text fields have their own focus style below. */
 :where(a, button, summary, pre[tabindex='0']):focus-visible {
 	outline: 2px solid var(--focus);
 	outline-offset: 2px;
 }
 
-/* The first stop for the Tab key on every page: goes past the top bar,
-   straight to the page's own content. Out of sight until it has focus. */
+/* Off-screen until focused */
 .skip-link {
 	position: fixed;
 	top: calc(8px + var(--safe-top));
@@ -274,8 +266,8 @@ html:has(.bottom-actions) {
 	transform: none;
 }
 
-/* Where the skip link lands. It takes focus so that Tab carries on from here;
-   a ring around the whole page would say nothing. */
+/* <main> takes focus from the skip link so Tab carries on from there; a ring
+   round the whole page would add nothing */
 main:focus {
 	outline: none;
 }
@@ -287,17 +279,15 @@ main:focus {
 	font-family: var(--font);
 	color: var(--text);
 	-webkit-font-smoothing: antialiased;
-	/* Room for the action bar pinned to the bottom of a phone's screen */
+	/* Room for the action bar fixed to the bottom of a phone's screen */
 	padding-bottom: 100px;
 }
 
-/* Pages without a fixed action bar need no room for one */
 .app.no-actions {
 	padding-bottom: 0;
 }
 
-/* Shown only where JavaScript is switched off, above the page: nothing in the app
-   works without it */
+/* The <noscript> message in app.html */
 .needs-script {
 	margin: 0;
 	padding: 12px 20px;
@@ -310,10 +300,8 @@ main:focus {
 	border-bottom: 1px solid var(--border);
 }
 
-/* Says that this copy is not the released site. The staging address, a
-   preview and a developer's own machine all show it. It sits under the top bar and
-   scrolls away with the page, so the bar's own height and place stay as they
-   are on the released site. */
+/* TestAddressNotice sits below the sticky top bar and scrolls away, so the bar,
+   and --nav-height with it, stay the same as on the released site */
 .test-address {
 	margin: 0;
 	padding: 10px 20px;
@@ -336,7 +324,6 @@ main:focus {
 	color: var(--warning);
 }
 
-/* The address stays in one piece where the line has to break */
 .test-address a {
 	color: var(--text);
 	text-decoration: underline;
@@ -344,7 +331,7 @@ main:focus {
 	white-space: nowrap;
 }
 
-/* Top bar. Named for page transitions, so it holds still while the page changes. */
+/* view-transition-name keeps the top bar still during cross-page view transitions */
 .nav {
 	view-transition-name: nav;
 	position: sticky;
@@ -424,14 +411,12 @@ main:focus {
 	background: var(--surface);
 }
 
-/* The page you are on */
 .nav-link[aria-current='page'] {
 	color: var(--text);
 	background: var(--surface-2);
 	border-color: var(--border-hover);
 }
 
-/* Offered when a newer version of the app is ready */
 .nav-update {
 	display: flex;
 	align-items: center;
@@ -439,7 +424,7 @@ main:focus {
 	gap: 6px;
 	min-height: 34px;
 	padding: 4px 12px;
-	/* Sits at the right, just before About and Donate */
+	/* Pushed right; the -16px narrows the 28px gap before About and Donate */
 	margin-left: auto;
 	margin-right: -16px;
 	font-family: var(--font);
@@ -472,7 +457,7 @@ main:focus {
 	display: none;
 }
 
-/* Phones and narrow windows: the tools move to a second row of their own */
+/* The tool links wrap to a second row of their own */
 @media (max-width: 720px) {
 	.nav-inner {
 		flex-wrap: wrap;
@@ -480,12 +465,11 @@ main:focus {
 		min-height: 0;
 	}
 
-	/* The name and the two links beside it must share one row */
+	/* A smaller gap so the brand, About and Donate fit on one row */
 	.nav-inner {
 		column-gap: 12px;
 	}
 
-	/* Each tool takes the width of its name plus an even share of what is left */
 	.nav-tools {
 		order: 3;
 		flex-basis: 100%;
@@ -499,8 +483,8 @@ main:focus {
 		padding: 4px 8px;
 	}
 
-	/* No room beside the name: the button takes a row of its own under the
-     tools, and says in full what it is for */
+	/* No room beside the brand, so the update button gets its own row under the
+	   tools and shows the long label */
 	.nav-update {
 		order: 4;
 		flex-basis: 100%;
@@ -546,8 +530,6 @@ main:focus {
 	background: var(--surface-2);
 }
 
-/* Page content. Tool pages (class "tool") use the full page width on a desktop
-   screen, where their inputs and result sit side by side. */
 .main.tool {
 	max-width: 560px;
 	margin: 0 auto;
@@ -556,8 +538,6 @@ main:focus {
 	padding-right: calc(20px + var(--safe-right));
 }
 
-/* Header */
-/* Every page starts the same way: icon, title and one line, in the same place */
 .header {
 	display: flex;
 	flex-wrap: wrap;
@@ -571,7 +551,7 @@ main:focus {
 	flex: 1;
 }
 
-/* A page-wide control beside the title. On narrow screens it takes a row of its own. */
+/* Its own row on narrow screens; beside the title from 1024px */
 .header-extra {
 	order: 3;
 	flex-basis: 100%;
@@ -616,8 +596,8 @@ main:focus {
 	color: var(--text-secondary);
 }
 
-/* Toast. Pinned below the navigation so it stays visible wherever the page is
-   scrolled, and so showing it never pushes the content around. */
+/* Fixed below the top bar, so it is visible at any scroll position and does
+   not shift the layout */
 .toast {
 	position: fixed;
 	top: calc(var(--nav-height, calc(76px + var(--safe-top))) + 8px);
@@ -667,7 +647,6 @@ main:focus {
 	color: var(--error);
 }
 
-/* Visually hidden, still announced by screen readers */
 .sr-only {
 	position: absolute;
 	width: 1px;
@@ -680,7 +659,6 @@ main:focus {
 	border: 0;
 }
 
-/* Fields */
 .fields {
 	display: flex;
 	flex-direction: column;
@@ -738,7 +716,7 @@ main:focus {
 	border-color: var(--field-border-hover);
 }
 
-/* Five tools and their icons need about 480px; below that the names go alone */
+/* Five tool links with icons need about 480px, so drop the icons below 520px */
 @media (max-width: 520px) {
 	.nav-tools .nav-link svg {
 		display: none;
@@ -779,7 +757,6 @@ main:focus {
 	font-size: 14px;
 }
 
-/* Output */
 .output {
 	background: var(--surface);
 	border: 1px solid var(--border);
@@ -792,8 +769,7 @@ main:focus {
 	border-color: var(--border-hover);
 }
 
-/* A result that is scrolled into view stops below the success message as
-   well as the top bar, which the page already keeps clear of */
+/* Room for the success toast, on top of the scroll-padding that clears the top bar */
 .output,
 .keys-output {
 	scroll-margin-top: 64px;
@@ -859,13 +835,11 @@ main:focus {
 	font-size: 13px;
 	line-height: 1.7;
 	color: var(--text);
-	/* Wrap at spaces where there are any, and break a long unbroken run (such as
-     a line of ciphertext) only when it would otherwise overflow */
+	/* Break a long unbroken run, such as a Base64 line, only where it would overflow */
 	overflow-wrap: anywhere;
 	white-space: pre-wrap;
 }
 
-/* What to do, while there is no result yet */
 .placeholder-steps {
 	margin: 0;
 	padding: 0;
@@ -907,8 +881,8 @@ main:focus {
 	gap: 6px;
 }
 
-/* Three buttons do not fit beside the heading on a phone. They take a row of
-   their own and share it, so that none is left alone on a second row. */
+/* Three buttons (Share, Download, Copy) do not fit beside the heading on a
+   phone, so they share a row of their own and none wraps alone onto a second line */
 @media (max-width: 520px) {
 	.output-header:has(.output-tools > :nth-child(3)) {
 		flex-direction: column;
@@ -935,7 +909,7 @@ main:focus {
 	}
 }
 
-/* A decrypted or verified message is ordinary writing, not code */
+/* Decrypted and verified messages are prose, so they use the body font */
 .output-body pre.prose {
 	font-family: var(--font);
 	font-size: 15px;
@@ -966,9 +940,8 @@ main:focus {
 	color: var(--success);
 }
 
-/* A result made from inputs that have since been changed. It stays readable,
-   but it must not pass for what the form would produce now: it is dimmed, the
-   line above it says why, and the buttons that copy or send it are withdrawn. */
+/* Stale result (the inputs changed after it was made): dimmed, with no status
+   colours. ResultPanel adds the stale note and hides Copy, Download and Share. */
 .output.stale .output-body pre,
 .output.stale .output-label {
 	color: var(--text-secondary);
@@ -1001,7 +974,7 @@ main:focus {
 	font-weight: 600;
 }
 
-/* The way to the result as it is: quiet, since making it again is the usual answer */
+/* "Use it anyway" is outlined, not filled: running the tool again is the expected choice */
 .stale-note button {
 	min-height: 32px;
 	padding: 4px 14px;
@@ -1024,9 +997,9 @@ main:focus {
 	border-color: var(--text-dim);
 }
 
-/* A place where a message will appear. While it is empty it takes no room, but
-   it stays in the page: a screen reader announces a change to a region it
-   already knew about, and may pass over one that arrives with its text. */
+/* A live region is visually hidden while empty but stays in the DOM: screen
+   readers announce changes to an existing region, and may miss one inserted
+   together with its text. */
 .live:empty {
 	position: absolute;
 	width: 1px;
@@ -1036,16 +1009,16 @@ main:focus {
 	clip-path: inset(50%);
 }
 
-/* Writing that runs right to left (Arabic, Hebrew, Persian) is laid out that
-   way, each paragraph by its own first letter, wherever the words are the
-   user's own: the message boxes and a decrypted or verified text */
+/* User text (message boxes, decrypted and verified messages) has dir="auto".
+   unicode-bidi: plaintext sets each paragraph's direction from its first strong
+   character, so Arabic, Hebrew or Persian runs right to left. */
 textarea[dir='auto'],
 pre[dir='auto'] {
 	unicode-bidi: plaintext;
 	text-align: start;
 }
 
-/* Said in place of a result that is empty: a message or a signed text can be */
+/* Shown when a decrypted message or a signed text is empty */
 .empty-result {
 	display: block;
 	font-size: 14px;
@@ -1066,7 +1039,7 @@ pre[dir='auto'] {
 	color: var(--text);
 }
 
-/* Where the verdict comes straight after the header, the header's own rule separates them */
+/* The header's border-bottom already separates a leading verdict */
 .output.verdict-first .verdict:first-child {
 	border-top: none;
 }
@@ -1085,7 +1058,6 @@ pre[dir='auto'] {
 	color: var(--text-secondary);
 }
 
-/* Bottom Sticky Actions */
 .bottom-actions {
 	position: fixed;
 	bottom: 0;
@@ -1103,12 +1075,11 @@ pre[dir='auto'] {
 .bottom-actions-inner {
 	display: flex;
 	gap: 10px;
-	/* As wide as the page content above it */
+	/* The content width of .main.tool: 560px less 20px padding on each side */
 	max-width: 520px;
 	margin: 0 auto;
 }
 
-/* Buttons */
 .btn {
 	display: inline-flex;
 	align-items: center;
@@ -1137,7 +1108,7 @@ pre[dir='auto'] {
 	height: auto;
 }
 
-/* Shortcut hints are quieter than the label but still readable on their button */
+/* Dimmer than the label but still above 4.5:1 on the white button */
 .btn.primary kbd {
 	color: rgba(0, 0, 0, 0.62);
 }
@@ -1146,7 +1117,6 @@ pre[dir='auto'] {
 	color: var(--text-dim);
 }
 
-/* The one filled control on a page */
 .btn.primary {
 	flex: 1;
 	color: #000;
@@ -1162,7 +1132,7 @@ pre[dir='auto'] {
 	transform: scale(0.98);
 }
 
-/* Greyed out, not faded: a pale white button still looks pressable */
+/* Grey instead of reduced opacity: a faded white button still looks pressable */
 .btn.primary:disabled {
 	color: var(--text-dim);
 	background: var(--surface-2);
@@ -1191,14 +1161,13 @@ pre[dir='auto'] {
 	transform: scale(0.98);
 }
 
-/* Clear, after a first press that is waiting to be confirmed */
+/* Clear after its first press, waiting for the second */
 .btn.secondary.confirming,
 .btn.secondary.confirming:hover {
 	color: var(--error);
 	border-color: var(--error);
 }
 
-/* "How to" explainer on the encrypt, decrypt and generate pages */
 .explainer {
 	margin: 32px 0 0;
 	padding: 16px 18px;
@@ -1208,8 +1177,8 @@ pre[dir='auto'] {
 }
 
 .explainer summary {
-	/* Covers the whole bar, its padding included, so a click or a tap anywhere
-     on the bar opens the panel, not only one on the line of text */
+	/* The negative margin and matching padding stretch the click target over
+	   the panel's padding, so a tap anywhere on the bar opens it */
 	margin: -16px -18px;
 	padding: 16px 18px;
 	border-radius: var(--radius-lg);
@@ -1224,7 +1193,7 @@ pre[dir='auto'] {
 	gap: 10px;
 }
 
-/* The title is a heading for the page's outline; it looks as the summary does */
+/* The h2 is there for the heading outline and takes the summary's look */
 .explainer summary h2 {
 	margin: 0;
 	font: inherit;
@@ -1299,8 +1268,6 @@ pre[dir='auto'] {
 	border-radius: 4px;
 }
 
-/* Optional step inside a form, closed until the user wants it (signing on the
-   encrypt page, checking the sender on the decrypt page) */
 .option {
 	background: var(--surface);
 	border: 1px solid var(--border);
@@ -1367,7 +1334,7 @@ pre[dir='auto'] {
 	color: var(--text);
 }
 
-/* Wraps on a narrow screen. Cut short, it lost the half that says what the step is for. */
+/* Wraps rather than truncating, since the end of a summary can say what the section is for */
 .option-summary {
 	font-size: 13px;
 	line-height: 1.4;
@@ -1406,7 +1373,6 @@ pre[dir='auto'] {
 	color: var(--text-secondary);
 }
 
-/* Switch between the two halves of one tool (Sign and Verify) */
 .mode-switch {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
@@ -1445,7 +1411,6 @@ pre[dir='auto'] {
 	border-color: var(--border-hover);
 }
 
-/* Spinner */
 .spinner {
 	width: 16px;
 	height: 16px;
@@ -1461,7 +1426,6 @@ pre[dir='auto'] {
 	}
 }
 
-/* Shortcuts Modal */
 .shortcuts-overlay {
 	position: fixed;
 	inset: 0;
@@ -1563,7 +1527,6 @@ kbd {
 	transform: scale(0.98);
 }
 
-/* Responsive - Small Phones */
 @media (max-width: 380px) {
 	.header-text h1 {
 		font-size: 20px;
@@ -1579,7 +1542,6 @@ kbd {
 	}
 }
 
-/* Responsive - Tablets and larger */
 @media (min-width: 768px) {
 	.main {
 		max-width: 720px;
@@ -1630,14 +1592,14 @@ kbd {
 		margin-bottom: 0;
 	}
 
-	/* A line of a PGP block is 64 characters. At this size it fits the column, so
-     the block is not broken up by stray wrapped characters. */
+	/* At 13px a 64-character armour line fits the column without wrapping */
 	.workspace .fields textarea.mono {
 		font-size: 13px;
 	}
 
-	/* The result stays in view while the inputs beside it scroll. A column that
-     can grow taller than the window (the generated keys) scrolls with the page. */
+	/* The result stays in view while the inputs beside it scroll. .flow
+	   (isResultSticky off) is for results that can be taller than the viewport,
+	   such as generated keys. */
 	.workspace .result-column {
 		position: sticky;
 		top: calc(var(--nav-height, 66px) + 24px);
@@ -1657,9 +1619,8 @@ kbd {
 		flex-basis: 300px;
 	}
 
-	/* With room on screen the buttons are not pinned to the bottom edge: they
-     sit directly under the inputs they act on, the same width as those inputs */
-	/* They stay in reach at the bottom of the window while a long form scrolls */
+	/* The action bar moves into the inputs column, under the fields, and sticks
+	   to the bottom of the viewport while a long form scrolls */
 	.bottom-actions {
 		position: sticky;
 		bottom: 0;
@@ -1679,12 +1640,12 @@ kbd {
 	}
 }
 
-/* While a phone's keyboard is open, the top bar scrolls away with the page: it
-   would take a quarter of what the keyboard leaves. A keyboard usually covers
-   the page without resizing it, which no media query can see, so a script
-   reports it (stores/on-screen-keyboard.svelte.ts) and PageFrame sets the
-   class. The bar is back the moment the keyboard closes, so messages, results
-   and anchor jumps keep the room they leave for it. */
+/* Un-stick the top bar while an on-screen keyboard is open, when the bar would
+   take about a quarter of the visible area. Keyboards overlay the page without
+   resizing the layout viewport, so no media query sees them; PageFrame sets the
+   class from stores/on-screen-keyboard.svelte.ts, which watches the visual viewport.
+   Scroll padding and the toast offset still leave room for the bar, because it is back
+   as soon as the keyboard closes. */
 .app.keyboard-open .nav {
 	position: static;
 }
@@ -1711,7 +1672,7 @@ kbd {
 		padding: 10px 20px;
 	}
 
-	/* With the top bar out of the way, nothing has to stop below it */
+	/* The top bar is static here, so scrolling need not leave room for it */
 	html {
 		scroll-padding-top: var(--safe-top);
 	}
@@ -1725,9 +1686,9 @@ kbd {
 	}
 }
 
-/* Windows high-contrast mode replaces every background with its own colours,
-   and a background was all that showed these: the one filled button, and
-   which page or which of two tools is open. An edge and an underline survive. */
+/* Forced-colours mode (Windows High Contrast) replaces backgrounds, which are
+   all that mark the primary button and the current page or mode. Borders and
+   underlines survive, so use those. */
 @media (forced-colors: active) {
 	.btn.primary {
 		border: 1px solid ButtonText;
@@ -1740,14 +1701,13 @@ kbd {
 		text-underline-offset: 4px;
 	}
 
-	/* On a touch screen the pill behind a top-bar link is a layer of its own.
-     With no background left to show, its edge would only be a second ring. */
+	/* The touch-screen ::before pill has no background here, and its border
+	   would only draw a second outline inside the link's own */
 	.nav-link::before {
 		display: none;
 	}
 }
 
-/* A phone on its side */
 @media (max-height: 500px) and (orientation: landscape) {
 	.header {
 		margin-bottom: 16px;
@@ -1767,19 +1727,16 @@ kbd {
 	animation-duration: 0.18s;
 }
 
-/* Touch screens. Safari on an iPhone zooms the whole page in when a text box
-   whose text is smaller than 16px is tapped, and does not zoom back out. Key
-   and message boxes are the only ones below that size, so they are raised to
-   it wherever the main way of pointing is a finger. Kept after the desktop
-   rule above so it also applies to a large touch screen. */
+/* iOS Safari zooms in when a field with a font-size under 16px is focused, and
+   does not zoom back out. The monospace boxes are the only ones below 16px.
+   This block must stay after the 1024px rule so it also wins on large touch screens. */
 @media (pointer: coarse) {
 	.fields textarea.mono,
 	.workspace .fields textarea.mono {
 		font-size: 16px;
 	}
 
-	/* A finger needs about 44px to land on. The smaller controls, sized for a
-     mouse pointer, grow to that here. */
+	/* 44px touch targets (WCAG 2.5.5); the components do the same for their own controls */
 	.copy-btn,
 	.stale-note button,
 	.nav-update {
@@ -1792,8 +1749,8 @@ kbd {
 		min-height: 44px;
 	}
 
-	/* The links in the top bar grow as well, but the pill that marks the current
-     page keeps its size: it is drawn behind the link instead of being the link. */
+	/* The top-bar links grow to 44px, but the visible pill keeps its size: it
+	   moves to a ::before layer inset inside the taller link */
 	.nav-link {
 		position: relative;
 		isolation: isolate;
@@ -1825,7 +1782,7 @@ kbd {
 	}
 }
 
-/* On a phone the tools' links are a little taller, and so is their pill */
+/* On phones a smaller inset makes the tool links' pill taller */
 @media (pointer: coarse) and (max-width: 720px) {
 	.nav-tools {
 		padding-bottom: 5px;
@@ -1841,7 +1798,6 @@ kbd {
 	}
 }
 
-/* Reduce motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
 	.toast,
 	.shortcuts-overlay {

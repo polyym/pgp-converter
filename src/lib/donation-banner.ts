@@ -1,9 +1,9 @@
 import { DONATION_COOLDOWN_MS, DONATION_STORAGE_KEY } from './constants.ts';
 
 /**
- * Checks whether the donation banner is allowed to appear.
- * Returns true if the banner has never been dismissed, or if
- * the cooldown period has elapsed since the last dismissal.
+ * Returns false only while a dismissal stored in localStorage is less than
+ * DONATION_COOLDOWN_MS old. No dismissal, an unreadable value or unavailable
+ * storage all return true.
  */
 export function isDonationBannerAllowed(): boolean {
 	try {
@@ -18,16 +18,19 @@ export function isDonationBannerAllowed(): boolean {
 		}
 		return Date.now() - dismissedAt >= DONATION_COOLDOWN_MS;
 	} catch {
-		// localStorage unavailable (e.g. private browsing); allow banner
+		// localStorage throws where storage is blocked, as in some private modes
 		return true;
 	}
 }
 
-/** Records the current timestamp as the dismissal time in localStorage */
+/**
+ * Stores the current time in localStorage as the dismissal time. Does nothing if
+ * storage is unavailable.
+ */
 export function dismissDonationBanner(): void {
 	try {
 		localStorage.setItem(DONATION_STORAGE_KEY, String(Date.now()));
 	} catch {
-		// localStorage unavailable; fail silently
+		// Without storage the dismissal is forgotten, so the banner may show again sooner
 	}
 }

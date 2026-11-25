@@ -6,8 +6,8 @@ import * as walletProxy from '../../netlify/functions/wallet-proxy.mjs';
 const handler = walletProxy.default;
 const DEFAULT_ADDRESS = '/.netlify/functions/wallet-proxy';
 const FUNCTION_FILE = new URL('../../netlify/functions/wallet-proxy.mts', import.meta.url);
-// A module chosen as the code runs, which no reading of the file can name
-const LOADED_AS_IT_RUNS = /\brequire\s*\(|\bimport\s*\(|\bcreateRequire\b/;
+// Calls that can load a module chosen at runtime, which preProcessFile cannot name
+const DYNAMIC_LOAD = /\brequire\s*\(|\bimport\s*\(|\bcreateRequire\b/;
 
 const API_URL = 'https://wallets.example';
 const upstreamBody = {
@@ -41,15 +41,15 @@ afterEach(() => {
 
 describe('wallet proxy', () => {
 	it('should keep its default address by declaring no custom path', () => {
-		// The page and the deploy check ask for it at its default address. A custom
-		// path was once shadowed by another function's "/*" under --no-build, which
-		// took the donate page down; see the note in the function's file
+		// The Donate page and the deploy check call the default URL. Under
+		// `netlify deploy --no-build` another function's "/*" can shadow a custom path;
+		// see the note at the top of the function file.
 		const { config } = walletProxy as { config?: { path?: unknown } };
 		expect(config?.path).toBeUndefined();
 	});
 
-	it("should import nothing but Node's own modules, as the deploy installs no packages for it", () => {
-		// The code as it runs: comments and type-only imports dropped
+	it('should import only node: built-in modules', () => {
+		// Transpile first, so comments and type-only imports do not count
 		const code = ts.transpileModule(readFileSync(FUNCTION_FILE, 'utf-8'), {
 			compilerOptions: {
 				removeComments: true,
@@ -61,7 +61,7 @@ describe('wallet proxy', () => {
 			.preProcessFile(code, true, true)
 			.importedFiles.map(({ fileName }) => fileName);
 		expect(imported.filter((name) => !name.startsWith('node:'))).toEqual([]);
-		expect(code).not.toMatch(LOADED_AS_IT_RUNS);
+		expect(code).not.toMatch(DYNAMIC_LOAD);
 	});
 
 	it('should always read the same upstream record, whatever was requested', async () => {
@@ -126,7 +126,7 @@ describe('wallet proxy', () => {
 		expect((await handler(request())).status).toBe(503);
 	});
 
-	it('should answer 500, without the upstream body, for errors that will not fix themselves', async () => {
+	it('should answer 500 without the upstream body when retrying will not help', async () => {
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream('secret upstream detail', 401)));
 
 		const res = await handler(request());

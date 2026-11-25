@@ -3,14 +3,14 @@ import { candidateVersion } from '#lib/version.ts';
 import { siteAddress } from './site-address.svelte.ts';
 
 /**
- * The version as the pages show it, which depends on where the app was opened:
- * as a release candidate on a test copy, and as released everywhere else,
- * self-hosted copies included
+ * The app version for display: a release candidate on a test copy, and the
+ * plain release everywhere else, self-hosted copies included. Reads siteAddress,
+ * so it shows the release until readSiteAddress has run.
  */
 export const appVersion = {
 	/** The version alone, as package.json has it: "4.1.0" */
 	release: version,
-	/** The number of the release candidate this code is */
+	/** The release candidate number from package.json */
 	candidate: releaseCandidate,
 	/** True on a test copy: the staging address, a preview or the development server */
 	get isCandidate() {

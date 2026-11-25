@@ -1,20 +1,20 @@
 # Security Policy
 
-PGP Converter handles private keys and passphrases in the browser, so please report security problems privately.
+PGP Converter handles private keys and passphrases in the browser, so report security problems privately.
 
 ## Reporting a vulnerability
 
-**Please do not report security vulnerabilities in public GitHub issues.** A public report gives attackers the details before a fix is available.
+Do not report security vulnerabilities in public GitHub issues: a public report gives attackers the details before a fix is available.
 
 Report privately instead, using GitHub's private vulnerability reporting:
 
 https://github.com/polyym/pgp-converter/security/advisories/new
 
-Please include:
+In your report, include:
 
 - What the issue is and what an attacker could do with it
 - Clear steps to reproduce it
-- The affected commit or deploy, if you know it (the version and the commit are shown at the foot of every page; the version is also in [`package.json`](./package.json))
+- The affected commit or deploy, if you know it (every page shows the version and the commit in its footer, and the version is also in [`package.json`](./package.json))
 - Your browser and operating system, where relevant
 
 Replies come through the same private thread. Once a fix has been deployed, the details can be published, with credit to you if you would like it.
@@ -30,7 +30,7 @@ In scope:
 
 Out of scope:
 
-- Vulnerabilities in [OpenPGP.js](https://github.com/openpgpjs/openpgpjs/security) itself; please report those to the OpenPGP.js project
+- Vulnerabilities in [OpenPGP.js](https://github.com/openpgpjs/openpgpjs/security) itself; report those to the OpenPGP.js project
 - The limits described in the threat model on the [About page](https://pgp-converter.com/about#threat-model), such as a compromised device or browser extension
 - Denial of service that only affects your own browser tab
 

@@ -1,7 +1,6 @@
 /**
- * Most the app will read into a text box from files, all the chosen files
- * together. Keys and messages are a few kilobytes; much more than this holds
- * the page up for seconds or minutes while it is read.
+ * Combined size limit for files read into a text box. Keys and messages are a
+ * few kilobytes, and much larger input blocks the page for seconds or minutes.
  */
 export const MAX_TEXT_FILE_BYTES = 1_000_000;
 
@@ -14,25 +13,24 @@ export const FILE_NOT_ARMORED_ERROR =
 export const FILE_UNREADABLE_ERROR = 'That file could not be read.';
 
 /**
- * Marks around a file's name in a sentence, so that a name in a script written
- * right to left keeps to itself and leaves the sentence as it is
+ * First Strong Isolate and Pop Directional Isolate around a file name in a
+ * message, so a right-to-left name cannot reorder the rest of the sentence
  */
 const ISOLATE_START = '\u{2068}';
 const ISOLATE_END = '\u{2069}';
 /**
- * Characters that turn the text after them round: embeddings, overrides and
- * isolates. Left in a name, they could end the marks around it early, or turn
- * the rest of the sentence.
+ * Bidi embeddings, overrides and isolates, removed from the name because one
+ * could close the isolate early or reverse the rest of the sentence
  */
 const DIRECTION_CONTROLS = /[\u{202A}-\u{202E}\u{2066}-\u{2069}]/gu;
-/** Characters that draw nothing, and the blank that Braille text uses */
+/** Invisible characters: default-ignorable code points, controls and the blank Braille pattern */
 const DRAWS_NOTHING = /[\p{Default_Ignorable_Code_Point}\p{Cc}\u{2800}]/gu;
 
 /**
- * Says which of several chosen files held no PGP block. "That file" would not
- * say which, and a key file chosen with it would seem to have been read.
- * @param name - The name of the file
- * @returns The note to show
+ * Returns the error for one of several chosen files that has no PGP block. It
+ * names the file, inside bidi isolates, so the visitor can tell which file failed
+ * and does not think the others were used. A name that is invisible once bidi
+ * controls are removed becomes "One of the files".
  */
 export function fileNotArmoredErrorFor(name: string): string {
 	const shown = name.replaceAll(DIRECTION_CONTROLS, '');
@@ -49,22 +47,22 @@ export interface TextFilesResult {
 }
 
 /**
- * Works out how a text file's bytes are written down. Most are UTF-8, but
- * Windows PowerShell writes UTF-16 when a command's output is sent to a file
- * (gpg --armor --export > key.asc), and such a file read as UTF-8 is gibberish.
+ * Returns the encoding to decode a text file with: UTF-16 when the bytes start
+ * with its byte order mark or, within the first 64 bytes, look like ASCII written
+ * as UTF-16, and UTF-8 otherwise. Windows PowerShell writes redirected output as
+ * UTF-16, so `gpg --armor --export > key.asc` there gives a UTF-16 file.
  * @param bytes - The start of the file, or all of it
- * @returns The name of the encoding to read it with
  */
 export function detectTextEncoding(bytes: Uint8Array): 'utf-8' | 'utf-16le' | 'utf-16be' {
-	// UTF-16 files normally open with a two-byte mark that says which way round each pair is
+	// Byte order mark (BOM): FF FE for little-endian, FE FF for big-endian
 	if (bytes[0] === 0xff && bytes[1] === 0xfe) {
 		return 'utf-16le';
 	}
 	if (bytes[0] === 0xfe && bytes[1] === 0xff) {
 		return 'utf-16be';
 	}
-	// Without the mark: a key or message is plain letters and digits, and in
-	// UTF-16 every one of those is a letter's byte beside a zero byte
+	// Without a BOM, armoured text is ASCII, so in UTF-16 every other byte is zero:
+	// the odd ones for little-endian, the even ones for big-endian
 	const sample = bytes.subarray(0, 64);
 	if (sample.length >= 8 && sample.length % 2 === 0) {
 		const zeroAt = (parity: 0 | 1) =>
@@ -80,19 +78,19 @@ export function detectTextEncoding(bytes: Uint8Array): 'utf-8' | 'utf-16le' | 'u
 }
 
 /**
- * Reads dropped or chosen files as text for a key or message box.
- * Nothing is uploaded: the files are read by the browser, on this device.
- * @param files - The files the user dropped or picked
- * @param requiresArmor - Refuse files that hold no armored PGP block, such as a binary key or a photo
- * @returns The text of all the files joined together, or why they could not be used
+ * Reads dropped or chosen files as text for a key or message box, decoding each
+ * with detectTextEncoding, and returns their trimmed contents joined by newlines.
+ * Returns an error instead, and uses none of the files, when together they exceed
+ * MAX_TEXT_FILE_BYTES, one cannot be read, there are none, or `requiresArmor` is
+ * set and one does not contain "-----BEGIN PGP ". The browser reads the files
+ * locally; nothing is uploaded.
  */
 export async function readTextFiles(
 	files: Iterable<File>,
 	requiresArmor: boolean
 ): Promise<TextFilesResult> {
-	// The browser's list of chosen files is emptied when the file input is
-	// cleared, which the page does straight away so that the same file can be
-	// chosen again. Taken before the first wait, every file is still in it.
+	// Copy the list before the first await: the page clears the file input at once,
+	// so the same file can be chosen again, and that empties the live FileList
 	const chosen = [...files];
 	const totalBytes = chosen.reduce((total, file) => total + file.size, 0);
 	if (totalBytes > MAX_TEXT_FILE_BYTES) {
@@ -103,7 +101,7 @@ export async function readTextFiles(
 		let text: string;
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
-			// The decoder drops the mark at the start of the file, if there is one
+			// TextDecoder strips a leading byte order mark
 			text = new TextDecoder(detectTextEncoding(bytes)).decode(bytes);
 		} catch {
 			return { error: FILE_UNREADABLE_ERROR };

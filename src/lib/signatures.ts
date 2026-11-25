@@ -21,26 +21,33 @@ import {
 
 /**
  * The outcome of checking one signature:
- * - valid: made by a key that was supplied, and the message is unchanged
- * - invalid: does not match the message, which was altered or carries a forged signature
- * - unknown-key: made by a key that was not supplied, so it could not be checked
- * - untrusted: belongs to a supplied key, but that key or the signature's date cannot be relied on
+ * - valid: verified against a supplied key
+ * - invalid: any failure the other statuses do not cover. Usually the message was
+ *   altered or the signature was not made by the key it names, but OpenPGP.js
+ *   also rejects some signatures that verify, such as ones made with SHA-1.
+ * - unknown-key: the issuer key ID matches no supplied key, so it was not verified
+ * - untrusted: verified, but the key is revoked, expired, weak or not flagged for
+ *   signing, or the signature has expired, is dated in the future or is older than
+ *   every self-signature on the key
  */
 export type SignatureStatus = 'valid' | 'invalid' | 'unknown-key' | 'untrusted';
 
 export interface SignatureCheck {
 	status: SignatureStatus;
-	/** ID of the key that made the signature, in upper-case hexadecimal */
+	/** Issuer key ID as 16 upper-case hex digits */
 	keyID: string;
-	/** The supplied key that the signature belongs to, when there is one */
+	/** The supplied key holding that key ID; undefined when none does */
 	signer?: KeyInfo;
 	/** When the signature says it was made, as "YYYY-MM-DD HH:MM UTC" */
 	signedAt?: string;
-	/** Why a signature that matches its key is still not to be relied on */
+	/** User-facing reason for an 'untrusted' status */
 	detail?: string;
 }
 
-/** One signature as OpenPGP.js reports it; the library does not export this type */
+/**
+ * One entry of the `signatures` array that OpenPGP.js verify and decrypt
+ * return. The library does not export this type.
+ */
 export interface LibrarySignature {
 	keyID: KeyID;
 	verified: Promise<true>;
@@ -49,9 +56,8 @@ export interface LibrarySignature {
 
 export interface SigningResult {
 	success: boolean;
-	/** The signed message, readable by anyone, with the signature underneath */
+	/** The cleartext signed message, armoured, with LF line endings */
 	data?: string;
-	/** The key that signed */
 	signer?: KeyInfo;
 	error?: string;
 	/** The input the error is about, when it is about one in particular */
@@ -64,7 +70,7 @@ export interface VerificationOutcome {
 	data?: string;
 	/** One entry for each signature on the message; empty if it carries none */
 	signatures?: SignatureCheck[];
-	/** True when the text held anything besides the message. The verdicts are not about that. */
+	/** True when the paste held text besides the message OpenPGP.js read, which no verdict covers */
 	hasOtherText?: boolean;
 	error?: string;
 	/** The input the error is about, when it is about one in particular */
@@ -89,19 +95,19 @@ export const REISSUED_KEY_DETAIL =
 	'The key you provided was updated by its owner after this message was signed, and this copy of it holds no record from before then. The signature cannot be confirmed against this copy; an older copy of the key would confirm it.';
 
 /**
- * All that OpenPGP.js says when a key's flags leave signing out: the key's ID
- * ends the message. For any other fault it adds a cause, and the cause decides
- * the verdict.
+ * The OpenPGP.js error when no key or subkey is flagged for signing. That
+ * message ends with the key ID; for other faults the library appends a cause
+ * after the ID, which the `$` rules out.
  */
 const UNFIT_SIGNING_KEY_PATTERN = /could not find valid signing key packet in key [0-9a-f]+$/i;
 const SIGNATURE_HEADER = '-----BEGIN PGP SIGNATURE-----';
 const MESSAGE_HEADER = '-----BEGIN PGP MESSAGE-----';
 
 /**
- * Turns the library's verification results into plain outcomes
- * @param results - The signatures found on a message, as returned by OpenPGP.js
- * @param keys - The public keys that were supplied to check them
- * @returns One outcome for each signature
+ * Awaits each OpenPGP.js verification result and classifies it by the error it
+ * rejects with, since the error message is the only place the library gives a reason.
+ * @param keys - The supplied public keys, used to name the signer
+ * @returns One check per signature, in the same order
  */
 export async function checkSignatures(
 	results: LibrarySignature[],
@@ -121,7 +127,7 @@ export async function checkSignatures(
 				signedOn = signature.packets.at(0)?.created ?? undefined;
 				check.signedAt = formatSignedAt(signedOn);
 			} catch {
-				// The date is a courtesy; a verdict below only reads it to choose its wording
+				// The date is only shown and used to word one detail below, so it may be missing
 			}
 			try {
 				await result.verified;
@@ -136,23 +142,21 @@ export async function checkSignatures(
 					check.status = 'untrusted';
 					check.detail = 'The key that made this signature had expired when it was made.';
 				} else if (WEAK_KEY_PATTERN.test(message)) {
-					// Turned away because of the key's kind, after the signature had matched.
-					// Calling that "does not match" would accuse an honest message of being altered.
+					// OpenPGP.js checks key strength only after the signature has verified, so
+					// 'invalid' here would call an unaltered message forged.
 					check.status = 'untrusted';
 					check.detail = WEAK_SIGNING_KEY_DETAIL;
 				} else if (/in the future/i.test(message)) {
 					check.status = 'untrusted';
-					// The library says "in the future" in two cases. Either the signature is
-					// dated ahead of this device's clock, or the key's own record of itself is
-					// dated after the signature: its owner changed something about the key,
-					// an expiry date for instance, with a tool that kept only the new record.
-					// The second has nothing to do with anyone's clock.
+					// OpenPGP.js says "in the future" when the signature's creation time is ahead
+					// of this device's clock, and also when every self-signature on the key is
+					// newer than the signature, as after the owner reformats the key. The second
+					// case has nothing to do with the clock.
 					const isAheadOfClock = !signedOn || signedOn.getTime() > Date.now();
 					check.detail = isAheadOfClock ? FUTURE_SIGNATURE_DETAIL : REISSUED_KEY_DETAIL;
 				} else if (UNFIT_SIGNING_KEY_PATTERN.test(message)) {
-					// The signature matches the key, but the key says it is not for signing.
-					// Any other fault of a signing subkey stays "does not match": one that its
-					// owner never bound to the key, for one.
+					// The signature verified, but the key flags exclude signing. Other signing
+					// key failures, such as a subkey with no valid binding signature, stay 'invalid'.
 					check.status = 'untrusted';
 					check.detail = UNFIT_SIGNING_KEY_DETAIL;
 				} else {
@@ -165,11 +169,11 @@ export async function checkSignatures(
 }
 
 /**
- * Signs a message so that anyone can read it and check who wrote it
- * @param text - The message to sign
- * @param armoredPrivateKey - The signer's armored PGP private key
- * @param passphrase - The passphrase to unlock the private key; ignored if the key is not protected
- * @returns SigningResult with the signed message or an error
+ * Creates a cleartext signed message from `text` (RFC 9580 section 7). Never
+ * throws: a failure comes back as a user-facing `error`, with `errorField`
+ * naming the input at fault.
+ * @param armoredPrivateKey - May also hold the public key; the private key block is used
+ * @param passphrase - Ignored when the key is not protected
  */
 export async function signMessage(
 	text: string,
@@ -188,8 +192,9 @@ export async function signMessage(
 		const message = await createCleartextMessage({ text });
 		const signed = await sign({ message, signingKeys: privateKey, config: KEY_USE_SETTINGS });
 
-		// The library joins the lines of the text with CRLF and the rest with LF. One
-		// kind of line ending pastes more predictably, and verification treats both alike.
+		// OpenPGP.js writes the signed text with CRLF and the armour with LF. Use LF
+		// throughout: the signature covers the text with line endings canonicalised to
+		// CRLF, so it still verifies.
 		const data = signed.replaceAll('\r\n', '\n');
 		return { success: true, data, signer: await describeKey(privateKey, 'sign') };
 	} catch (e: unknown) {
@@ -200,7 +205,8 @@ export async function signMessage(
 			console.error(e);
 		}
 		const message = e instanceof Error ? e.message : String(e);
-		// The step is updated from inside a callback, which the compiler cannot follow
+		// TypeScript does not see the assignment in the onStage callback and narrows
+		// `stage` to the values assigned in this function, so widen it again
 		const failedAt = stage as ErrorStage;
 		return {
 			success: false,
@@ -211,10 +217,11 @@ export async function signMessage(
 }
 
 /**
- * Checks the signature on a signed message against the sender's public key
- * @param signedMessage - A message that begins with BEGIN PGP SIGNED MESSAGE, or a signed BEGIN PGP MESSAGE block
- * @param armoredPublicKeys - One or more armored PGP public keys that may have signed it
- * @returns VerificationOutcome with the signed text and the result for each signature, or an error
+ * Verifies a cleartext signed message, or a signed PGP MESSAGE block, against
+ * the supplied public keys. Never throws. A private key, a detached signature
+ * and an encrypted message are each refused with their own error.
+ * @param signedMessage - Pasted text; email quoting and indentation are tolerated
+ * @param armoredPublicKeys - One or more armoured public keys
  */
 export async function verifyMessage(
 	signedMessage: string,
@@ -231,11 +238,12 @@ export async function verifyMessage(
 		if (isDetachedSignature(signedMessage)) {
 			return { success: false, error: DETACHED_SIGNATURE_ERROR, errorField: 'signedMessage' };
 		}
-		// The text of a cleartext message is part of what was signed, so it is read as
-		// pasted. Only if that fails is it cleaned up, to undo quoting by an email client.
+		// Try the text as pasted first: normaliseArmor strips leading whitespace and
+		// '>' from every line, which changes signed cleartext. The normalised text is
+		// the fallback for a message quoted by an email client.
 		const candidates = [signedMessage.trim(), normaliseArmor(signedMessage)];
 		let result: { data: unknown; signatures: LibrarySignature[] } | undefined;
-		// The text the library accepted, which is the one to search for text it passed over
+		// hasOtherText must inspect the candidate OpenPGP.js accepted, not the raw paste
 		let accepted = '';
 		let firstError: unknown;
 		for (const candidate of candidates) {
@@ -275,6 +283,8 @@ export async function verifyMessage(
 			console.error(e);
 		}
 		const message = e instanceof Error ? e.message : String(e);
+		// OpenPGP.js rejects an encrypted message this way: it has no literal data
+		// packet until it is decrypted
 		if (/one literal data packet/i.test(message)) {
 			return { success: false, error: ENCRYPTED_NOT_SIGNED_ERROR, errorField: 'signedMessage' };
 		}

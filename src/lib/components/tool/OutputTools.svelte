@@ -10,18 +10,20 @@
 		what,
 		canShare: isShareOffered = true
 	}: {
-		/** The result to save or share */
 		text: string;
-		/** Name of the downloaded file */
+		/** Download filename */
 		filename: string;
-		/** What the result is, for screen readers: "encrypted message", "signed message" */
+		/** Completes the buttons' aria-labels, for example "encrypted message" */
 		what: string;
-		/** Offer the device's share sheet. Off for decrypted text, which should not be one tap from another app. */
+		/**
+		 * Offers the Web Share API where the browser has it. Pass false for
+		 * plaintext, so a decrypted message is not one tap from another app.
+		 */
 		canShare?: boolean;
 	} = $props();
 
-	// Sharing hands the text to the device's own share sheet; only phones and a
-	// few desktop browsers have one. That is only known once the page is running.
+	// Web Share support is only known in the browser. Starting false keeps the
+	// hydrated markup the same as the prerendered HTML.
 	let hasShareSheet = $state(false);
 	const canShare = $derived(isShareOffered && hasShareSheet);
 
@@ -33,7 +35,7 @@
 		try {
 			await navigator.share({ text });
 		} catch {
-			// Closing the share sheet without choosing anything is not an error
+			// Rejects with AbortError when the user closes the share sheet, which is not a failure
 		}
 	}
 </script>

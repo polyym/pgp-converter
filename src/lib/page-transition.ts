@@ -4,15 +4,13 @@ import { PAGE_FADE_WAIT_MS } from './constants.ts';
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
 /**
- * Cross-fades from one page to the next where the browser supports view
- * transitions. Elsewhere, and for people who ask for reduced motion, pages
- * switch at once. Hand it to SvelteKit's onNavigate.
- * @param navigation - The page change that is about to happen
- * @returns A promise that settles when the new page may be drawn, or nothing
- *   when there is no cross-fade to wait for
+ * Cross-fades between pages with the View Transitions API; pass it to SvelteKit's
+ * onNavigate. Returns undefined, so the page switches at once, where the API is
+ * missing or the visitor prefers reduced motion. Otherwise returns a promise that
+ * resolves when SvelteKit may render the new page.
  */
 export function crossFade(navigation: OnNavigate): Promise<void> | undefined {
-	// Older browsers have no view transitions, whatever the type definitions say
+	// The DOM types declare startViewTransition, but older browsers lack it
 	if (!('startViewTransition' in document)) {
 		return undefined;
 	}
@@ -21,9 +19,9 @@ export function crossFade(navigation: OnNavigate): Promise<void> | undefined {
 	}
 
 	return new Promise((resolve) => {
-		// The browser calls back on its next frame. A window that is not being
-		// drawn has no next frame, and the new page must not wait for one: after
-		// a short while it is shown without the cross-fade.
+		// The transition callback runs on the next rendering frame, which a hidden
+		// tab never draws. Resolve after PAGE_FADE_WAIT_MS anyway, so navigation
+		// goes ahead without the fade instead of hanging.
 		const withoutFade = setTimeout(resolve, PAGE_FADE_WAIT_MS);
 		const transition = document.startViewTransition(async () => {
 			clearTimeout(withoutFade);
@@ -37,6 +35,6 @@ export function crossFade(navigation: OnNavigate): Promise<void> | undefined {
 }
 
 function ignore(): void {
-	// A cross-fade that is skipped or cut short, or a page change that another
-	// one overtakes, needs no report
+	// These promises reject when a transition is skipped or interrupted, or when a
+	// later navigation overtakes this one, and none of that needs handling
 }

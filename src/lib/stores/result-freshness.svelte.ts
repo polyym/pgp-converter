@@ -1,23 +1,23 @@
 import { isOutOfDate } from '#lib/result-state.ts';
 
 /**
- * Keeps track of whether the result on a page still belongs to its form.
- * Call while a component is being set up.
- * @param readInputs - The inputs the result depends on, in a fixed order; leave out on a page whose result never goes out of date
- * @returns Whether the result is out of date, and whether its buttons are put away
+ * Tracks whether the result on a page is stale (an input has changed since it
+ * was made), and withholds a stale result's buttons until the user accepts it.
+ * Uses $effect, so call it during component initialisation.
+ * @param readInputs - Returns the inputs the result depends on, in a fixed
+ * order. Omit it on a page whose result never goes stale.
  */
 export function createResultFreshness(readInputs?: () => readonly string[]) {
 	// What the result on screen was made from; undefined while there is none
 	let madeFrom = $state<readonly string[]>();
 	const isStale = $derived(isOutOfDate(madeFrom, read()));
-	// An out-of-date result can still be wanted: a key brushed by accident in a
-	// box changes nothing about the result someone came for. Its buttons are put
-	// away until they say so, which makes using it a choice and not a slip.
+	// A stale result can still be wanted, for example after a stray keypress in
+	// a field, so its buttons come back once the user accepts it
 	let isAccepted = $state(false);
 	const isWithheld = $derived(isStale && !isAccepted);
 
-	// The choice is about one result in one state. A result that is current
-	// again, or a new one, starts without it.
+	// Acceptance lasts only while the result stays stale: once it is current
+	// again, the next edit withholds it again
 	$effect(() => {
 		if (!isStale) {
 			isAccepted = false;
@@ -33,7 +33,7 @@ export function createResultFreshness(readInputs?: () => readonly string[]) {
 		get isStale() {
 			return isStale;
 		},
-		/** True while an out-of-date result's buttons are put away */
+		/** True while a stale result's buttons are hidden, until the user accepts it */
 		get isWithheld() {
 			return isWithheld;
 		},
@@ -51,7 +51,7 @@ export function createResultFreshness(readInputs?: () => readonly string[]) {
 			madeFrom = undefined;
 			isAccepted = false;
 		},
-		/** The user wants the out-of-date result as it is */
+		/** Accepts the stale result as it is, which brings its buttons back */
 		accept(): void {
 			isAccepted = true;
 		}

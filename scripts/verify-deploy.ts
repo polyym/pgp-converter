@@ -1,32 +1,19 @@
-// Confirms that the live site serves, byte for byte, the files in the local
-// build directory: the build that was just signed. Pages are checked as the
-// file (/encrypt.html) and at the address visitors ask for (/encrypt), and
-// each must arrive with a content policy that lets it start and allows no
-// other inline script. An address that does not exist must get the build's
-// 404.html, and the app manifest its own type. The HTTPS-only header is
-// checked against what the browsers' preload list requires. The Deploy
-// workflow runs this after a production deploy.
+// Compares a deployed copy of the site with a local build, byte for byte:
+// every file, and every page again at its extensionless path (/encrypt for
+// encrypt.html). Each page must also arrive with a CSP that lists the hashes
+// of its inline scripts and does not allow 'unsafe-inline'. deploy.yml runs
+// this after each production and staging deploy, and image.yml runs it
+// against the Docker image before pushing it and again before attesting it.
 //
-// With --staging it checks the staging copy, which the workflow deploys from
-// dev. The files and the policy are held to the same standard. Three things
-// differ: the staging copy must ask search engines to leave it out, where the
-// released site must not; the preload list is no concern of an address that
-// belongs to the host; and the wallet proxy is not asked, because the Donate
-// page of a staging copy shows fake addresses.
-//
-// With --self-hosted it checks a copy that someone runs at an address of their
-// own, such as the Docker image: .github/workflows/image.yml checks the image
-// this way before it pushes it, and the pushed x86 image before it attests it.
-// The files are held to the same standard, and every page must arrive with
-// exactly the policy in the build's own headers file, as on the released site.
-// Search engines, the wallet proxy and the HTTPS-only header are not checked:
-// they belong to the released site.
-//
-// Every copy is also asked for a few addresses made to turn a redirect into a
-// way off the site, and the check fails if one leads elsewhere.
-//
-// After a production deploy it also checks that the host's own address for
-// the project sends visitors on to the released site.
+// Every mode fails if one of OFF_SITE_PROBES redirects to another origin, and
+// warns if a path that does not exist gets anything but the build's 404.html,
+// or if the manifest has the wrong Content-Type. Production, the default,
+// also checks X-Robots-Tag, the wallet proxy function, the HSTS preload
+// requirements and the redirect from pgp-converter.netlify.app. --staging
+// instead warns if noindex is missing, and skips the wallet proxy, HSTS and
+// the redirect.
+// --self-hosted requires every page to carry exactly the CSP in the build's
+// _headers, and skips the checks that only concern pgp-converter.com.
 //
 // Usage: node scripts/verify-deploy.ts <site-origin> [build-dir] [--staging | --self-hosted]
 //   e.g. node scripts/verify-deploy.ts https://pgp-converter.com build
@@ -43,60 +30,54 @@ import { leavesSite } from './off-site.ts';
 import { missingForPreload } from './preload-header.ts';
 import { asksNotToBeListed } from './robots-header.ts';
 
-/** An address on the live site, and the local file it must match */
 interface Target {
 	file: string;
 	address: string;
 }
 
-/** An address that did not answer as it should, and what it answered instead */
 interface Mismatch {
 	address: string;
-	/** The hash of what was served, or a description of what went wrong */
+	/** The hex SHA-256 digest of the response body, or a description of the failure */
 	actual: string;
 }
 
-/** What asking for the wallet proxy showed */
 interface FunctionCheck {
-	/** Set when the function cannot be reached, which fails the run */
+	/** Set when the function is not deployed, which fails the run */
 	missing?: string;
-	/** Anything else worth saying about it */
+	/** FUNCTION_DEPLOYED, or a warning if the function returned an error or no response */
 	note?: string;
 }
 
-/** What the site's X-Robots-Tag header showed */
 interface ListingCheck {
-	/** Set when the released site asks to be left out of search results, which fails the run */
+	/** Set when production sends noindex, which fails the run */
 	failure?: string;
-	/** Set when the staging copy does not ask to be left out, or the header could not be read */
+	/** Set when staging does not send noindex, or the request failed */
 	warning?: string;
 }
 
 // Netlify reads these as configuration and does not serve them
 const HEADERS_FILE = '_headers';
 const NOT_SERVED: ReadonlySet<string> = new Set([HEADERS_FILE, '_redirects']);
-// The line of the headers file that holds the policy (scripts/write-csp.ts)
+// Captures the CSP value from _headers, as scripts/write-csp.ts writes it
 const POLICY_LINE = /^\s+Content-Security-Policy:\s*(.+?)\s*$/im;
-// The page for an address that does not exist. It is compared as a file like
-// the rest, and then at an address made up for the purpose, which is how it
-// is really served; it has no address of its own to check.
+// Compared as /404.html like any other file, then by requesting a path that
+// does not exist (checkErrorPage). It has no extensionless path of its own.
 const NOT_FOUND_PAGE = '404.html';
-// The wallet proxy is a function, not a file, so it is checked for presence only.
-// This is its default address; src/lib/donations.ts asks for the same one.
+// A Netlify function, not a build file, so only its presence is checked.
+// Keep in sync with WALLETS_ENDPOINT in src/lib/donations.ts.
 const FUNCTION_PATH = '/.netlify/functions/wallet-proxy';
 const FUNCTION_DEPLOYED = 'Wallet proxy function is deployed.';
-// The Donate page asks the proxy on the released site alone (src/lib/donations.ts)
-const FUNCTION_NOT_ASKED =
+const FUNCTION_NOT_CHECKED =
 	'Wallet proxy function is not checked: the Donate page of a staging copy shows fake addresses.';
-const FUNCTION_NOT_ASKED_SELF_HOSTED =
+const FUNCTION_NOT_CHECKED_SELF_HOSTED =
 	'Wallet proxy function is not checked: the Donate page of a self-hosted copy links to the released site.';
-// The app manifest, and the type a rule in netlify.toml gives it
+// netlify.toml sets this Content-Type, because Netlify does not know the
+// .webmanifest extension
 const MANIFEST_PATH = '/manifest.webmanifest';
 const MANIFEST_TYPE = 'application/manifest+json';
-// The released site, and the address the host gives the project besides it.
-// A rule in netlify.toml sends the second to the first.
+// netlify.toml redirects the project's Netlify subdomain to the custom domain
 const RELEASED_HOST = 'pgp-converter.com';
-const HOST_ADDRESS = 'https://pgp-converter.netlify.app';
+const NETLIFY_SUBDOMAIN_URL = 'https://pgp-converter.netlify.app';
 // A new deploy can take a moment to reach every CDN node
 const ATTEMPTS = 6;
 const RETRY_DELAY_MS = 10_000;
@@ -107,14 +88,17 @@ const FILE_TIMEOUT_MS = 30_000;
 const FUNCTION_TIMEOUT_MS = 60_000;
 const HTML_ENDING = '.html';
 const HTTP_NOT_FOUND = 404;
-const HTTP_MOVED_FOR_GOOD = 301;
-// A SHA-256 hash in hexadecimal; anything else in a mismatch is a description
+const HTTP_MOVED_PERMANENTLY = 301;
+// The length of a hex SHA-256 digest, which tells a digest in Mismatch.actual
+// from a description of a failure
 const HASH_LENGTH = 64;
-const POLICY_PREFIX = 'content policy';
-const FORWARDS_ELSEWHERE = /<meta http-equiv="refresh"/i;
+const POLICY_PREFIX = 'CSP';
+const META_REFRESH = /<meta http-equiv="refresh"/i;
 const ROBOTS_HEADER = 'x-robots-tag';
-// Addresses that a careless redirect would send to off-site.example. A browser
-// reads a backslash as a slash and drops a tab, so each could lead off the site.
+// A server that decodes the path and redirects it without the trailing slash
+// would send Location: /\off-site.example or /<tab>/off-site.example for
+// these. Browsers read a backslash as a slash and strip tabs, so both lead to
+// //off-site.example.
 const OFF_SITE_PROBES: readonly string[] = [
 	'/%5Coff-site.example/',
 	'/%5C%5Coff-site.example/',
@@ -137,7 +121,7 @@ if (!checkArgs.data) {
 	process.exit(EXIT_USAGE);
 }
 const { origin, buildDir, isStaging, isSelfHosted } = checkArgs.data;
-// The policy a self-hosted copy must send, word for word; read from the build in main()
+// With --self-hosted, the exact CSP every page must carry; main() reads it from the build
 let expectedPolicy: string | undefined;
 
 await main();
@@ -161,21 +145,20 @@ async function main(): Promise<void> {
 	}
 	const pageCount = targets.length - files.length;
 	console.log(
-		`All ${String(files.length)} files on ${origin} match the build in ${buildDir}/, as do the ${String(pageCount)} page addresses that serve them.` +
-			'\nEvery page arrives with a content policy that names its own start-up script and allows no other inline script.'
+		`All ${String(files.length)} files on ${origin} match the build in ${buildDir}/, as do the ${String(pageCount)} pages at their extensionless paths.` +
+			"\nEvery page has a CSP that allows its inline scripts by hash, without 'unsafe-inline'."
 	);
 	const offSite = await findOffSiteRedirects();
 	if (offSite.length > 0) {
 		console.error(
-			`${origin} sends visitors to another site from ${offSite.join(', ')}. A redirect there copies the address as it came` +
-				(isSelfHosted ? '; see the slash rule in docker/Caddyfile.' : '.')
+			`${origin} redirects off-site from ${offSite.join(', ')}: the redirect copies the request path into its Location header unchanged.`
 		);
 		process.exit(1);
 	}
-	console.log('No address tried led off the site.');
+	console.log('None of the off-site redirect probes left the site.');
 	if (isSelfHosted) {
-		console.log(`Every page arrives with exactly the policy in ${buildDir}/${HEADERS_FILE}.`);
-		console.log(FUNCTION_NOT_ASKED_SELF_HOSTED);
+		console.log(`Every page arrives with exactly the CSP in ${buildDir}/${HEADERS_FILE}.`);
+		console.log(FUNCTION_NOT_CHECKED_SELF_HOSTED);
 		await checkEverywhere();
 		return;
 	}
@@ -190,13 +173,13 @@ async function main(): Promise<void> {
 	} else {
 		console.log(
 			isStaging
-				? 'Search engines are asked to leave this copy out.'
-				: 'Search engines are not asked to leave the site out.'
+				? 'The staging copy sends noindex in X-Robots-Tag.'
+				: 'The site does not send noindex in X-Robots-Tag.'
 		);
 	}
 
 	if (isStaging) {
-		console.log(FUNCTION_NOT_ASKED);
+		console.log(FUNCTION_NOT_CHECKED);
 	} else {
 		const proxy = await checkFunction();
 		if (proxy.missing) {
@@ -212,9 +195,8 @@ async function main(): Promise<void> {
 
 	await checkEverywhere();
 
-	// Browsers take the HTTPS-only header from HTTPS alone, so a local preview is
-	// not asked for it. Nor is the staging copy: its address belongs to the host,
-	// and the preload list is about the released domain.
+	// Browsers ignore HSTS over plain HTTP, so a local preview is skipped, and
+	// the staging hostname belongs to Netlify, not to the preloaded domain
 	if (isStaging || new URL(origin).protocol !== 'https:') {
 		return;
 	}
@@ -222,29 +204,29 @@ async function main(): Promise<void> {
 	if (preloadProblem) {
 		warn(preloadProblem);
 	} else {
-		console.log('The HTTPS-only header is as the preload list requires.');
+		console.log('Strict-Transport-Security meets the HSTS preload list requirements.');
 	}
 
-	// Only the released site has a second address to be sent on from
+	// Only pgp-converter.com has a Netlify subdomain that redirects to it
 	if (new URL(origin).hostname !== RELEASED_HOST) {
 		return;
 	}
-	const hostAddressProblem = await checkHostAddress();
-	if (hostAddressProblem) {
-		warn(hostAddressProblem);
+	const netlifySubdomainProblem = await checkNetlifySubdomain();
+	if (netlifySubdomainProblem) {
+		warn(netlifySubdomainProblem);
 	} else {
-		console.log("The host's own address for the project sends visitors on to the released site.");
+		console.log(`${NETLIFY_SUBDOMAIN_URL} redirects to the released site.`);
 	}
 }
 
-/** Says whether a path is a folder that exists */
 function isFolder(path: string): boolean {
 	return statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
 }
 
 /**
- * Asks for the addresses in OFF_SITE_PROBES without following redirects.
- * @returns Each address whose redirect would take a visitor to another site, with where it leads
+ * Requests each of OFF_SITE_PROBES without following redirects, and returns
+ * those whose Location leads to another origin, with the target. A request
+ * that fails counts as no redirect.
  */
 async function findOffSiteRedirects(): Promise<string[]> {
 	const found: string[] = [];
@@ -262,14 +244,14 @@ async function findOffSiteRedirects(): Promise<string[]> {
 	return found;
 }
 
-/** The checks that hold for every copy: the "not found" page, and the manifest's type */
+/** Runs the checks that apply in every mode and only warn: the 404 page and the manifest */
 async function checkEverywhere(): Promise<void> {
 	const errorPageProblem = await checkErrorPage();
 	if (errorPageProblem) {
 		warn(errorPageProblem);
 	} else {
 		console.log(
-			"An address that does not exist is answered with the build's own 404 page, under the same policy."
+			"A path that does not exist gets the build's 404.html with status 404, and a CSP that allows its inline scripts by hash, without 'unsafe-inline'."
 		);
 	}
 
@@ -277,11 +259,11 @@ async function checkEverywhere(): Promise<void> {
 	if (manifestProblem) {
 		warn(manifestProblem);
 	} else {
-		console.log('The app manifest is served as a manifest.');
+		console.log('manifest.webmanifest is served as application/manifest+json.');
 	}
 }
 
-/** Reads the policy the build wrote into its headers file, or stops if there is none */
+/** Returns the CSP in the build's _headers, or exits if the file or the header is missing */
 async function builtPolicy(): Promise<string> {
 	const file = join(buildDir, HEADERS_FILE);
 	const policy = POLICY_LINE.exec(await readFile(file, 'utf-8').catch(() => ''))?.[1];
@@ -293,10 +275,11 @@ async function builtPolicy(): Promise<string> {
 }
 
 /**
- * The address a page is visited at: /encrypt for encrypt.html, / for index.html.
- * @returns The address, or undefined for a file that is not a page
+ * Returns the extensionless path a page is served at (/encrypt for
+ * encrypt.html, /docs/ for docs/index.html, / for index.html), or undefined
+ * for a file that is not HTML.
  */
-function pageAddress(file: string): string | undefined {
+function pagePath(file: string): string | undefined {
 	if (!file.endsWith(HTML_ENDING)) {
 		return undefined;
 	}
@@ -308,27 +291,31 @@ function pageAddress(file: string): string | undefined {
 }
 
 /**
- * Says whether a page only forwards to another one. The host redirects such an
- * address itself (see [[redirects]] in netlify.toml), so the address does not
- * answer with this file and is not compared with it. The file is still checked.
+ * Returns true for a page that only redirects with a meta refresh, such as
+ * help.html. Only the .html file itself is compared: netlify.toml redirects
+ * its extensionless path before the file is served, and a self-hosted copy
+ * serves the same file at that path, so comparing it there would add nothing.
  */
-async function isForwardingPage(file: string): Promise<boolean> {
-	return FORWARDS_ELSEWHERE.test(await readFile(join(buildDir, file), 'utf-8'));
+async function isMetaRefreshPage(file: string): Promise<boolean> {
+	return META_REFRESH.test(await readFile(join(buildDir, file), 'utf-8'));
 }
 
-/** Every address to check, with the local file it must match */
+/**
+ * Returns each file at its own path, plus each page at its extensionless path,
+ * except 404.html and meta refresh pages
+ */
 async function listTargets(files: readonly string[]): Promise<Target[]> {
 	const targets: Target[] = files.map((file) => ({ file, address: `/${file}` }));
 	for (const file of files) {
-		const address = pageAddress(file);
-		if (address && file !== NOT_FOUND_PAGE && !(await isForwardingPage(file))) {
+		const address = pagePath(file);
+		if (address && file !== NOT_FOUND_PAGE && !(await isMetaRefreshPage(file))) {
 			targets.push({ file, address });
 		}
 	}
 	return targets;
 }
 
-/** The addresses whose live content differs from the local file, with the reason */
+/** Returns the targets whose response differs from the build, or whose page has the wrong CSP */
 async function findMismatches(targets: readonly Target[]): Promise<Mismatch[]> {
 	const mismatches: Mismatch[] = [];
 	for (const { file, address } of targets) {
@@ -349,8 +336,8 @@ async function findMismatches(targets: readonly Target[]): Promise<Mismatch[]> {
 		if (actual !== expected) {
 			mismatches.push({ address, actual });
 		} else if (file.endsWith(HTML_ENDING)) {
-			// The right page with the wrong policy is a page that cannot start, or on a
-			// self-hosted copy one that is not protected as the released site is
+			// The right bytes are not enough: a CSP without the page's script hashes
+			// stops it starting, and a self-hosted copy must send the build's own CSP
 			const problem =
 				policyProblem(policy, await pageHashes(local)) ??
 				(expectedPolicy === undefined || policy === expectedPolicy
@@ -364,7 +351,10 @@ async function findMismatches(targets: readonly Target[]): Promise<Mismatch[]> {
 	return mismatches;
 }
 
-/** Looks again a few times before giving up: a deploy spreads across the host's servers in stages */
+/**
+ * Runs findMismatches up to ATTEMPTS times, RETRY_DELAY_MS apart, while a new
+ * deploy propagates across the CDN. Returns the last attempt's mismatches.
+ */
 async function findMismatchesWithRetries(targets: readonly Target[]): Promise<Mismatch[]> {
 	let mismatches: Mismatch[] = [];
 	for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
@@ -373,36 +363,35 @@ async function findMismatchesWithRetries(targets: readonly Target[]): Promise<Mi
 			break;
 		}
 		console.log(
-			`Attempt ${String(attempt)}: ${String(mismatches.length)} of ${String(targets.length)} addresses are not right yet; retrying in ${String(RETRY_DELAY_MS / MS_PER_SECOND)}s`
+			`Attempt ${String(attempt)}: ${String(mismatches.length)} of ${String(targets.length)} paths are not right yet; retrying in ${String(RETRY_DELAY_MS / MS_PER_SECOND)}s`
 		);
 		await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
 	}
 	return mismatches;
 }
 
-/** Lists what does not match, and says what most likely explains it */
+/** Prints the mismatches and their most likely cause */
 function reportMismatches(mismatches: readonly Mismatch[], targetCount: number): void {
-	// The workflow compares the site with the build it has just signed. Anyone
-	// else is comparing it with a build of their own (see "Reproducing a Build"
-	// in the README), and the likely reasons for a difference are not the same.
+	// In CI the build is the workflow's own. Anyone else is comparing a rebuild
+	// ("Reproducing a Build" in the README), which differs for other reasons.
 	const isWorkflow = Boolean(process.env.GITHUB_ACTIONS);
 	const deployed = deployedBuild();
 	const build = isWorkflow ? deployed : `the build in ${buildDir}/`;
 	console.error(
-		`\n${String(mismatches.length)} of ${String(targetCount)} addresses on ${origin} do not match ${build}:`
+		`\n${String(mismatches.length)} of ${String(targetCount)} paths on ${origin} do not match ${build}:`
 	);
 	for (const { address, actual } of mismatches) {
 		console.error(
 			`  ${address}  (${actual.length === HASH_LENGTH ? 'different content' : actual})`
 		);
 	}
-	// When nothing answered, the advice below about builds does not apply
+	// If every request failed, nothing is answering, so the advice about builds does not apply
 	if (
 		mismatches.length === targetCount &&
 		mismatches.every(({ actual }) => actual.startsWith(REQUEST_FAILED))
 	) {
 		console.error(
-			`\nNothing answered at ${origin}. Check that the site is running and that the address and port are right.`
+			`\nNothing answered at ${origin}. Check that the site is running and that the host and port are right.`
 		);
 		return;
 	}
@@ -433,7 +422,7 @@ function reportMismatches(mismatches: readonly Mismatch[], targetCount: number):
 	}
 }
 
-/** What the workflow compares the site with, in words */
+/** Describes, for the CI messages, the build the site is compared with */
 function deployedBuild(): string {
 	if (isSelfHosted) {
 		return 'the production build of this commit';
@@ -442,11 +431,9 @@ function deployedBuild(): string {
 }
 
 /**
- * Checks that the wallet proxy function can be reached. Only a 404 proves it
- * cannot: the request then fell through to a "not found" page, because the
- * function was not deployed or something else answers at its address. Any
- * other answer came from the function, even an error while its upstream is
- * asleep or down, so those are reported without failing the deploy.
+ * Checks that the wallet proxy function is deployed. Only a 404 means it is
+ * not: the request fell through to the 404 page. Any other status came from
+ * the function itself, such as a 5xx while its upstream wakes, so it only warns.
  */
 async function checkFunction(): Promise<FunctionCheck> {
 	try {
@@ -458,7 +445,7 @@ async function checkFunction(): Promise<FunctionCheck> {
 			return {
 				missing:
 					`${FUNCTION_PATH} answered HTTP 404: the wallet proxy function cannot be reached, so the donate page ` +
-					'cannot show addresses. Either it was not deployed or something else answers at its address.'
+					'cannot show addresses. Either it was not deployed or something else answers at its path.'
 			};
 		}
 		if (res.ok) {
@@ -475,11 +462,10 @@ async function checkFunction(): Promise<FunctionCheck> {
 }
 
 /**
- * Checks what the site tells search engines. The staging copy must ask to be
- * left out of their results, or it could be listed beside the released site.
- * The released site must not ask: the header is added for the staging copy
- * alone, and on the released site it would take the site out of search results
- * without anything else looking wrong. That fails the run.
+ * Checks X-Robots-Tag on the root URL. Staging should send noindex, or search
+ * engines may list it beside the released site, so its absence warns.
+ * Production must not: noindex there drops the site from search results with
+ * nothing else visibly wrong, so it fails the run.
  */
 async function checkSearchListing(): Promise<ListingCheck> {
 	let header: string | null;
@@ -493,67 +479,62 @@ async function checkSearchListing(): Promise<ListingCheck> {
 	} catch (e: unknown) {
 		return { warning: `Could not check the X-Robots-Tag header (${describeError(e)}).` };
 	}
-	const isLeftOut = asksNotToBeListed(header);
+	const sendsNoindex = asksNotToBeListed(header);
 	if (isStaging) {
-		return isLeftOut
+		return sendsNoindex
 			? {}
 			: {
 					warning:
 						'The staging copy does not send "X-Robots-Tag: noindex", so search engines may list it beside the released site.'
 				};
 	}
-	return isLeftOut
+	return sendsNoindex
 		? {
-				failure: `${origin} sends "X-Robots-Tag: ${header ?? ''}", which asks search engines to drop the site. That header is for the staging copy alone.`
+				failure: `${origin} sends "X-Robots-Tag: ${header ?? ''}", which asks search engines not to index the site. That header is for the staging copy alone.`
 			}
 		: {};
 }
 
 /**
- * Checks that an address that does not exist gets the app's own "not found"
- * page: the build's 404.html, byte for byte, with a 404 and with a policy that
- * lets it start. Netlify serves that file wherever no other file answers. Its
- * own plain page here would mean the file did not reach it or is not being
- * used. The rest of the site works either way, so this only warns.
- * @returns What is wrong, or undefined if nothing is
+ * Requests a URL that does not exist and checks for status 404, the build's
+ * 404.html byte for byte, and a CSP that lets it start. Netlify's own error
+ * page here means 404.html did not deploy or is not used. The rest of the site
+ * works either way, so this only warns. Returns the problem, or undefined.
  */
 async function checkErrorPage(): Promise<string | undefined> {
 	let local: Buffer;
 	try {
 		local = await readFile(join(buildDir, NOT_FOUND_PAGE));
 	} catch {
-		return `The build has no ${NOT_FOUND_PAGE}, so an address that does not exist gets the host's own page.`;
+		return `The build has no ${NOT_FOUND_PAGE}, so a path that does not exist gets the host's own page.`;
 	}
 	try {
-		const missingAddress = new URL(`/deploy-check-${String(Date.now())}`, origin);
-		const res = await fetch(missingAddress, {
+		const missingUrl = new URL(`/deploy-check-${String(Date.now())}`, origin);
+		const res = await fetch(missingUrl, {
 			cache: 'no-store',
 			signal: AbortSignal.timeout(FILE_TIMEOUT_MS)
 		});
 		const body = Buffer.from(await res.arrayBuffer());
 		if (res.status !== HTTP_NOT_FOUND) {
-			return `An address that does not exist answered HTTP ${String(res.status)} where 404 was expected.`;
+			return `A path that does not exist answered HTTP ${String(res.status)} where 404 was expected.`;
 		}
 		if (sha256(body) !== sha256(local)) {
-			return `An address that does not exist is not answered with the build's ${NOT_FOUND_PAGE}; visitors who mistype an address see something else.`;
+			return `A path that does not exist is not answered with the build's ${NOT_FOUND_PAGE}; visitors who mistype a URL see something else.`;
 		}
 		const problem = policyProblem(
 			res.headers.get('content-security-policy'),
 			await pageHashes(local)
 		);
-		return problem
-			? `The "not found" page is served with a content policy that does not fit it: ${problem}.`
-			: undefined;
+		return problem ? `The 404 page fails the CSP check: ${problem}.` : undefined;
 	} catch (e: unknown) {
-		return `Could not check the "not found" page (${describeError(e)}).`;
+		return `Could not check the 404 page (${describeError(e)}).`;
 	}
 }
 
 /**
- * Checks that the app manifest arrives as a manifest. The host does not know
- * the file's ending, so a rule in netlify.toml names its type. Browsers read
- * the manifest whatever it is called, so this only warns.
- * @returns What is wrong, or undefined if nothing is
+ * Checks that the manifest is served as application/manifest+json. Browsers
+ * load it whatever its Content-Type, so this only warns. Returns the problem,
+ * or undefined.
  */
 async function checkManifestType(): Promise<string | undefined> {
 	try {
@@ -571,11 +552,10 @@ async function checkManifestType(): Promise<string | undefined> {
 }
 
 /**
- * Checks that the site still sends the HTTPS-only header in the form the
- * browsers' preload list requires (see preload-header.ts). The domain was
- * submitted to that list and is taken off it otherwise. The site works either
- * way, so this only warns.
- * @returns What is wrong, or undefined if nothing is
+ * Checks that Strict-Transport-Security still meets the HSTS preload list's
+ * requirements (see preload-header.ts); otherwise the domain is removed from
+ * the list. The site works either way, so this only warns. Returns the
+ * problem, or undefined.
  */
 async function checkPreloadHeader(): Promise<string | undefined> {
 	try {
@@ -595,30 +575,29 @@ async function checkPreloadHeader(): Promise<string | undefined> {
 }
 
 /**
- * Checks that the address the host gives the project sends visitors on to the
- * released site, as the rule in netlify.toml says. Without it the same build
- * is served at a second address, where the app shows itself as a test copy.
- * The released site works either way, so this only warns.
- * @returns What is wrong, or undefined if nothing is
+ * Checks that pgp-converter.netlify.app answers with a 301 to the origin, as
+ * netlify.toml configures. Without it the same build is served on a second
+ * hostname, where the app labels itself a test copy. The released site works
+ * either way, so this only warns. Returns the problem, or undefined.
  */
-async function checkHostAddress(): Promise<string | undefined> {
+async function checkNetlifySubdomain(): Promise<string | undefined> {
 	try {
-		const res = await fetch(HOST_ADDRESS, {
+		const res = await fetch(NETLIFY_SUBDOMAIN_URL, {
 			method: 'HEAD',
 			redirect: 'manual',
 			cache: 'no-store',
 			signal: AbortSignal.timeout(FILE_TIMEOUT_MS)
 		});
 		const target = res.headers.get('location') ?? '';
-		return res.status === HTTP_MOVED_FOR_GOOD && target.startsWith(origin)
+		return res.status === HTTP_MOVED_PERMANENTLY && target.startsWith(origin)
 			? undefined
-			: `${HOST_ADDRESS} answered HTTP ${String(res.status)} where a redirect to ${origin} was expected; the rule for it in netlify.toml is not being applied.`;
+			: `${NETLIFY_SUBDOMAIN_URL} answered HTTP ${String(res.status)} where a redirect to ${origin} was expected; the rule for it in netlify.toml is not being applied.`;
 	} catch (e: unknown) {
-		return `Could not check ${HOST_ADDRESS} (${describeError(e)}).`;
+		return `Could not check ${NETLIFY_SUBDOMAIN_URL} (${describeError(e)}).`;
 	}
 }
 
-/** The policy's names for the inline scripts of a page */
+/** Returns the CSP hash source of each inline script in a page */
 function pageHashes(page: Buffer): Promise<string[]> {
 	return Promise.all(inlineScripts(page.toString('utf-8')).map((script) => scriptHash(script)));
 }
@@ -636,9 +615,9 @@ function describeError(e: unknown): string {
 	if (!(e instanceof Error)) {
 		return String(e);
 	}
-	// fetch says only "fetch failed"; the reason, such as a refused connection,
-	// is its cause. A failure on every address of a host, as with localhost,
-	// has no message of its own, only a code.
+	// Node's fetch throws "fetch failed" with the reason in `cause`. When every IP
+	// address of a host refuses (localhost resolves to ::1 and 127.0.0.1), the
+	// cause is an AggregateError with an empty message and only a code.
 	const own = e.message || errorCode(e);
 	return e.cause === undefined ? own : `${own}: ${describeError(e.cause)}`;
 }

@@ -1,26 +1,17 @@
-// See https://kit.svelte.dev/docs/types#app
-// for information about these interfaces
 declare global {
 	/**
-	 * The full hash of the commit this build was made from, written in by the
-	 * build (see vite.config.ts). Empty for a build that was not given one.
+	 * The full commit hash the build was made from, replaced at build time by
+	 * Vite's `define` (vite.config.ts). Empty unless GITHUB_SHA held a full hash.
 	 */
 	const __BUILD_COMMIT__: string;
 
-	/** The version of OpenPGP.js in this build, written in by the build */
+	/** The installed OpenPGP.js version, replaced at build time by Vite's `define` */
 	const __OPENPGP_VERSION__: string;
-
-	namespace App {
-		// interface Error {}
-		// interface Locals {}
-		// interface PageData {}
-		// interface Platform {}
-	}
 }
 
 declare module 'svelte/elements' {
-	// The HTML standard allows autocorrect on every element that takes text;
-	// Svelte's types know it on <input> only
+	// The HTML standard allows autocorrect on any editable element, but Svelte's
+	// types declare it only on <input>.
 	interface HTMLTextareaAttributes {
 		autocorrect?: 'on' | 'off' | '' | undefined | null;
 	}

@@ -15,7 +15,7 @@
 		placeholder?: string;
 		autocomplete: 'off' | 'new-password';
 		isInvalid?: boolean;
-		/** What is wrong with the passphrase, shown under the field until it is changed */
+		/** Shown under the field until the value differs from the one it was reported for */
 		error?: string;
 	} = $props();
 
@@ -23,6 +23,7 @@
 	// The passphrase the current error was reported for
 	let errorValue = $state('');
 
+	// Re-runs only when error changes: value is untracked, so typing does not move the snapshot
 	$effect(() => {
 		if (error) {
 			errorValue = untrack(() => value);
@@ -41,9 +42,9 @@
 </script>
 
 <div class="passphrase-field">
-	<!-- Spellcheck and autocorrect stay off: once the passphrase is shown, this is
-       an ordinary text field. Browser spelling services must never see what is in
-       it, and a phone's keyboard must not change it. -->
+	<!-- While the passphrase is shown the input is type="text". Spellcheck stays off
+	     because a browser's enhanced spellcheck can send field text to a server, and
+	     autocorrect and autocapitalize stay off so a phone keyboard cannot alter it. -->
 	<input
 		{id}
 		type={isVisible ? 'text' : 'password'}
@@ -121,7 +122,6 @@
 		border-color: var(--border-hover);
 	}
 
-	/* Fingers need a larger target than a mouse pointer does */
 	@media (pointer: coarse) {
 		.visibility-toggle {
 			min-height: 44px;

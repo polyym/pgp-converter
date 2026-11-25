@@ -12,7 +12,10 @@ import {
 
 const KEY = '-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nabc\n-----END PGP PUBLIC KEY BLOCK-----';
 
-/** The text as UTF-16, low byte first (the kind Windows writes) or high byte first */
+/**
+ * Encodes text as UTF-16, little-endian (as Windows writes it) or big-endian,
+ * with a BOM in front if `mark` is set
+ */
 function utf16(text: string, lowByteFirst: boolean, mark: boolean): Uint8Array<ArrayBuffer> {
 	const marked = mark ? String.fromCodePoint(0xfe_ff) + text : text;
 	const bytes = Buffer.from(marked, 'utf16le');
@@ -34,16 +37,16 @@ describe('readTextFiles', () => {
 		expect(result.text).toBe(`${KEY}\n${KEY}`);
 	});
 
-	it('should read every chosen file, though the list is emptied once reading has begun', async () => {
+	it('should read every file even if the list is emptied after the call', async () => {
 		const chosen = [new File([KEY], 'alice.asc'), new File([KEY], 'bob.asc')];
 
 		const reading = readTextFiles(chosen, true);
-		// What clearing the file input does to the list the browser handed over
+		// As clearing the file input empties the live FileList
 		chosen.length = 0;
 		expect((await reading).text).toBe(`${KEY}\n${KEY}`);
 	});
 
-	it('should name the file with no PGP block when several were chosen, and use none of them', async () => {
+	it('should name the file with no PGP block among several and use none', async () => {
 		const result = await readTextFiles(
 			[new File(['shopping list'], 'notes.txt'), new File([KEY], 'alice.asc')],
 			true
@@ -52,13 +55,13 @@ describe('readTextFiles', () => {
 		expect(result.error).toBe(fileNotArmoredErrorFor('notes.txt'));
 	});
 
-	it('should name such a file so that its name cannot turn the sentence round', () => {
+	it('should isolate the name so bidi controls cannot reorder the message', () => {
 		const names = [
 			// A right-to-left override, as in "report<RLO>txt.exe.asc"
 			'report\u{202E}txt.exe.asc',
-			// The name's own end of an isolate, then an override
+			// A Pop Directional Isolate that would close ours early, then an override
 			'notes\u{2069}\u{202E}.txt',
-			// A Hebrew name that leaves an isolate open
+			// A Hebrew name that leaves a Right-to-Left Isolate open
 			'\u{5E9}\u{5DC}\u{5D5}\u{5DD}\u{2067}.txt'
 		];
 		for (const name of names) {
@@ -68,7 +71,7 @@ describe('readTextFiles', () => {
 		}
 	});
 
-	it('should say "one of the files" when a name draws nothing', () => {
+	it('should say "one of the files" when the name is invisible', () => {
 		for (const name of [' '.repeat(3), '\u{200B}'.repeat(3), '\u{2800}', '\u{202E}']) {
 			expect(fileNotArmoredErrorFor(name)).toMatch(/^One of the files /);
 		}
@@ -105,9 +108,9 @@ describe('readTextFiles', () => {
 	});
 });
 
-describe('files that are not written in UTF-8', () => {
+describe('text encodings', () => {
 	it('should read a key that Windows PowerShell wrote to a file', async () => {
-		// gpg --armor --export > key.asc, in Windows PowerShell, writes UTF-16 with a mark in front
+		// gpg --armor --export > key.asc in Windows PowerShell writes UTF-16LE with a BOM
 		const result = await readTextFiles(
 			[new File([utf16(`${KEY}\r\n`, true, true)], 'key.asc')],
 			true
@@ -116,24 +119,24 @@ describe('files that are not written in UTF-8', () => {
 		expect(result.text).toBe(KEY);
 	});
 
-	it('should read UTF-16 written the other way round', async () => {
+	it('should read big-endian UTF-16', async () => {
 		const result = await readTextFiles([new File([utf16(KEY, false, true)], 'key.asc')], true);
 		expect(result.text).toBe(KEY);
 	});
 
-	it('should read UTF-16 that has no mark in front', async () => {
+	it('should read UTF-16 without a BOM', async () => {
 		const lowByteFirst = new File([utf16(KEY, true, false)], 'key.asc');
 		const highByteFirst = new File([utf16(KEY, false, false)], 'key.asc');
 		expect((await readTextFiles([lowByteFirst], true)).text).toBe(KEY);
 		expect((await readTextFiles([highByteFirst], true)).text).toBe(KEY);
 	});
 
-	it('should drop the mark that some editors put in front of UTF-8', async () => {
+	it('should drop the BOM that some editors put in front of UTF-8', async () => {
 		const marked = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode(KEY)]);
 		expect((await readTextFiles([new File([marked], 'key.asc')], true)).text).toBe(KEY);
 	});
 
-	it('should take ordinary text for what it is', () => {
+	it('should detect plain text as UTF-8', () => {
 		expect(detectTextEncoding(new TextEncoder().encode(KEY))).toBe('utf-8');
 		expect(
 			detectTextEncoding(
@@ -143,7 +146,7 @@ describe('files that are not written in UTF-8', () => {
 		expect(detectTextEncoding(new Uint8Array(0))).toBe('utf-8');
 	});
 
-	it('should still refuse a file that is not text at all', async () => {
+	it('should still refuse a binary file', async () => {
 		const photo = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1]);
 		expect((await readTextFiles([new File([photo], 'photo.jpg')], true)).error).toBe(
 			FILE_NOT_ARMORED_ERROR

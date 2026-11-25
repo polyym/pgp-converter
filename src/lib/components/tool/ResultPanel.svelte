@@ -19,27 +19,26 @@
 		children
 	}: {
 		tool: ToolPage;
-		/** What the panel holds, for screen readers: "Encrypted message" */
+		/** aria-label of the region, for example "Encrypted message" */
 		label: string;
-		/** The word above the result */
 		heading?: string;
-		/** Name of the file a download of the result gets */
+		/** Download filename */
 		filename: string;
-		/** What the result is, for screen readers: "encrypted message" */
+		/** Completes the buttons' aria-labels, for example "encrypted message" */
 		what: string;
-		/** Offer the device's share sheet. Off for readable text, which should not be one tap from another app. */
+		/** Offers the Web Share API. Pass false for plaintext, as for OutputTools. */
 		canShare?: boolean;
-		/** The wording on the Copy button */
+		/** Copy button label */
 		copyText?: string;
-		/** How the result in the panel turned out; leave out while there is none */
+		/** Colours the panel's border. Omit while there is no result; ignored while the result is stale. */
 		tone?: 'good' | 'bad' | 'caution';
-		/** Whether a signature verdict comes straight after the heading */
+		/** Set when a SignatureVerdict comes straight after the header, to drop its top border */
 		isVerdictFirst?: boolean;
-		/** What to say of an out-of-date result while its buttons are put away */
+		/** Stale-result note while Copy, Download and Share are hidden */
 		staleWithheld: string;
-		/** What to say of it once the user has asked for it as it is */
+		/** Stale-result note after the user presses "Use it anyway" */
 		staleAccepted: string;
-		/** The result itself, or what to do while there is none */
+		/** The result, or placeholder steps while there is none */
 		children: Snippet;
 	} = $props();
 
@@ -85,7 +84,7 @@
 			</div>
 		{/if}
 	</div>
-	<!-- Stays in the page while there is nothing to say, so that a screen reader hears it when there is -->
+	<!-- Live region stays mounted while empty, so the stale note is announced when it appears -->
 	<div class="live" role="status">
 		{#if isStale}
 			<p class="stale-note">
@@ -93,7 +92,7 @@
 					<strong>Out of date.</strong>
 					{tool.isResultWithheld ? staleWithheld : staleAccepted}
 				</span>
-				<!-- Still wanted as it is, perhaps after a stray key press in a box: one deliberate press brings its buttons back -->
+				<!-- Brings back the hidden buttons, for example when a stray key press made the result stale -->
 				{#if tool.isResultWithheld}
 					<button
 						type="button"

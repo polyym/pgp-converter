@@ -1,6 +1,5 @@
-# Text files are checked out with the same line endings on every system. Git on
-# Windows would otherwise change them, and the same commit would then build
-# different files there (see "Reproducing a Build" in the README).
+# LF on every system: Git on Windows would otherwise check out CRLF, and the
+# same commit would build different files there (README, "Reproducing a Build").
 * text=auto eol=lf
 *.png binary
 *.ico binary

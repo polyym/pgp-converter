@@ -55,7 +55,7 @@ function quote(text: string): string {
 }
 
 describe('decryptMessage', () => {
-	it('should successfully decrypt a message', async () => {
+	it('should decrypt a message', async () => {
 		const { publicKey, privateKey } = await createTestKeyPair();
 		const encrypted = await encryptMessage('Secret message', publicKey);
 		expect(encrypted.success).toBe(true);
@@ -66,7 +66,7 @@ describe('decryptMessage', () => {
 		expect(result.isSigned).toBe(false);
 	}, 15_000);
 
-	it('should return a friendly error for wrong passphrase', async () => {
+	it('should report a wrong passphrase', async () => {
 		const { publicKey, privateKey } = await createTestKeyPair();
 		const encrypted = await encryptMessage('Secret', publicKey);
 
@@ -99,7 +99,7 @@ describe('decryptMessage', () => {
 		expect(withPassphrase.data).toBe('No passphrase needed');
 	}, 15_000);
 
-	it('should decrypt with a subkeys-only key, whose primary secret key has been stripped', async () => {
+	it('should decrypt with a subkeys-only key', async () => {
 		// What "gpg --export-secret-subkeys" produces: a stub in place of the primary
 		// secret key, with the encryption subkey still locked by the passphrase
 		const pair = await generateKey({
@@ -124,10 +124,10 @@ describe('decryptMessage', () => {
 		expect(withoutPassphrase.error).toBe(PASSPHRASE_REQUIRED_ERROR);
 	}, 15_000);
 
-	it('should find the private key in the "both keys" download from the generate page', async () => {
+	it('should find the private key in the combined key pair file', async () => {
 		const { publicKey, privateKey } = await createTestKeyPair();
 		const encrypted = await encryptMessage('Secret', publicKey);
-		// The same layout that downloadBothKeys writes
+		// The layout combineKeyPair writes, with the public key first
 		const bothKeys = `=== PUBLIC KEY ===\n\n${publicKey}\n\n=== PRIVATE KEY ===\n\n${privateKey}`;
 
 		const result = await decryptMessage(must(encrypted.data), bothKeys, TEST_PASSPHRASE);
@@ -298,7 +298,7 @@ describe('decryptMessage', () => {
 	}, 15_000);
 });
 
-/** Encrypts a text to a key, compressed first as other programs do by default */
+/** Encrypts text to the key with zlib compression: GnuPG compresses by default, OpenPGP.js does not */
 async function compressedTo(publicKey: string, text: string): Promise<string> {
 	const encrypted: unknown = await encrypt({
 		message: await createMessage({ text }),
@@ -308,8 +308,8 @@ async function compressedTo(publicKey: string, text: string): Promise<string> {
 	return String(encrypted);
 }
 
-describe('decryptMessage, on a message that unpacks to far more than it weighs', () => {
-	it('should refuse one that passes the limit, and name the message as the cause', async () => {
+describe('decryptMessage, on a decompression bomb', () => {
+	it('should refuse a message over the limit and blame the message', async () => {
 		const { publicKey, privateKey } = await createTestKeyPair();
 		const bomb = await compressedTo(publicKey, 'A'.repeat(MAX_UNPACKED_MESSAGE_BYTES + 1_000_000));
 		// A few dozen kilobytes as sent
@@ -322,7 +322,7 @@ describe('decryptMessage, on a message that unpacks to far more than it weighs',
 		expect(result.data).toBeUndefined();
 	}, 30_000);
 
-	it('should refuse it quickly, before the text is unpacked in full', async () => {
+	it('should stop before decompressing it in full', async () => {
 		const { publicKey, privateKey } = await createTestKeyPair();
 		const bomb = await compressedTo(publicKey, 'A'.repeat(MAX_UNPACKED_MESSAGE_BYTES * 8));
 
@@ -344,8 +344,8 @@ describe('decryptMessage, on a message that unpacks to far more than it weighs',
 	}, 30_000);
 });
 
-describe('decryptMessage, when the box holds more than the message', () => {
-	it('should say so, and hand back only the message', async () => {
+describe('decryptMessage, with text besides the message', () => {
+	it('should set hasOtherText and return only the message', async () => {
 		const { publicKey, privateKey } = await createTestKeyPair();
 		const encrypted = must((await encryptMessage('Pay Alice 10.', publicKey)).data);
 		const pasted = `Pay Mallory 1000 first.\n\n${encrypted}\nP.S. And again.`;
@@ -355,7 +355,7 @@ describe('decryptMessage, when the box holds more than the message', () => {
 		expect(result.hasOtherText).toBe(true);
 	}, 15_000);
 
-	it('should not say so for a message that stands alone, quoted or not', async () => {
+	it('should not set hasOtherText for a message pasted alone, quoted or not', async () => {
 		const { publicKey, privateKey } = await createTestKeyPair();
 		const encrypted = must((await encryptMessage('Hello', publicKey)).data);
 
@@ -366,7 +366,7 @@ describe('decryptMessage, when the box holds more than the message', () => {
 		expect(quoted.hasOtherText).toBe(false);
 	}, 15_000);
 
-	it('should say so for a message quoted in an email under a line of its own', async () => {
+	it('should set hasOtherText for a quoted message under an attribution line', async () => {
 		const { publicKey, privateKey } = await createTestKeyPair();
 		const encrypted = must((await encryptMessage('Hello', publicKey)).data);
 		const pasted = `On Monday Alice wrote:\n${quote(encrypted)}`;
@@ -377,7 +377,7 @@ describe('decryptMessage, when the box holds more than the message', () => {
 	}, 15_000);
 });
 
-describe("decryptMessage, when the box holds several copies of the sender's key", () => {
+describe("decryptMessage, with several copies of the sender's key", () => {
 	it('should not trust a signature from a key that any copy shows as revoked', async () => {
 		const alice = await makeDatedKey('Alice');
 		const bob = await makeDatedKey('Bob');

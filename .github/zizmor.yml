@@ -1,8 +1,5 @@
-# Settings for zizmor, which checks the workflows and Dependabot's settings for
-# security problems (.github/workflows/zizmor.yml). Every action, GitHub's own
-# included, must be named by a commit, as the note in deploy.yml explains.
-# zizmor asks this by default today; it is written here so that a change to
-# the default cannot relax it.
+# zizmor's default already requires a hash pin on every action, GitHub's own
+# included. Repeating it here keeps a change of default from relaxing it.
 rules:
   unpinned-uses:
     config:

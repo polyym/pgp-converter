@@ -18,11 +18,10 @@ export interface UnsavedKeyQuestion {
 export interface UnsavedKeyGuardOptions {
 	/** Whether a private key is on the page that has been neither copied nor downloaded */
 	hasUnsavedKey: () => boolean;
-	/** Generates again, the user having agreed to lose the key on screen */
+	/** Generates a new key pair; called once the user has agreed to lose the one on screen */
 	onReplace: () => void;
 }
 
-// All three questions are about losing the same thing: the one copy of the private key
 const QUESTIONS: Readonly<Record<PendingStep['about'], UnsavedKeyQuestion>> = {
 	leaving: {
 		title: 'Leave without your private key?',
@@ -45,20 +44,16 @@ const QUESTIONS: Readonly<Record<PendingStep['about'], UnsavedKeyQuestion>> = {
 };
 
 /**
- * Stands between a new private key and the ways of losing it. A private key
- * exists nowhere but on the Generate page until it is copied or downloaded,
- * so leaving the page, generating again or updating the app asks first.
- * Closing the tab, reloading or leaving the site is asked about by the
- * browser itself.
- *
- * Call it while the page component is being set up: it listens for navigation
- * and for the Update button.
- * @param options - How to tell that a key is unsaved, and how to generate again
- * @returns The question being asked, if any, and the answers to it
+ * Guards an unsaved private key on the Generate page. Until it is copied or
+ * downloaded the key exists only in page memory, so in-app navigation,
+ * generating again and the Update button all ask first. Closing the tab,
+ * reloading and typing an address get the browser's own leave-page prompt. A
+ * same-tab link to another site is blocked with no prompt at all.
+ * Uses beforeNavigate and onMount, so call it during component initialisation.
  */
 export function createUnsavedKeyGuard(options: UnsavedKeyGuardOptions) {
 	let pending = $state<PendingStep>();
-	// Set once the user has said they are going without the key
+	// Set once the user agrees to leave or update without saving the key
 	let isLeavingAnyway = false;
 	const question = $derived(QUESTIONS[pending?.about ?? 'leaving']);
 
@@ -66,8 +61,11 @@ export function createUnsavedKeyGuard(options: UnsavedKeyGuardOptions) {
 		pending = step;
 	}
 
-	// Moving within the app is stopped and asked about here. The links under
-	// the keys invite exactly that.
+	// Cancelling a navigation that would unload the page makes the browser show
+	// its leave-page prompt when the browser started it (closing, reloading, a
+	// typed address). For a same-tab link off the site, SvelteKit cancels
+	// without a prompt, so the click does nothing. In-app navigation gets this
+	// page's dialog instead.
 	beforeNavigate((navigation) => {
 		if (!options.hasUnsavedKey() || isLeavingAnyway) {
 			return;
@@ -80,7 +78,7 @@ export function createUnsavedKeyGuard(options: UnsavedKeyGuardOptions) {
 		ask({ about: 'leaving', to: pathname + search + hash });
 	});
 
-	/** The user agreed to go on without the key */
+	/** Carries out the pending step once the user agrees to lose the key */
 	function goAhead(): void {
 		const agreed = pending;
 		pending = undefined;
@@ -91,8 +89,7 @@ export function createUnsavedKeyGuard(options: UnsavedKeyGuardOptions) {
 			case 'leaving': {
 				isLeavingAnyway = true;
 				const { to } = agreed;
-				// goto refuses an address that is not one of the app's own pages; the
-				// browser is then left to go there itself
+				// goto rejects a URL outside the app's routes, so let the browser load it
 				goto(to).catch(() => {
 					window.location.assign(to);
 				});
@@ -103,7 +100,7 @@ export function createUnsavedKeyGuard(options: UnsavedKeyGuardOptions) {
 				break;
 			}
 			case 'updating': {
-				// The reload that follows has been agreed to; the browser must not ask about it again
+				// Set first, so beforeNavigate lets the reload through without a browser prompt
 				isLeavingAnyway = true;
 				appUpdate.applyNow();
 				break;
@@ -114,17 +111,18 @@ export function createUnsavedKeyGuard(options: UnsavedKeyGuardOptions) {
 		}
 	}
 
-	/** The user chose to stay and save the key */
+	/** Closes the dialog and keeps the key on the page */
 	function stay(): void {
 		pending = undefined;
-		// A key offered to the next page is withdrawn with the visit
+		// The link that was cancelled may have offered the key to the next page;
+		// withdraw it so a later visit to that page does not pick it up
 		takeKey();
 	}
 
 	/**
 	 * For the Generate button: asks first if generating again would replace an
-	 * unsaved key.
-	 * @returns True if the question was put, in which case nothing should be generated yet
+	 * unsaved key. Returns true when the dialog is shown, and the caller must
+	 * then not generate; goAhead calls onReplace if the user agrees.
 	 */
 	function askBeforeReplacing(): boolean {
 		if (!options.hasUnsavedKey()) {
@@ -134,9 +132,8 @@ export function createUnsavedKeyGuard(options: UnsavedKeyGuardOptions) {
 		return true;
 	}
 
-	// The Update button in the top bar reloads the page, which loses an unsaved
-	// key like any other way of leaving, so it asks here first, in the page's
-	// own words
+	// The Update button reloads the page, so it gets this page's dialog too.
+	// holdFor returns the release function, which onMount runs on destroy.
 	onMount(() =>
 		appUpdate.holdFor(() => {
 			if (!options.hasUnsavedKey()) {

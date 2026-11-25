@@ -5,14 +5,14 @@
 		message,
 		onDismiss
 	}: {
-		/** What to tell the user; nothing is shown while this is empty */
+		/** An empty string hides the notice */
 		message: string;
 		onDismiss: () => void;
 	} = $props();
 </script>
 
-<!-- Stays until it is dismissed: it explains something that happened while the
-     user was away, so it must still be there when they come back -->
+<!-- No auto-dismiss: the notice reports something that happened while the user
+     was away (the idle timeout clearing the form), so it waits for them -->
 <div role="status">
 	{#if message}
 		<div class="notice">
@@ -70,7 +70,6 @@
 		border-color: var(--border-hover);
 	}
 
-	/* Fingers need a larger target than a mouse pointer does */
 	@media (pointer: coarse) {
 		button {
 			min-height: 44px;

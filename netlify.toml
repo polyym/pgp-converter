@@ -1,57 +1,51 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    # HTTPS only, for two years, on this domain and every subdomain. "preload"
-    # declares that the domain may be put on the list browsers ship with, so
-    # that even a first visit never starts over plain HTTP.
-    #
-    # The domain was submitted to that list, at hstspreload.org, on 14 November
-    # 2026. Since then this line has to keep all three of its parts: a max-age
-    # of at least a year, includeSubDomains and preload. If any one goes, the
-    # domain is taken off the list, and getting back on is slow. Every
-    # subdomain must serve HTTPS for as long as the domain is listed.
+    # The domain was submitted to the HSTS preload list (hstspreload.org) on 14
+    # November 2026. While it is listed, this header must keep a max-age of at
+    # least a year, includeSubDomains and preload, or the domain is dropped from
+    # the list, and every subdomain must serve HTTPS.
+    # scripts/preload-header.test.ts checks the header.
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer"
-    # The app uses none of these, so no script on the page can, whatever it is
+    # The app uses none of these features, so no script on the page may use them
     Permissions-Policy = "accelerometer=(), bluetooth=(), browsing-topics=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(), midi=(), payment=(), serial=(), usb=()"
     Cross-Origin-Opener-Policy = "same-origin"
-    # The Content-Security-Policy is not here. It names each page's start-up
-    # script by a hash that changes with every build, so the build writes it
-    # into build/_headers (scripts/write-csp.ts; the policy is in
-    # scripts/csp.ts). Netlify applies that file together with these rules.
-    # Do not add a second policy here: browsers would enforce both.
+    # No Content-Security-Policy here: it lists the hash of each page's inline
+    # start-up script, which changes with every build, so scripts/write-csp.ts
+    # writes it into build/_headers. Do not add one here: browsers enforce every
+    # policy they receive.
 
-# Files under /_app/immutable carry a hash of their contents in their name, so
-# a browser may keep them for good. SvelteKit's static adapter writes no rules
-# for any host, so the rule is kept here.
+# The file names carry a content hash, so browsers may cache them for a year
+# without revalidating. adapter-static writes no host configuration, so the
+# rule lives here.
 [[headers]]
   for = "/_app/immutable/*"
   [headers.values]
     Cache-Control = "public, immutable, max-age=31536000"
 
-# Netlify does not know the .webmanifest ending and would send the app manifest
-# as a file of no particular kind. Browsers read it either way; this gives it
-# the type that a manifest is meant to have.
+# Netlify does not know the .webmanifest extension and would send a generic
+# Content-Type. Browsers accept either; this is the media type the W3C Web
+# Application Manifest registers (https://www.w3.org/TR/appmanifest/).
 [[headers]]
   for = "/manifest.webmanifest"
   [headers.values]
     Content-Type = "application/manifest+json"
 
-# The About page was called Help until v3.0. Old links are sent on with a
-# permanent redirect. "force" is needed because the build still contains a
-# small page at this address that forwards on its own, kept as a fallback.
+# The About page was called Help until v3.0. force: the build still holds a
+# help.html that redirects in the browser as a fallback, and without force
+# Netlify would serve that file instead.
 [[redirects]]
   from = "/help"
   to = "/about"
   status = 301
   force = true
 
-# Netlify also answers at an address of its own for the project. The released
-# site has one address, so whatever is asked of that one is sent there. The
-# staging and preview addresses have other names and are left alone. The deploy
-# check warns if this stops working.
+# The app treats pgp-converter.netlify.app as a test copy, so send it to the
+# domain. Staging and preview deploys have hostnames of their own and are not
+# affected. scripts/verify-deploy.ts warns if this redirect stops working.
 [[redirects]]
   from = "https://pgp-converter.netlify.app/*"
   to = "https://pgp-converter.com/:splat"

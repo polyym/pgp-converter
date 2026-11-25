@@ -33,11 +33,10 @@
 	let publicKey = $state('');
 	let privateKey = $state('');
 	let fingerprint = $state('');
-	// How the private key on screen has been kept, if it has. Copying it or
-	// downloading it is all the page can see; where it ends up is the user's affair.
+	// How the private key on screen was saved; undefined until it is copied or
+	// downloaded. Until then it exists only in this page's memory.
 	let savedBy = $state<'copy' | 'download'>();
 
-	// A private key exists nowhere but on this page until it is copied or downloaded
 	const hasUnsavedKey = $derived(!!privateKey && !savedBy);
 	const isValid = $derived(
 		name.trim().length > 0 &&
@@ -56,17 +55,17 @@
 		onSubmit: generateUnlessUnsaved,
 		canClear: () => !!(name || email || passphrase || publicKey),
 		onClear: clearAll,
-		// Generated keys cannot be recovered once cleared, so while keys are on
-		// screen the Clear button asks twice, as Esc always does
+		// A cleared key cannot be recovered, so while keys are on screen the Clear
+		// button needs a second press, as Esc always does
 		confirmClear: () => !!privateKey,
-		// New keys cannot be recovered, so an idle clear takes only the passphrase.
-		// The private key on screen is still locked by it.
+		// For the same reason the idle timeout clears only the passphrases, which is
+		// enough because the private key on screen is encrypted with the passphrase
 		onIdle: clearPassphrases,
 		hasSecrets: () => !!(passphrase || confirmPassphrase),
 		idleNotice: IDLE_NOTICE
 	});
 
-	// For the Generate button and its shortcut: asks first if a key on screen would be lost
+	// Opens the unsaved-key dialog instead when generating would replace a key not yet saved
 	function generateUnlessUnsaved() {
 		if (!guard.askBeforeReplacing()) {
 			generate();
@@ -74,11 +73,13 @@
 	}
 
 	function generate() {
-		// The form may have been cleared while the question about an unsaved key was open
+		// The form can be cleared while the unsaved-key dialog is open
 		if (!isValid) {
 			return;
 		}
 		void tool.run({
+			// No delay: OpenPGP.js generates the key and hashes the passphrase in Web
+			// Crypto, which runs off the main thread, so the busy state paints anyway
 			shouldPaintFirst: false,
 			work: () =>
 				generateKeyPair({
@@ -184,8 +185,8 @@
 	{/snippet}
 
 	{#snippet fields()}
-		<!-- autocomplete="off": a browser would otherwise offer the user's real name
-		     and address here, and may keep a pseudonym typed here to offer on other sites -->
+		<!-- autocomplete="off": otherwise the browser offers the user's real name and
+		     email here, and may save a pseudonym typed here to offer on other sites -->
 		<div class="field-row">
 			<div class="field">
 				<label for="name">Name</label>
@@ -287,7 +288,7 @@
 				</div>
 			{/if}
 		</div>
-		<!-- Says which choice to make. Inside the boxes it would be cut off where two share a row. -->
+		<!-- Outside the two-column row, so the advice gets the full width -->
 		<p class="identity-note">
 			{#if keyType === 'ecc'}
 				ECC with Curve25519 is the recommended choice. The NIST curves are for organisations whose
@@ -336,7 +337,6 @@
 					}}
 					onDownload={downloadPrivateKey}
 				>
-					<!-- Whether the one copy of this key has been kept anywhere yet -->
 					<p class={['output-note', { signed: !!savedBy }]} role="status">
 						{#if savedBy === 'download'}
 							<strong>Downloaded.</strong> Keep the file somewhere only you can reach, and never send
@@ -356,7 +356,7 @@
 					Download Both Keys as .txt
 				</button>
 
-				<!-- The key travels in memory to the next page; it is not stored anywhere -->
+				<!-- offerKey keeps the key in memory for the next page, not in storage -->
 				<nav class="next-steps" aria-label="Use this key">
 					<a
 						href="/encrypt"
@@ -413,7 +413,7 @@
 			</li>
 			<li>
 				Choose a passphrase. It locks the private key, and you will need it every time you decrypt
-				or sign. Use at least 8 characters. Longer is better.
+				or sign. Use at least {MIN_PASSPHRASE_LENGTH} characters. Longer is better.
 			</li>
 			<li>
 				Choose a key type. ECC with Curve25519 is recommended: its keys are small and fast, and
@@ -554,7 +554,8 @@
 		background: var(--success);
 	}
 
-	/* Windows high-contrast mode drops backgrounds, and these bars are nothing else */
+	/* Forced-colours mode replaces backgrounds, and the strength bars are drawn only with a
+	   background, so the lit ones opt out and use CanvasText */
 	@media (forced-colors: active) {
 		.strength-bars span.on {
 			forced-color-adjust: none;

@@ -9,24 +9,22 @@
 		onCancel
 	}: {
 		isOpen: boolean;
-		/** The question, in a few words */
 		title: string;
 		/** What will be lost by going ahead */
 		body: string;
-		/** The button that goes ahead */
 		confirmLabel: string;
-		/** The button that backs out, which is also what Esc does */
 		cancelLabel: string;
 		onConfirm: () => void;
+		/** Also called on Esc. The parent closes the dialog by setting isOpen to false. */
 		onCancel: () => void;
 	} = $props();
 
 	let dialog = $state<HTMLDialogElement>();
 	let cancelButton = $state<HTMLButtonElement>();
 
-	// Opened as a modal, so the page behind cannot be used until it is answered.
-	// Focus starts on the button that loses nothing, and goes back afterwards to
-	// whatever had it.
+	// showModal() makes the page inert and focuses the first button, which is the
+	// destructive one, so move focus to Cancel. Focus returns to the previously
+	// focused element when the dialog unmounts.
 	$effect(() => {
 		if (!dialog) {
 			return;
@@ -44,8 +42,7 @@
 	});
 </script>
 
-<!-- Asks before something that cannot be undone. Only in the page while it is
-     asking, so its heading is not part of the page's outline the rest of the time. -->
+<!-- Mounted only while open, so its h2 is not in the page's heading outline the rest of the time -->
 {#if isOpen}
 	<dialog
 		bind:this={dialog}
@@ -53,7 +50,8 @@
 		aria-labelledby="confirm-title"
 		aria-describedby="confirm-body"
 		oncancel={(e) => {
-			// Esc: back out, and leave the closing to the page
+			// Esc fires cancel. Stop the browser closing the dialog itself, so that
+			// isOpen stays the only thing that opens and closes it.
 			e.preventDefault();
 			onCancel();
 		}}
@@ -108,7 +106,8 @@
 		flex: 1;
 	}
 
-	/* Two long labels side by side do not fit a small phone */
+	/* Two long labels do not fit side by side on a small phone. column-reverse
+	   puts Cancel, the safe choice, on top. */
 	@media (max-width: 420px) {
 		.confirm-actions {
 			flex-direction: column-reverse;

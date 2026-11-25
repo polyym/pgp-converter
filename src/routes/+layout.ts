@@ -1,4 +1,3 @@
-// Prerender the whole app as static HTML. The tool is fully client-side, so
-// every route can be served as a static file, giving better TTFB / LCP, no cold
-// starts, and HTML remains crawlable even when JS is slow.
+// Prerender every route: Netlify, and Caddy in the Docker image, serve the site
+// as static files.
 export const prerender = true;
