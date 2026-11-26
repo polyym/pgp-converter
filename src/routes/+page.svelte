@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { PageFrame, SEO } from '#lib/components/index.ts';
+	import { NETLIFY_URL } from '#lib/constants.ts';
 	import { pictureDots, type DotPicture } from '#lib/dot-pictures.ts';
 	import { toDotText } from '#lib/dot-text.ts';
 	import { appVersion } from '#lib/stores/app-version.svelte.ts';
+	import { siteAddress } from '#lib/stores/site-address.svelte.ts';
 	import { toStructuredDataScript, WEB_APPLICATION_DATA } from '#lib/structured-data.ts';
 
 	// The dot grid shows "PGP" until a tool's link is hovered or focused
@@ -84,6 +86,16 @@
 			<p class="description">
 				It all happens in this browser. No account, no ads, and nothing you type is sent anywhere.
 			</p>
+			<!-- Netlify's Open Source plan asks for this wording, linked to its home page.
+			     It is in the prerendered HTML. The plan covers this project's own sites, so
+			     a copy at any other address drops it once the page has loaded. -->
+			{#if !siteAddress.isSelfHosted}
+				<p class="host">
+					<a href={NETLIFY_URL} target="_blank" rel="noopener noreferrer"
+						>This site is powered by Netlify</a
+					>
+				</p>
+			{/if}
 		</div>
 
 		<div class="shape">
@@ -200,6 +212,36 @@
 		font-size: 16px;
 		line-height: 1.65;
 		color: var(--text-secondary);
+	}
+
+	.host {
+		margin: 16px 0 0;
+		font-size: 13px;
+	}
+
+	.host a {
+		color: var(--text-dim);
+		text-decoration: underline;
+		text-decoration-color: var(--border);
+		text-underline-offset: 3px;
+		transition: color 0.15s ease;
+	}
+
+	.host a:hover {
+		color: var(--text-secondary);
+	}
+
+	/* A 44px touch target, as in the footer */
+	@media (pointer: coarse) {
+		.host {
+			margin-top: 4px;
+		}
+
+		.host a {
+			display: inline-flex;
+			align-items: center;
+			min-height: 44px;
+		}
 	}
 
 	.grid {

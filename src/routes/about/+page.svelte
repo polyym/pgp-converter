@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Icon, PageFrame, PageHeader, SEO } from '#lib/components/index.ts';
-	import { IDLE_CLEAR_MINUTES, REPOSITORY_URL, SITE_URL } from '#lib/constants.ts';
+	import { IDLE_CLEAR_MINUTES, NETLIFY_URL, REPOSITORY_URL, SITE_URL } from '#lib/constants.ts';
 	import { findCurrentSection } from '#lib/sections.ts';
 	import { appVersion } from '#lib/stores/app-version.svelte.ts';
 	import { siteAddress } from '#lib/stores/site-address.svelte.ts';
@@ -151,7 +151,7 @@
 				<div class="info-box">
 					<p>
 						PGP Converter is hosted on <a
-							href="https://www.netlify.com/"
+							href={NETLIFY_URL}
 							target="_blank"
 							rel="noopener noreferrer">Netlify</a
 						>. Netlify's server logs give us aggregate figures such as page views, unique visitors

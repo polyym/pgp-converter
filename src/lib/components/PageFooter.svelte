@@ -3,10 +3,14 @@
 The footer PageFrame puts on every page: project links, and this build's version and commit.
 -->
 <script lang="ts">
-	import { REPOSITORY_URL } from '#lib/constants.ts';
+	import { CODE_OF_CONDUCT_URL, REPOSITORY_URL } from '#lib/constants.ts';
 	import { appVersion } from '#lib/stores/app-version.svelte.ts';
 
 	const commit = __BUILD_COMMIT__;
+	// The build's own copy, so the link also works on staging and previews before a release
+	const codeOfConductUrl = commit
+		? `${REPOSITORY_URL}/blob/${commit}/CODE_OF_CONDUCT.md`
+		: CODE_OF_CONDUCT_URL;
 </script>
 
 <footer class="footer">
@@ -26,6 +30,7 @@ The footer PageFrame puts on every page: project links, and this build's version
 		<a href="https://openpgpjs.org/" target="_blank" rel="noopener noreferrer">OpenPGP.js</a>
 		<a href="/about">About</a>
 		<a href="/donate">Donate</a>
+		<a href={codeOfConductUrl} target="_blank" rel="noopener noreferrer">Code of conduct</a>
 	</span>
 
 	<p class={['footer-build', { candidate: appVersion.isCandidate }]}>

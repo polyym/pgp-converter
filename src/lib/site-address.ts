@@ -12,7 +12,7 @@ const TRAILING_DOT = /\.$/;
  *   the dev server. It says that it is not the released site, shows its version
  *   as a release candidate and has fake wallet addresses.
  * - `self-hosted`: a copy at any other address. It looks like the released site
- *   but has no wallet proxy.
+ *   but has no wallet proxy, and its home page drops the Netlify credit.
  */
 export type SiteCopy = 'released' | 'test' | 'self-hosted';
 

@@ -9,6 +9,9 @@ export const REPOSITORY_URL = 'https://github.com/polyym/pgp-converter';
 // The project's default Netlify hostname. Branch deploys and deploy previews are
 // served at <name>--pgp-converter.netlify.app.
 export const HOST_PROJECT_ADDRESS = 'pgp-converter.netlify.app';
+export const NETLIFY_URL = 'https://www.netlify.com/';
+// For a build with no commit; others link to the copy at their own commit
+export const CODE_OF_CONDUCT_URL = `${REPOSITORY_URL}/blob/main/CODE_OF_CONDUCT.md`;
 
 // Feedback timing
 // Pause before a tool's work starts, so the loading state paints first

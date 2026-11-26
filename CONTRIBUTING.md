@@ -62,7 +62,7 @@ Dependabot opens its monthly updates against `dev` as well, and leaves the candi
 
 ## Reporting bugs and security issues
 
-Bug reports and feature suggestions go through [GitHub Issues](https://github.com/polyym/pgp-converter/issues).
+Bug reports and feature suggestions go through [GitHub Issues](https://github.com/polyym/pgp-converter/issues). To report behaviour that breaks the [code of conduct](./CODE_OF_CONDUCT.md), see its Reporting section.
 
 Do not report security vulnerabilities in public issues. Report them privately as described in [SECURITY.md](./SECURITY.md), with clear reproduction steps and, where relevant, the affected commit or deploy.
 

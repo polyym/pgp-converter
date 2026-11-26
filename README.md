@@ -321,7 +321,9 @@ The Docker image's Caddy configuration, [`docker/Caddyfile`](docker/Caddyfile), 
 - Browsers provide the Web Crypto API and service workers only in a secure context, which means over HTTPS or at `localhost`. Served over plain HTTP at any other address, the tool pages do not start. To use a copy from other devices, put a reverse proxy that terminates TLS in front of it. With Caddy on the host and a domain pointed at it, for example: `caddy reverse-proxy --from pgp.example.com --to localhost:8080`. Publish the container's port on 127.0.0.1, as above, so that only the proxy reaches it: Docker's published ports bypass host firewalls such as ufw.
 - The image sends no Strict-Transport-Security (HSTS) header. pgp-converter.com's own header has `includeSubDomains` and was submitted to the browsers' preload list, and on another domain the same header could lock browsers out of subdomains that serve only plain HTTP. Whoever terminates TLS in front of a copy decides on HSTS for their own domain.
 
-### The Donate and About Pages
+### The Home, Donate and About Pages
+
+The home page's "This site is powered by Netlify" line is a condition of the project's Netlify plan, so a self-hosted copy drops it once the page has loaded.
 
 The wallet addresses come from a Netlify function on the released site, which a self-hosted copy does not have, so a self-hosted copy's Donate page shows no addresses, fake or real, and links to the Donate page at pgp-converter.com instead.
 
@@ -445,7 +447,7 @@ The app decides what to show at run time, from the hostname it is opened at. On 
 
 ## Contributions
 
-Contributions are welcome, as pull requests against the `dev` branch. Before you open one, read [CONTRIBUTING.md](./CONTRIBUTING.md), which covers the Contributor License Agreement that every contributor signs, the checks a pull request must pass and the code style.
+Contributions are welcome, as pull requests against the `dev` branch. Before you open one, read [CONTRIBUTING.md](./CONTRIBUTING.md), which covers the Contributor License Agreement that every contributor signs, the checks a pull request must pass and the code style. Everyone taking part follows the [code of conduct](./CODE_OF_CONDUCT.md).
 
 ### Branches
 
