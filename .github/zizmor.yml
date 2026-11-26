@@ -1,0 +1,7 @@
+# zizmor's default already requires a hash pin on every action, GitHub's own
+# included. Repeating it here keeps a change of default from relaxing it.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        '*': hash-pin

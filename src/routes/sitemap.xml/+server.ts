@@ -21,9 +21,8 @@ const PAGES: readonly SitemapPage[] = [
 ];
 
 /**
- * Writes the sitemap. Crawlers use the date on each page to decide what to
- * read again; it is the time of the build.
- * @returns The sitemap, as XML
+ * Returns sitemap.xml, prerendered at build time. Every <lastmod> is the build
+ * time, so each release marks all pages as changed for crawlers.
  */
 export function GET(): Response {
 	const lastModified = new Date(getBuildTime()).toISOString();
@@ -43,8 +42,7 @@ export function GET(): Response {
 
 	return new Response(sitemap, {
 		headers: {
-			'Content-Type': 'application/xml',
-			'Cache-Control': 'max-age=0, s-maxage=3600'
+			'Content-Type': 'application/xml'
 		}
 	});
 }

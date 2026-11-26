@@ -4,10 +4,9 @@
 </script>
 
 <svelte:head>
-	<title>Error - PGP Converter</title>
+	<title>PGP Converter: Error</title>
 </svelte:head>
 
-<!-- The same frame as every other page, so a wrong address still looks like this app -->
 <PageFrame>
 	<p class="status">{page.status}</p>
 	<h1>
@@ -17,8 +16,8 @@
 			Something went wrong
 		{/if}
 	</h1>
-	<!-- SvelteKit always supplies its own short message ("Not Found", "Internal Error"),
-		     so the text here is chosen by status instead of falling back to it -->
+	<!-- Chosen by status: with no handleError hook, page.error.message holds only
+	     SvelteKit's defaults ("Not Found", "Internal Error") -->
 	<p class="explanation">
 		{#if page.status === 404}
 			The link may be out of date, or the address may have been mistyped. The tools are all in the

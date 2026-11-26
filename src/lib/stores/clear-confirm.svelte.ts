@@ -1,11 +1,9 @@
 import { CLEAR_CONFIRM_MS } from '#lib/constants.ts';
 
 /**
- * Creates the state behind a Clear that asks twice. A cleared form cannot be
- * brought back, so the first press only asks, and the question lapses if no
- * second press follows.
- * @param clear - Empties the form
- * @returns Whether a first press is waiting, and the presses themselves
+ * Creates a Clear that needs two presses, because a cleared form cannot be
+ * recovered. The first press arms it, and a second press within
+ * CLEAR_CONFIRM_MS calls `clear`; after that the first press lapses.
  */
 export function createClearConfirm(clear: () => void) {
 	let isArmed = $state(false);
@@ -38,11 +36,11 @@ export function createClearConfirm(clear: () => void) {
 		get isArmed() {
 			return isArmed;
 		},
-		/** Asks on the first press and clears on the second */
+		/** Arms on the first press and clears on the second */
 		press,
 		/** Clears without asking */
 		clearNow,
-		/** Withdraws a first press */
+		/** Cancels a first press without clearing */
 		disarm
 	};
 }

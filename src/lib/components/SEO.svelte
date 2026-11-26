@@ -10,7 +10,10 @@
 		title: string;
 		description: string;
 		path: string;
-		/** The picture shown when a link to the page is shared */
+		/**
+		 * Social preview image (og:image): a root-relative path or an absolute http(s)
+		 * URL. An empty string leaves the image tags out and uses a summary card.
+		 */
 		image?: string;
 	} = $props();
 

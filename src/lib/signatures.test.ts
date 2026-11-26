@@ -65,7 +65,7 @@ async function createKeyPair(name: string, passphrase: string | null = PASSPHRAS
 	});
 }
 
-/** The text as an email program quotes it */
+/** Prefixes every line with '> ', as an email client quotes a reply */
 function quote(text: string): string {
 	return text
 		.split('\n')
@@ -73,7 +73,7 @@ function quote(text: string): string {
 		.join('\n');
 }
 
-/** The verdict on the one signature of a message, checked against a box of keys */
+/** Verifies `signed` against the keys in `box` and returns the check on its first signature */
 async function verdictOn(signed: string, box: string) {
 	return must(must((await verifyMessage(signed, box)).signatures).at(0));
 }
@@ -92,7 +92,7 @@ beforeAll(async () => {
 }, 30_000);
 
 describe('signMessage', () => {
-	it('should produce a readable message with a signature underneath', async () => {
+	it('should produce a cleartext signed message', async () => {
 		const result = await signMessage('Meet at noon.', alice.privateKey, PASSPHRASE);
 		expect(result.success).toBe(true);
 		expect(result.data).toContain('-----BEGIN PGP SIGNED MESSAGE-----');
@@ -101,14 +101,14 @@ describe('signMessage', () => {
 		expect(result.signer?.userIDs[0]).toContain('Alice');
 	}, 15_000);
 
-	it('should use one kind of line ending throughout the signed message', async () => {
+	it('should use LF line endings throughout', async () => {
 		const result = await signMessage('one\ntwo\r\nthree', alice.privateKey, PASSPHRASE);
 		expect(result.data).not.toContain('\r');
 		const checked = await verifyMessage(must(result.data), alice.publicKey);
 		expect(must(checked.signatures)[0].status).toBe('valid');
 	}, 15_000);
 
-	it('should ask for the passphrase when a protected key is used without one', async () => {
+	it('should ask for the passphrase of a protected key', async () => {
 		const result = await signMessage('Hello', alice.privateKey, '');
 		expect(result.success).toBe(false);
 		expect(result.error).toBe(SIGNING_PASSPHRASE_REQUIRED_ERROR);
@@ -126,14 +126,14 @@ describe('signMessage', () => {
 		expect(result.success).toBe(true);
 	}, 15_000);
 
-	it('should say when a public key is pasted instead of a private key', async () => {
+	it('should explain that signing needs a private key', async () => {
 		const result = await signMessage('Hello', alice.publicKey, PASSPHRASE);
 		expect(result.success).toBe(false);
 		expect(result.error).toContain('private key');
 		expect(result.error).not.toContain('recipient');
 	}, 15_000);
 
-	it('should find the private key in the "both keys" download from the generate page', async () => {
+	it('should find the private key pasted after its public key', async () => {
 		const result = await signMessage(
 			'Hello',
 			`${alice.publicKey}\n${alice.privateKey}`,
@@ -184,7 +184,7 @@ describe('verifyMessage', () => {
 		expect(must(result.signatures)[0].signer?.userIDs[0]).toContain('Alice');
 	}, 15_000);
 
-	it('should say when the signature was made by a key that was not supplied', async () => {
+	it('should report unknown-key for a signer that was not supplied', async () => {
 		const signed = await signMessage('Hello', alice.privateKey, PASSPHRASE);
 		const result = await verifyMessage(must(signed.data), mallory.publicKey);
 
@@ -203,7 +203,7 @@ describe('verifyMessage', () => {
 		expect(must(result.signatures)[0].signer?.userIDs[0]).toContain('Alice');
 	}, 15_000);
 
-	it('should keep indentation and leading dashes exactly as they were signed', async () => {
+	it('should keep indentation and dash-escaped lines as signed', async () => {
 		const text = 'List:\n  - indented item\n- dash at the start\n> quoted line';
 		const signed = await signMessage(text, alice.privateKey, PASSPHRASE);
 		const result = await verifyMessage(must(signed.data), alice.publicKey);
@@ -211,7 +211,7 @@ describe('verifyMessage', () => {
 		expect(result.data).toBe(text);
 	}, 15_000);
 
-	it('should accept Windows line endings', async () => {
+	it('should accept CRLF line endings', async () => {
 		const signed = await signMessage('one\ntwo', alice.privateKey, PASSPHRASE);
 		const result = await verifyMessage(must(signed.data).replaceAll('\n', '\r\n'), alice.publicKey);
 		expect(must(result.signatures)[0].status).toBe('valid');
@@ -228,7 +228,7 @@ describe('verifyMessage', () => {
 		expect(must(result.signatures)[0].status).toBe('valid');
 	}, 15_000);
 
-	it('should verify a signed message that is not in cleartext form', async () => {
+	it('should verify a signed PGP MESSAGE block', async () => {
 		const privateKey = await readPrivateKey({
 			armoredKey: (await createKeyPair('Opaque', null)).privateKey
 		});
@@ -265,7 +265,7 @@ describe('verifyMessage', () => {
 		expect(must(result.signatures)[0].detail).toBe(FUTURE_SIGNATURE_DETAIL);
 	}, 15_000);
 
-	it('should not blame the clock when the key was re-issued after the message was signed', async () => {
+	it('should not blame the clock for a key reformatted after signing', async () => {
 		const day = 86_400e3;
 		const { privateKey } = await generateKey({
 			type: 'ecc',
@@ -279,7 +279,7 @@ describe('verifyMessage', () => {
 			signingKeys: privateKey,
 			date: new Date(Date.now() - 2 * day)
 		});
-		// Yesterday the owner changed the key with a tool that keeps only the newest record of it
+		// Reformatted a day ago: reformatKey replaces every self-signature with a newer one
 		const reissued = await reformatKey({
 			privateKey,
 			userIDs: [{ name: 'Reissued' }],
@@ -317,7 +317,7 @@ describe('verifyMessage', () => {
 		expect(must(result.signatures)[0].signer?.problem).toContain('expired');
 	}, 15_000);
 
-	it('should refuse a private key instead of quietly using it', async () => {
+	it('should refuse a private key as the sender key', async () => {
 		const signed = await signMessage('Hello', alice.privateKey, PASSPHRASE);
 		const result = await verifyMessage(must(signed.data), alice.privateKey);
 		expect(result.success).toBe(false);
@@ -337,7 +337,7 @@ describe('verifyMessage', () => {
 		expect(result.error).toBe(ENCRYPTED_NOT_SIGNED_ERROR);
 	}, 15_000);
 
-	it('should say when a signature has no text with it', async () => {
+	it('should refuse a detached signature', async () => {
 		const key = await readPrivateKey({
 			armoredKey: (await createKeyPair('Detached', null)).privateKey
 		});
@@ -353,7 +353,7 @@ describe('verifyMessage', () => {
 		expect(result.errorField).toBe('signedMessage');
 	}, 15_000);
 
-	it("should name the sender's key, not the recipient's, when the key is unreadable", async () => {
+	it("should blame the sender's public key when it is unreadable", async () => {
 		const signed = await signMessage('Hello', alice.privateKey, PASSPHRASE);
 		const result = await verifyMessage(must(signed.data), must(signed.data));
 		expect(result.success).toBe(false);
@@ -363,7 +363,7 @@ describe('verifyMessage', () => {
 });
 
 describe('signing while encrypting', () => {
-	it('should sign the message and let the recipient confirm the sender', async () => {
+	it('should verify the sender after decryption', async () => {
 		const encrypted = await encryptMessage('Signed secret', bob.publicKey, {
 			armoredPrivateKey: alice.privateKey,
 			passphrase: PASSPHRASE
@@ -384,7 +384,7 @@ describe('signing while encrypting', () => {
 		expect(must(result.signatures)[0].signer?.userIDs[0]).toContain('Alice');
 	}, 15_000);
 
-	it('should report a signature it was given no key for as unchecked, not as valid', async () => {
+	it('should report unknown-key when no sender key is given', async () => {
 		const encrypted = await encryptMessage('Signed secret', bob.publicKey, {
 			armoredPrivateKey: alice.privateKey,
 			passphrase: PASSPHRASE
@@ -394,7 +394,7 @@ describe('signing while encrypting', () => {
 		expect(must(result.signatures)[0].status).toBe('unknown-key');
 	}, 15_000);
 
-	it('should not accept a signature from someone other than the claimed sender', async () => {
+	it('should report unknown-key for a signer other than the sender', async () => {
 		const encrypted = await encryptMessage('From Alice, honest', bob.publicKey, {
 			armoredPrivateKey: mallory.privateKey,
 			passphrase: PASSPHRASE
@@ -422,7 +422,7 @@ describe('signing while encrypting', () => {
 		expect(result.signatures).toEqual([]);
 	}, 15_000);
 
-	it('should ask for the signing passphrase, not blame the recipient key', async () => {
+	it('should ask for the signing key passphrase', async () => {
 		const result = await encryptMessage('Hello', bob.publicKey, {
 			armoredPrivateKey: alice.privateKey,
 			passphrase: ''
@@ -431,7 +431,7 @@ describe('signing while encrypting', () => {
 		expect(result.error).toBe(SIGNING_PASSPHRASE_REQUIRED_ERROR);
 	}, 15_000);
 
-	it('should say when the signing key box holds a public key', async () => {
+	it('should say when the signing key is a public key', async () => {
 		const result = await encryptMessage('Hello', bob.publicKey, {
 			armoredPrivateKey: alice.publicKey,
 			passphrase: ''
@@ -441,7 +441,7 @@ describe('signing while encrypting', () => {
 		expect(result.error).not.toContain('recipient');
 	}, 15_000);
 
-	it("should refuse a private key in the sender's key box when decrypting", async () => {
+	it('should refuse a private key as the sender key when decrypting', async () => {
 		const encrypted = await encryptMessage('Hello', bob.publicKey);
 		const result = await decryptMessage(
 			must(encrypted.data),
@@ -453,7 +453,7 @@ describe('signing while encrypting', () => {
 		expect(result.error).toBe(PRIVATE_KEY_AS_SENDER_ERROR);
 	}, 15_000);
 
-	it("should still decrypt when the sender's key box holds something unreadable, and say which box is wrong", async () => {
+	it("should blame the sender's key, not the private key, when it is unreadable", async () => {
 		const encrypted = await encryptMessage('Hello', bob.publicKey);
 		const result = await decryptMessage(
 			must(encrypted.data),
@@ -486,19 +486,19 @@ describe('inspectKeys', () => {
 		expect(wrong.problem).toBe(PUBLIC_KEY_AS_READER_PROBLEM);
 	}, 15_000);
 
-	it('should read the private key out of the "both keys" file for decrypting', async () => {
+	it('should pick the private key pasted after its public key, for decrypting', async () => {
 		const infos = await inspectKeys(`${alice.publicKey}\n${alice.privateKey}`, 'decrypt');
 		expect(infos).toHaveLength(1);
 		expect(infos[0].isPrivate).toBe(true);
 	}, 15_000);
 
-	it('should read the private key out of the "both keys" file for signing', async () => {
+	it('should pick the private key pasted after its public key, for signing', async () => {
 		const infos = await inspectKeys(`${alice.publicKey}\n${alice.privateKey}`, 'sign');
 		expect(infos).toHaveLength(1);
 		expect(infos[0].isPrivate).toBe(true);
 	}, 15_000);
 
-	it('should accept a public key for checking and flag a private one', async () => {
+	it('should accept a public key for verifying and flag a private one', async () => {
 		const [sender] = await inspectKeys(alice.publicKey, 'verify');
 		expect(sender.problem).toBeUndefined();
 
@@ -506,7 +506,7 @@ describe('inspectKeys', () => {
 		expect(wrong.problem).toBe(PRIVATE_KEY_AS_SENDER_PROBLEM);
 	}, 15_000);
 
-	it('should flag a revoked key offered for checking', async () => {
+	it('should flag a revoked key for verifying', async () => {
 		const pair = await createKeyPair('Revoked', null);
 		const revoked = await revokeKey({
 			key: (await readKey({ armoredKey: pair.privateKey })) as never,
@@ -517,9 +517,9 @@ describe('inspectKeys', () => {
 	}, 15_000);
 });
 
-// Keys of a kind the library no longer accepts: DSA, ElGamal, and RSA under 2048 bits.
-// It will only make one when told the limit is lower.
-describe('an old kind of key', () => {
+// OpenPGP.js rejects DSA and ElGamal keys, and RSA keys below config.minRSABits
+// (2047 by default). It generates a 1024-bit RSA key only when given a lower limit.
+describe('a weak key', () => {
 	const allowWeak = { minRSABits: 1024 };
 	let weak: { publicKey: string; privateKey: string };
 
@@ -533,7 +533,7 @@ describe('an old kind of key', () => {
 		});
 	}, 30_000);
 
-	it('should not call an honest signature altered because its key is of an old kind', async () => {
+	it('should mark a good signature untrusted, not invalid', async () => {
 		const signed = await sign({
 			message: await createCleartextMessage({ text: 'Signed years ago.' }),
 			signingKeys: await readPrivateKey({ armoredKey: weak.privateKey }),
@@ -549,7 +549,7 @@ describe('an old kind of key', () => {
 		expect(must(result.signatures)[0].detail).toBe(WEAK_SIGNING_KEY_DETAIL);
 	}, 15_000);
 
-	it('should warn about the key before anything is checked against it', async () => {
+	it('should flag the key when it is inspected', async () => {
 		const [forChecking] = await inspectKeys(weak.publicKey, 'verify');
 		expect(forChecking.algorithm).toBe('RSA 1024');
 		expect(forChecking.problem).toBe(WEAK_VERIFYING_KEY_PROBLEM);
@@ -561,7 +561,7 @@ describe('an old kind of key', () => {
 		expect(forSigning.problem).toBe(WEAK_KEY_PROBLEM);
 	}, 15_000);
 
-	it('should explain why it will not sign with one', async () => {
+	it('should refuse to sign with it and say why', async () => {
 		const result = await signMessage('Hello', weak.privateKey, '');
 		expect(result.success).toBe(false);
 		expect(result.error).toBe(WEAK_SIGNING_KEY_ERROR);
@@ -569,11 +569,14 @@ describe('an old kind of key', () => {
 	}, 15_000);
 });
 
-// The packet types of the OpenPGP format that the message below is made of
+// Packet type IDs (RFC 9580 section 5)
 const COMPRESSED_DATA_PACKET = 8;
 const LITERAL_DATA_PACKET = 11;
 
-/** One packet in the format's newer framing: its type, a five-byte length, then its contents */
+/**
+ * Wraps `contents` in an OpenPGP-format packet header: 0xC0 | type, then a
+ * five-octet length (0xFF and a 32-bit big-endian length). RFC 9580 section 4.2.
+ */
 function packetOf(type: number, contents: Buffer): Buffer {
 	const header = Buffer.alloc(6);
 	header.writeUInt8(0xc0 + type, 0);
@@ -583,11 +586,11 @@ function packetOf(type: number, contents: Buffer): Buffer {
 }
 
 /**
- * A compressed message written out by hand, as anyone could write one: text in
- * a literal packet, deflated inside a compressed packet. Nothing is signed.
+ * Builds an unsigned armoured message by hand: a literal data packet,
+ * zlib-compressed inside a compressed data packet.
  */
 function compressedMessageOf(messageText: string): string {
-	// "u" for UTF-8 text, no file name, no date
+	// Literal data header: format 'u' (UTF-8 text), empty file name, zero date
 	const preamble = Buffer.from([0x75, 0, 0, 0, 0, 0]);
 	const literal = packetOf(
 		LITERAL_DATA_PACKET,
@@ -598,10 +601,10 @@ function compressedMessageOf(messageText: string): string {
 	return armor(enums.armor.message, compressed);
 }
 
-describe('verifyMessage, on a message that unpacks to far more than it weighs', () => {
-	it('should refuse it, and name the message as the cause', async () => {
+describe('verifyMessage, on a decompression bomb', () => {
+	it('should refuse it with the oversized message error', async () => {
 		const bomb = compressedMessageOf('A'.repeat(MAX_UNPACKED_MESSAGE_BYTES + 1_000_000));
-		// A few dozen kilobytes as sent
+		// A few dozen kilobytes compressed
 		expect(bomb.length).toBeLessThan(100_000);
 
 		const result = await verifyMessage(bomb, alice.publicKey);
@@ -610,7 +613,7 @@ describe('verifyMessage, on a message that unpacks to far more than it weighs', 
 		expect(result.errorField).toBe('signedMessage');
 	}, 30_000);
 
-	it('should read a compressed message of ordinary size, and find it unsigned', async () => {
+	it('should read an ordinary compressed message as unsigned', async () => {
 		const result = await verifyMessage(compressedMessageOf('Hello there.'), alice.publicKey);
 		expect(result.success).toBe(true);
 		expect(result.data).toBe('Hello there.');
@@ -618,7 +621,7 @@ describe('verifyMessage, on a message that unpacks to far more than it weighs', 
 	}, 15_000);
 });
 
-describe('verifyMessage, when the box holds more than the message', () => {
+describe('verifyMessage, with text besides the message', () => {
 	const LINE_SEPARATOR = String.fromCodePoint(0x20_28);
 	const ADDED = 'Pay Mallory 1000.';
 	let signed: string;
@@ -636,7 +639,7 @@ describe('verifyMessage, when the box holds more than the message', () => {
 		inlineSigned = String(armored).replaceAll('\r\n', '\n').trim();
 	}, 15_000);
 
-	it('should say so, and hand back only the text that was signed', async () => {
+	it('should set hasOtherText and return only the signed text', async () => {
 		const pasted = `Pay Mallory 1000 first.\n\n${signed}\nP.S. And again.`;
 		const result = await verifyMessage(pasted, alice.publicKey);
 		expect(must(result.signatures)[0].status).toBe('valid');
@@ -644,7 +647,7 @@ describe('verifyMessage, when the box holds more than the message', () => {
 		expect(result.hasOtherText).toBe(true);
 	}, 15_000);
 
-	it('should not say so for a message that stands alone, however it was pasted', async () => {
+	it('should not set hasOtherText for a message pasted alone', async () => {
 		const pastings = {
 			'with empty lines around it': `\n${signed}\n\n`,
 			'with Windows line endings': signed.replaceAll('\n', '\r\n'),
@@ -664,8 +667,8 @@ describe('verifyMessage, when the box holds more than the message', () => {
 		);
 	}, 30_000);
 
-	it('should judge the message as pasted when that is how the library read it', async () => {
-		// Cleaned up, the quoted line would read as the start of the signature
+	it('should check the text as pasted when it parses', async () => {
+		// Once normaliseArmor strips the '> ', the quoted line would read as BEGIN PGP SIGNATURE
 		const text = ['You wrote:', '> -----BEGIN PGP SIGNATURE-----', 'and I agree.'].join('\n');
 		const quoting = must((await signMessage(text, alice.privateKey, PASSPHRASE)).data);
 		const result = await verifyMessage(quoting, alice.publicKey);
@@ -673,21 +676,21 @@ describe('verifyMessage, when the box holds more than the message', () => {
 		expect(result.hasOtherText).toBe(false);
 	}, 15_000);
 
-	it('should say so for a message quoted in an email under a line of its own', async () => {
+	it('should flag an attribution line above a quoted message', async () => {
 		const result = await verifyMessage(`On Monday Alice wrote:\n${quote(signed)}`, alice.publicKey);
 		expect(must(result.signatures)[0].status).toBe('valid');
 		expect(result.hasOtherText).toBe(true);
 	}, 15_000);
 
-	it('should say so for words after the data of a block that the app had to lay out again', async () => {
+	it('should flag words after the data in a rebuilt block', async () => {
 		const lines = inlineSigned.split('\n');
 		const data = lines
 			.slice(2, -1)
 			.filter((line) => !line.startsWith('='))
 			.join('\n')
 			.replace(/=+$/, '');
-		// No empty line under the first line, so the block is laid out again and every
-		// word becomes a line. The library reads nothing after the one "=".
+		// With no blank line after BEGIN, normaliseArmor rebuilds the block and puts each
+		// word on its own line. OpenPGP.js reads nothing after the "=" padding.
 		const pasted = [
 			lines[0],
 			`${data}=`,
@@ -700,9 +703,11 @@ describe('verifyMessage, when the box holds more than the message', () => {
 		expect(result.hasOtherText).toBe(true);
 	}, 15_000);
 
-	it('should say so for a sentence built to be a packet that the library skips', async () => {
-		// "sEND" opens a packet of a kind the library passes over, 67 bytes long: these
-		// 92 characters. It can only follow data that needs no padding, so sign until it does.
+	it('should flag a sentence crafted as a packet OpenPGP.js skips', async () => {
+		// "sEND" decodes to 0xB0 0x43 0x43: an old-format trust packet (tag 12), which
+		// OpenPGP.js skips, with a 67-byte body, so these 92 Base64 characters are exactly
+		// one packet. It must start on a 4-character boundary, so re-sign with a longer
+		// text until the data has no "=" padding.
 		const sentence =
 			'sEND 4500 EUR to the new account DE00 1234 5678 9012 before Friday or the deal is off and tell nobody thanks Alice';
 		expect(sentence.replaceAll(' ', '')).toHaveLength(92);
@@ -734,7 +739,7 @@ describe('verifyMessage, when the box holds more than the message', () => {
 		expect(result.hasOtherText).toBe(true);
 	}, 30_000);
 
-	it('should say so for paragraphs under a header name that stands alone', async () => {
+	it('should flag paragraphs under a bare armour header name', async () => {
 		const lines = inlineSigned.split('\n');
 		const pasted = [lines[0], 'Comment:', '', 'Pay Mallory 1000.', '', ...lines.slice(2)].join(
 			'\n'
@@ -745,9 +750,9 @@ describe('verifyMessage, when the box holds more than the message', () => {
 		expect(result.hasOtherText).toBe(true);
 	}, 15_000);
 
-	// Each of these adds text in a place that OpenPGP.js passes over without a
-	// word. The signature has to come out valid, or the case would show nothing.
-	it('should say so wherever the library passes text over', async () => {
+	// Each case adds text where OpenPGP.js silently ignores it. The signature must
+	// still verify, or the case would not be testing hasOtherText.
+	it('should flag text wherever OpenPGP.js ignores it', async () => {
 		const lines = signed.split('\n');
 		const last = lines.length - 1;
 		const signatureStart = lines.indexOf('-----BEGIN PGP SIGNATURE-----');
@@ -765,8 +770,9 @@ describe('verifyMessage, when the box holds more than the message', () => {
 			'a header line of no known kind': lines.toSpliced(signatureStart + 1, 0, `Note: ${ADDED}`),
 			'text between the checksum and the last line': lines.toSpliced(last, 0, ADDED),
 			'a second message': [...lines, ...lines],
-			// The library ends the signed text at the first of these lines and reads the
-			// true signature under it. The block further down is never looked at.
+			// OpenPGP.js treats U+2028 as a line break when it looks for armour lines, so it
+			// ends the signed text at -----X----- and reads the real signature below. It
+			// never reaches the later block.
 			'a line of dashes after a line separator, with a block of no worth below': [
 				...lines.slice(0, signatureStart),
 				`${ADDED}${LINE_SEPARATOR}-----X-----`,
@@ -788,28 +794,28 @@ describe('verifyMessage, when the box holds more than the message', () => {
 	}, 30_000);
 });
 
-describe('a key that does not say what it may be used for', () => {
+describe('a key with no key flags', () => {
 	let old: ArmoredKeyPair;
 
 	beforeAll(async () => {
 		old = await makeKeyWithoutFlags('Old Key');
 	}, 15_000);
 
-	it('should be refused for everything by the library left to itself', async () => {
+	it('should be unusable in OpenPGP.js without allowMissingKeyFlags', async () => {
 		// Shows that the key really has no flags, which the tests below depend on
 		const key = await readKey({ armoredKey: old.publicKey });
 		await expect(key.getSigningKey()).rejects.toThrow(/None of the key flags is set/);
 		await expect(key.getEncryptionKey()).rejects.toThrow(/None of the key flags is set/);
 	}, 15_000);
 
-	it('should sign, and have its signature confirmed', async () => {
+	it('should sign and verify', async () => {
 		const signed = await signMessage('Hello', old.privateKey, '');
 		expect(signed.success).toBe(true);
 		const checked = await verifyMessage(must(signed.data), old.publicKey);
 		expect(must(checked.signatures)[0].status).toBe('valid');
 	}, 15_000);
 
-	it('should have its signature inside a PGP MESSAGE block confirmed', async () => {
+	it('should verify its signature in a PGP MESSAGE block', async () => {
 		const signed: unknown = await sign({
 			message: await createMessage({ text: 'Hello' }),
 			signingKeys: await readPrivateKey({ armoredKey: old.privateKey }),
@@ -820,7 +826,7 @@ describe('a key that does not say what it may be used for', () => {
 		expect(must(checked.signatures)[0].status).toBe('valid');
 	}, 15_000);
 
-	it('should encrypt and sign in one step, and decrypt with the signature confirmed', async () => {
+	it('should sign and encrypt, then decrypt and verify', async () => {
 		const encrypted = await encryptMessage('Hello', old.publicKey, {
 			armoredPrivateKey: old.privateKey,
 			passphrase: ''
@@ -831,14 +837,15 @@ describe('a key that does not say what it may be used for', () => {
 		expect(must(decrypted.signatures)[0].status).toBe('valid');
 	}, 15_000);
 
-	it('should unlock with its passphrase when its main part is kept elsewhere', async () => {
+	it('should unlock with its passphrase despite a gnu-dummy primary key', async () => {
 		const encrypted = await encryptMessage('Hello', old.publicKey);
 		const key = await readPrivateKey({ armoredKey: old.privateKey });
 		const primary = key.keyPacket;
 		if (!(primary instanceof SecretKeyPacket)) {
 			throw new TypeError('Expected a secret key packet');
 		}
-		// As GnuPG exports a key whose main part stays on another device
+		// As gpg --export-secret-subkeys exports it, with a gnu-dummy stub in place of
+		// the primary secret key
 		primary.makeDummy();
 		const locked = await encryptKey({ privateKey: key, passphrase: PASSPHRASE });
 
@@ -846,7 +853,7 @@ describe('a key that does not say what it may be used for', () => {
 		expect(result.data).toBe('Hello');
 	}, 15_000);
 
-	it('should be shown with no warning, whatever it is pasted for', async () => {
+	it('should be inspected with no problem for any purpose', async () => {
 		const [toSign, toCheck, toEncrypt] = await Promise.all([
 			inspectKeys(old.privateKey, 'sign'),
 			inspectKeys(old.publicKey, 'verify'),
@@ -858,8 +865,8 @@ describe('a key that does not say what it may be used for', () => {
 	}, 15_000);
 });
 
-describe('a key that does say what it may be used for', () => {
-	it('should not be encrypted to when it was made for signing', async () => {
+describe('a key with key flags', () => {
+	it('should not be encrypted to when flagged for signing only', async () => {
 		// RSA, whose algorithm could encrypt: only the flags stand in the way
 		const signingOnly = await generateKey({
 			type: 'rsa',
@@ -875,10 +882,10 @@ describe('a key that does say what it may be used for', () => {
 		);
 	}, 60_000);
 
-	it('should not sign, or have a signature confirmed, when it says it is not for signing', async () => {
+	it('should neither sign nor verify when its flags exclude signing', async () => {
 		const made = await createKeyPair('Carol', null);
 		const signed = must((await signMessage('Hello', made.privateKey, '')).data);
-		// The same key, saying now that its main part only certifies
+		// The same key re-signed so that its primary key is flagged to certify only
 		const certifyOnly = await withKeyFlags(made.privateKey, {
 			primary: enums.keyFlags.certifyKeys,
 			subkey: enums.keyFlags.encryptCommunication | enums.keyFlags.encryptStorage
@@ -893,7 +900,7 @@ describe('a key that does say what it may be used for', () => {
 		expect(refused.errorField).toBe('privateKey');
 	}, 15_000);
 
-	it('should call a signature from a subkey that its owner never bound one that does not match', async () => {
+	it('should mark a signature from an unbound subkey invalid', async () => {
 		const intruder = await generateKey({
 			type: 'ecc',
 			curve: 'curve25519Legacy',
@@ -904,7 +911,7 @@ describe('a key that does say what it may be used for', () => {
 		const signed = must(
 			(await signMessage('Pay Mallory 1000.', intruder.privateKey.armor(), '')).data
 		);
-		// Alice's true key, with Mallory's signing subkey added to it by someone else
+		// Alice's key with Mallory's signing subkey appended; its binding signature is Mallory's
 		const forged = await readKey({ armoredKey: alice.publicKey });
 		forged.subkeys.push(...intruder.publicKey.subkeys);
 
@@ -914,10 +921,10 @@ describe('a key that does say what it may be used for', () => {
 	}, 15_000);
 });
 
-describe("verifyMessage, when the box holds several copies of the signer's key", () => {
+describe("verifyMessage, with several copies of the signer's key", () => {
 	const REASON = enums.reasonForRevocation;
 
-	it('should not trust a signature from a key that any copy shows as revoked', async () => {
+	it('should not trust a key that any copy revokes', async () => {
 		const key = await makeDatedKey('Signer');
 		const signed = await signAt('Hello', key);
 
@@ -930,13 +937,14 @@ describe("verifyMessage, when the box holds several copies of the signer's key",
 		}
 	}, 15_000);
 
-	it('should keep a later revocation when an earlier copy already carries one', async () => {
+	it('should apply a later revocation after an earlier one', async () => {
 		const key = await makeDatedKey('Signer');
 		const signedBeforeEither = await signAt('Hello', key, daysAgo(20));
-		// The owner retired the key, and later found that it had been stolen
+		// The owner revokes the key as retired, then later as compromised
 		const retired = await revokedCopyOf(key, REASON.keyRetired, daysAgo(10));
 		const compromised = await revokedCopyOf(key, REASON.keyCompromised, daysAgo(5));
-		// Retiring a key leaves its earlier signatures standing. A stolen key's signatures can carry any date.
+		// A 'retired' revocation is soft and leaves earlier signatures valid; a
+		// 'compromised' one is hard and invalidates signatures of any date.
 		expect((await verdictOn(signedBeforeEither, retired)).status).toBe('valid');
 
 		for (const order of everyOrder([retired, compromised])) {
@@ -944,7 +952,7 @@ describe("verifyMessage, when the box holds several copies of the signer's key",
 		}
 	}, 15_000);
 
-	it('should not trust a signature from a subkey that any copy shows as revoked', async () => {
+	it('should not trust a subkey that any copy revokes', async () => {
 		const key = await makeDatedKey('Signer', { subkeys: [{}, { sign: true }] });
 		const signed = await signAt('Hello', key);
 		const signingID = (await key.getSigningKey()).getKeyID();
@@ -960,12 +968,12 @@ describe("verifyMessage, when the box holds several copies of the signer's key",
 		}
 	}, 15_000);
 
-	it('should confirm an older signature once an older copy of the key is added', async () => {
-		// A key that signs with its main part, and one that signs with a subkey
+	it('should verify once a copy from before the reformat is added', async () => {
+		// One key signs with its primary key, the other with a signing subkey
 		for (const subkeys of [[{}], [{}, { sign: true }]]) {
 			const key = await makeDatedKey('Reissued', { subkeys });
 			const signed = await signAt('Signed twenty days ago', key, daysAgo(20));
-			// Later the owner changed the key with a tool that kept only the newest record of it
+			// Later the owner reformats the key, which replaces every self-signature
 			const reissued = await reformatKey({
 				privateKey: key,
 				userIDs: [{ name: 'Reissued' }],
@@ -981,7 +989,7 @@ describe("verifyMessage, when the box holds several copies of the signer's key",
 		}
 	}, 15_000);
 
-	it('should come to the same verdicts whatever order three copies stand in', async () => {
+	it('should give the same verdicts for three copies in any order', async () => {
 		const key = await makeDatedKey('Signer');
 		const signedEarly = await signAt('Signed twenty days ago', key, daysAgo(20));
 		const signedLate = await signAt('Signed two days ago', key, daysAgo(2));

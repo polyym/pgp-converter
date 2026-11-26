@@ -1,45 +1,41 @@
 /**
- * Says whether a page may read the clipboard in this browser, which is what
- * a Paste button needs. Call it in the browser only.
- * @returns True if the button can work here
+ * Returns true if navigator.clipboard.readText exists, so a Paste button can
+ * work. It does not tell whether the visitor will grant permission. Browser only.
  */
 export function canReadClipboard(): boolean {
-	// The clipboard is missing on a page that was not served securely, and the
-	// method is missing in some browsers, whatever the type definitions say
+	// navigator.clipboard is undefined outside a secure context, and some browsers
+	// lack readText, although the DOM types declare both
 	const clipboard: unknown = Reflect.get(navigator, 'clipboard');
 	return typeof clipboard === 'object' && clipboard !== null && 'readText' in clipboard;
 }
 
 /**
- * Says whether the device has a share sheet that a page can hand text to.
- * Only phones and a few desktop browsers do. Call it in the browser only.
- * @returns True if a Share button can work here
+ * Returns true if the Web Share API is available, which is mostly on phones and
+ * in a few desktop browsers. Browser only.
  */
 export function canShareText(): boolean {
 	return 'share' in navigator;
 }
 
 /**
- * Adds text to a box at the cursor, as pasting from the keyboard would, and
- * in place of any text that is selected.
- * @param textarea - The box to add to
- * @param text - The text to add
+ * Focuses the textarea and inserts text at the caret, replacing any selection,
+ * as a keyboard paste would
  */
 export function insertAtCursor(textarea: HTMLTextAreaElement, text: string): void {
-	// The box keeps its cursor while another control, such as a Paste button, has the focus
+	// The textarea keeps its selection while a Paste button has focus, and
+	// execCommand acts on the focused element
 	textarea.focus();
-	// The browser's own editing, so that Undo takes the text out again. The
-	// method is deprecated and has no replacement that keeps Undo working.
+	// execCommand goes through the browser's own editing, so Undo removes the text.
+	// It is deprecated but has no replacement that keeps Undo working.
 	if (!document.execCommand('insertText', false, text)) {
 		textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, 'end');
 	}
 }
 
 /**
- * Puts a further PGP block after the ones a box already holds.
- * @param existing - What the box holds
- * @param addition - The block to add
- * @returns Both, with one empty line between them
+ * Appends a PGP block to a text box's contents with one blank line between them,
+ * trimming trailing whitespace from `existing` and surrounding whitespace from
+ * `addition`.
  */
 export function appendBlock(existing: string, addition: string): string {
 	return `${existing.trimEnd()}\n\n${addition.trim()}`;

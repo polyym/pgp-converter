@@ -22,10 +22,9 @@
 	// A signed message can be empty, so a result is tracked separately from its text
 	let hasOutput = $state(false);
 	let signatures = $state<SignatureCheck[]>([]);
-	// Whether the box held anything besides the message, which the verdicts are not about
+	// True when the input held text outside the signed message; the verdict does not cover it
 	let hasOtherText = $state(false);
 
-	// The text is only as good as its weakest signature
 	const summary = $derived(summariseSignatures(signatures));
 
 	const sender = createKeyInspector(() => publicKey, 'verify');
@@ -36,7 +35,6 @@
 		canClear: () => !!(signedMessage || publicKey || hasOutput),
 		onClear: clearAll,
 		copyable: () => text,
-		// The verdict is about this message and these keys, and about no others
 		resultInputs: () => [signedMessage, publicKey]
 	});
 

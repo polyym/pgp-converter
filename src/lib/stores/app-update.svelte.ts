@@ -10,12 +10,15 @@ let waiting = $state<ServiceWorker | null>(null);
 let isSwitching = $state(false);
 let isReloadAsked = false;
 let takeoverTimer: ReturnType<typeof setTimeout> | undefined;
-// A page with something to lose asks to be consulted before the reload
+// Set by holdFor, so a page with unsaved work can intercept Update before the reload
 let holder: (() => boolean) | undefined;
 
-/** The state the top bar reads, and the action behind its Update button */
+/** Service worker update state for the top bar, and the actions behind its Update button */
 export const appUpdate = {
-	/** True once a newer version is ready to take over */
+	/**
+	 * True once a new service worker has installed, until Update reloads the page.
+	 * It stays true if another tab activates the worker first.
+	 */
 	get isReady() {
 		return waiting !== null;
 	},
@@ -29,8 +32,9 @@ export const appUpdate = {
 };
 
 /**
- * Starts watching for a newer version of the app. Call once, in the browser.
- * @returns A function that stops watching
+ * Watches the service worker registration for a waiting update, and checks for
+ * one when the tab becomes visible again. Call once, in the browser. Returns
+ * the cleanup function, which does nothing where service workers are unsupported.
  */
 export function watchForUpdates(): () => void {
 	if (!('serviceWorker' in navigator)) {
@@ -51,8 +55,8 @@ export function watchForUpdates(): () => void {
 			return;
 		}
 		const settle = () => {
-			// "Installed" with a version already in charge means an update. On a first
-			// visit nothing is in charge yet, and there is nothing to switch from.
+			// An installed worker is an update only if a controller exists: on the
+			// first visit there is nothing to switch from.
 			if (worker.state === 'installed' && navigator.serviceWorker.controller) {
 				waiting = worker;
 			}
@@ -65,8 +69,8 @@ export function watchForUpdates(): () => void {
 		consider(registration?.installing ?? null);
 	}
 
-	// Browsers look for a new version when a page is loaded. An app left open for
-	// days never loads a page, so it also asks when it is brought back into view.
+	// Browsers check for a new service worker on a full page load, which a tab
+	// left open for days never does, so also check when the tab becomes visible.
 	function onShown(): void {
 		if (document.visibilityState !== 'visible' || !registration) {
 			return;
@@ -76,7 +80,7 @@ export function watchForUpdates(): () => void {
 		}
 		lastCheck = Date.now();
 		registration.update().catch(() => {
-			// Offline, or the site is unreachable: the copy on the device carries on
+			// Offline or unreachable: the cached version keeps running
 		});
 	}
 
@@ -97,9 +101,9 @@ export function watchForUpdates(): () => void {
 }
 
 /**
- * Switches to the new version. The page reloads, which clears anything on
- * it, so this only ever runs when the visitor asks for it. A page that is
- * holding something that cannot be recovered is asked first (see holdFor).
+ * Activates the waiting worker and reloads the page, unless a holdFor check
+ * holds it back. Call it only from the Update button: the reload loses
+ * whatever is on the page.
  */
 function apply(): void {
 	if (holder?.()) {
@@ -108,17 +112,16 @@ function apply(): void {
 	switchNow();
 }
 
-/** Switches without asking the page again; for the page to call once the visitor has agreed */
+/** Like apply, but skips the holdFor check; for a page to call once the visitor has agreed */
 function applyNow(): void {
 	switchNow();
 }
 
 /**
- * Lets a page stand between the Update button and the reload. The page's
- * function is called when Update is pressed. If it returns true the page has
- * taken the question on, and calls applyNow itself should the visitor agree.
- * @param ask - Returns true to hold the update back, false to let it through
- * @returns A function that withdraws the hold; call it when the page is left
+ * Registers a check that runs when Update is pressed. If `ask` returns true,
+ * the update is held, and the page calls applyNow itself if the visitor
+ * agrees. Only one hold exists at a time, so a later call replaces it.
+ * @returns A function that removes the hold, if it is still the current one
  */
 function holdFor(ask: () => boolean): () => void {
 	holder = ask;
@@ -129,14 +132,15 @@ function holdFor(ask: () => boolean): () => void {
 	};
 }
 
-/** Hands over to the waiting version and reloads once it has taken charge */
+// Asks the waiting worker to skipWaiting, then reloads on controllerchange or
+// after UPDATE_TAKEOVER_TIMEOUT_MS, whichever comes first.
 function switchNow(): void {
 	if (!waiting || isSwitching) {
 		return;
 	}
 	isSwitching = true;
-	// With the app open in two tabs, the other may have switched already. The
-	// waiting version is then in charge, and there is nothing to wait for.
+	// Another tab may have activated it already, and then no controllerchange is
+	// left to wait for.
 	if (waiting.state !== 'installed') {
 		reloadOnce();
 		return;
@@ -145,7 +149,7 @@ function switchNow(): void {
 	takeoverTimer = setTimeout(reloadOnce, UPDATE_TAKEOVER_TIMEOUT_MS);
 }
 
-/** Reloads the page, once. The switch can be signalled twice: by the new version and by the timer. */
+// Both controllerchange and the takeover timer call this, so it guards against a second reload
 function reloadOnce(): void {
 	if (isReloadAsked) {
 		return;
@@ -153,9 +157,9 @@ function reloadOnce(): void {
 	isReloadAsked = true;
 	clearTimeout(takeoverTimer);
 	location.reload();
-	// Only reached if the page was not replaced: the browser asked whether to
-	// leave and the visitor stayed. The new version is in charge by now, so
-	// the Update button has nothing left to do.
+	// Fires if the visitor cancels a beforeunload prompt, or if the reload takes
+	// longer than this, in which case the page is replaced soon after anyway. The
+	// worker has been told to activate by then, so the Update button is hidden.
 	setTimeout(() => {
 		isSwitching = false;
 		isReloadAsked = false;
@@ -164,5 +168,5 @@ function reloadOnce(): void {
 }
 
 function doNothing(): void {
-	// What watchForUpdates hands back where there is nothing to stop watching
+	// Cleanup where service workers are unsupported
 }

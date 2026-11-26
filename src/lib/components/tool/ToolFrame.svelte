@@ -1,3 +1,8 @@
+<!--
+@component
+The layout every tool page shares, so each tool has its inputs, action bar and result in the same
+places. From 1024px the result column sits to the right of the inputs.
+-->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { ToolName } from '#lib/pages.ts';
@@ -27,35 +32,28 @@
 	}: {
 		page: ToolName;
 		title: string;
-		/** One line under the title saying what the page is for */
 		subtitle: string;
 		tool: ToolPage;
-		/** The wording on the main action's button, for example "Encrypt" */
+		/** Submit button label, for example "Encrypt" */
 		submitText: string;
-		/** What the Clear button says after a first press, where the page words that differently */
+		/** Overrides ActionBar's armed Clear label */
 		clearArmedText?: string;
-		/** The same, in full, for screen readers */
+		/** Overrides ActionBar's armed Clear announcement */
 		clearArmedStatus?: string;
-		/**
-		 * Whether the result stays in view on a desktop while the inputs beside it
-		 * scroll. Off where the result can grow taller than the window.
-		 */
+		/** Makes the result column sticky on desktop. Off where the result can be taller than the viewport. */
 		isResultSticky?: boolean;
-		/** A control that belongs to the whole page, such as the Sign / Verify switch */
+		/** A page-wide control in the header, such as the Sign / Verify switch */
 		headerExtra?: Snippet;
-		/** Questions the page may put to the user, which cover it while they are open */
+		/** Modal dialogs, such as a ConfirmDialog */
 		dialogs?: Snippet;
-		/** The form's inputs */
 		fields: Snippet;
-		/** Where the result appears */
+		/** Usually a ResultPanel */
 		result: Snippet;
-		/** What follows the tool: how to use it, and questions about it */
+		/** Content below the tool, such as the Explainer and Questions */
 		children: Snippet;
 	} = $props();
 </script>
 
-<!-- Every tool page has the same parts in the same places: inputs and the
-     action on the left of a desktop screen, the result on the right -->
 <PageFrame currentPage={page} hasActionBar>
 	{#snippet overlays()}
 		<ShortcutsModal

@@ -11,7 +11,7 @@ import {
 } from './donations.ts';
 import { must } from './testing.ts';
 
-// Correctly shaped but made-up addresses
+// Well-formed but made-up addresses
 const addresses = {
 	solana: 'So11111111111111111111111111111111111111112',
 	ethereum: '0x000000000000000000000000000000000000dEaD',
@@ -66,7 +66,7 @@ describe('parseWallets', () => {
 });
 
 describe('fetchWallets', () => {
-	it('should request this project only and return its wallets', async () => {
+	it('should fetch the wallet proxy once and return its wallets', async () => {
 		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ addresses }));
 		vi.stubGlobal('fetch', fetchMock);
 
@@ -77,7 +77,7 @@ describe('fetchWallets', () => {
 		expect(fetchMock.mock.calls[0][0]).toBe('/.netlify/functions/wallet-proxy');
 	});
 
-	it('should ask for a function that exists, at its default address', async () => {
+	it('should request a function that exists, at its default URL', async () => {
 		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ addresses }));
 		vi.stubGlobal('fetch', fetchMock);
 		await fetchWallets();
@@ -90,7 +90,7 @@ describe('fetchWallets', () => {
 		expect(existsSync(functionFile)).toBe(true);
 	});
 
-	it('should retry while the service is waking and report it once', async () => {
+	it('should retry while the service starts up and report it once', async () => {
 		vi.useFakeTimers();
 		const fetchMock = vi
 			.fn()
@@ -125,7 +125,7 @@ describe('fetchWallets', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
-	it('should give up at once on an error that will not fix itself', async () => {
+	it('should not retry an error other than 502 to 504', async () => {
 		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'Upstream error' }, 500));
 		vi.stubGlobal('fetch', fetchMock);
 
@@ -133,7 +133,7 @@ describe('fetchWallets', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
-	it('should show the friendly error when no address is valid', async () => {
+	it('should return WALLET_LOAD_ERROR when no address is valid', async () => {
 		vi.stubGlobal(
 			'fetch',
 			vi.fn().mockResolvedValue(jsonResponse({ addresses: { solana: 'nope' } }))
@@ -141,7 +141,7 @@ describe('fetchWallets', () => {
 		expect(await fetchWallets()).toEqual({ success: false, error: WALLET_LOAD_ERROR });
 	});
 
-	it('should show the friendly error when the response is not JSON', async () => {
+	it('should return WALLET_LOAD_ERROR when the response is not JSON', async () => {
 		vi.stubGlobal(
 			'fetch',
 			vi.fn().mockResolvedValue(new Response('<html>Bad gateway</html>', { status: 200 }))
@@ -149,14 +149,14 @@ describe('fetchWallets', () => {
 		expect(await fetchWallets()).toEqual({ success: false, error: WALLET_LOAD_ERROR });
 	});
 
-	it('should show the friendly error, not the browser one, when the network fails', async () => {
+	it('should return WALLET_LOAD_ERROR, not the browser error, when the network fails', async () => {
 		vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
 		expect(await fetchWallets()).toEqual({ success: false, error: WALLET_LOAD_ERROR });
 	});
 });
 
 describe('loadWallets', () => {
-	it('should ask the wallet service on the released site', async () => {
+	it('should fetch real wallets when isFake is false', async () => {
 		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ addresses }));
 		vi.stubGlobal('fetch', fetchMock);
 
@@ -165,7 +165,7 @@ describe('loadWallets', () => {
 		expect(result.data?.map((wallet) => wallet.address)).toEqual(Object.values(addresses));
 	});
 
-	it('should show fake wallets anywhere else, and ask nobody', async () => {
+	it('should return fake wallets without fetching when isFake is true', async () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal('fetch', fetchMock);
 
@@ -180,7 +180,7 @@ describe('loadWallets', () => {
 		]);
 	});
 
-	it('should make every fake address read as fake, and no two alike', async () => {
+	it('should give distinct fake addresses that read as fake, even truncated', async () => {
 		const { data = [] } = await loadWallets({ isFake: true });
 		const fakes = data.map((wallet) => wallet.address);
 
@@ -191,7 +191,7 @@ describe('loadWallets', () => {
 		}
 	});
 
-	it('should hold no fake address that a real one could be mistaken for', async () => {
+	it('should give fake addresses that fail every chain format check', async () => {
 		const { data = [] } = await loadWallets({ isFake: true });
 
 		for (const { address } of data) {
@@ -202,7 +202,7 @@ describe('loadWallets', () => {
 });
 
 describe('generateQrDataUrls', () => {
-	it('should draw dark codes on a light background', async () => {
+	it('should return data URLs keyed by wallet id', async () => {
 		const wallets = parseWallets({ addresses });
 		const urls = await generateQrDataUrls(wallets);
 
@@ -210,7 +210,7 @@ describe('generateQrDataUrls', () => {
 		expect(urls.sol).toMatch(/^data:image\/png;base64,/);
 	});
 
-	it('should draw the code of a fake address in other colours', async () => {
+	it('should draw the codes of fake addresses in other colours', async () => {
 		const wallets = parseWallets({ addresses });
 		const real = await generateQrDataUrls(wallets);
 		const fake = await generateQrDataUrls(wallets, { isFake: true });
@@ -222,6 +222,7 @@ describe('generateQrDataUrls', () => {
 
 	it('should skip a wallet whose code cannot be drawn and keep the rest', async () => {
 		const [first, second] = parseWallets({ addresses });
+		// A missing address, which the type rules out, makes QRCode.toDataURL throw
 		const broken = { ...second, address: undefined as unknown as string };
 		const urls = await generateQrDataUrls([first, broken]);
 

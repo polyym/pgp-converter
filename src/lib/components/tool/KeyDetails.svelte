@@ -18,9 +18,8 @@
 	} = $props();
 </script>
 
-<!-- The place is in the page before any key is: a screen reader announces a
-     change to a region it already knew about, and may pass over one that
-     arrives together with its text -->
+<!-- The live region stays mounted while empty: screen readers announce changes
+     to an existing region but may miss one inserted together with its text -->
 <div class="live" role="status">
 	{#if keys.length > 0}
 		<div class="key-details">

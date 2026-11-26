@@ -7,23 +7,23 @@ export interface Verdict {
 	tone: VerdictTone;
 	title: string;
 	body: string;
-	/** The signature the verdict is about, where its key and date are worth showing */
+	/** Set for valid, invalid and untrusted signatures, so the page can show the signer and date */
 	check?: SignatureCheck;
 }
 
 export interface VerdictContext {
 	/** Whether the user supplied a public key to check against */
 	wereKeysSupplied: boolean;
-	/** What to do to get a signature checked, said when no key was supplied */
+	/** User-facing hint appended to an unknown-key verdict when no key was supplied */
 	howToCheck?: string;
-	/** Whether the message box held anything besides the message */
+	/** True when the pasted text held more than the message (see hasOtherText in armor.ts) */
 	hasOtherText?: boolean;
 }
 
-/** What a set of signatures amounts to as a whole */
+/** The overall result for all the signatures on a message */
 export interface VerdictSummary {
 	tone: 'good' | 'bad' | 'caution';
-	/** A few words for the message that reports the result */
+	/** Short user-facing status text */
 	message: string;
 }
 
@@ -37,9 +37,9 @@ const NOT_SIGNED: Verdict = {
 };
 
 /**
- * Said beside the verdicts on a signed message, so that they are not read as
- * covering everything in the box. The words have to be true whatever the
- * verdicts say and whatever the other text is, a second message included.
+ * Added after the verdicts on a signed message so they are not read as covering
+ * the whole paste. The wording must stay true for any verdict and any extra
+ * text, including a second signed message.
  */
 const OTHER_TEXT: Verdict = {
 	tone: 'caution',
@@ -48,10 +48,8 @@ const OTHER_TEXT: Verdict = {
 };
 
 /**
- * Puts one signature's result into words.
- * @param check - The result for the signature
- * @param context - Whether a key was supplied to check it against
- * @returns The verdict to show
+ * Returns the user-facing verdict for one signature check. `context` matters
+ * only for unknown-key, where the wording depends on whether any key was supplied.
  */
 export function describeSignature(check: SignatureCheck, context: VerdictContext): Verdict {
 	switch (check.status) {
@@ -86,11 +84,9 @@ export function describeSignature(check: SignatureCheck, context: VerdictContext
 }
 
 /**
- * Puts the result for every signature on a message into words.
- * @param signatures - The result for each signature; empty if the message carries none
- * @param context - Whether a key was supplied to check them against, and whether the box held other text
- * @returns One verdict for each signature, or a single one saying the message is not signed.
- *   Where the message is signed and the box held other text, one more that says so
+ * Returns one verdict per signature, in order, followed by a caution about the
+ * other text when `context.hasOtherText` is set. A message with no signatures
+ * gets a single "Not signed" verdict and no caution.
  */
 export function describeSignatures(
 	signatures: readonly SignatureCheck[],
@@ -104,12 +100,10 @@ export function describeSignatures(
 }
 
 /**
- * Says what a message's signatures amount to. The text is only as good as its
- * weakest signature: one that does not match outweighs any that do.
- * @param signatures - The result for each signature on the message
- * @param hasOtherText - Whether the message box held anything besides the message
- * @returns The overall tone and a few words for it. For a valid signature the
- *   words mention other text, because they are the first thing read
+ * Reduces the signatures on a message to one tone: 'bad' if any is invalid,
+ * 'good' only if there is at least one and every one is valid, otherwise
+ * 'caution'. A good summary mentions other text when `hasOtherText` is set,
+ * because it is read before the individual verdicts.
  */
 export function summariseSignatures(
 	signatures: readonly SignatureCheck[],
@@ -127,16 +121,12 @@ export function summariseSignatures(
 	return { tone: 'caution', message: 'Signature not confirmed' };
 }
 
-/**
- * Writes a key ID in groups of four characters, which is easier to compare by eye.
- * @param keyId - The key ID as one run of hexadecimal characters
- * @returns The same characters in groups
- */
+/** Splits a hex key ID into space-separated groups of four, keeping its case. */
 export function formatKeyId(keyId: string): string {
 	return (keyId.match(KEY_ID_GROUP) ?? []).join(' ');
 }
 
-/** A signature whose key was not among those supplied, or was not looked for at all */
+/** Verdict for an unknown-key check, worded by whether any keys were supplied */
 function describeUncheckedSignature(check: SignatureCheck, context: VerdictContext): Verdict {
 	const keyId = formatKeyId(check.keyID);
 	if (context.wereKeysSupplied) {

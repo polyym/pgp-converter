@@ -11,13 +11,13 @@
 		children
 	}: {
 		kind: 'public' | 'private';
-		/** The key, as armoured text */
+		/** The ASCII-armoured key */
 		value: string;
-		/** Whether the key has just been copied, so the button can say so */
+		/** Makes the copy button say "Copied" */
 		isCopied: boolean;
 		onCopy: () => void;
 		onDownload: () => void;
-		/** Anything to say under the key */
+		/** Notes shown under the key text */
 		children?: Snippet;
 	} = $props();
 
@@ -47,7 +47,7 @@
 			</button>
 		</div>
 	</div>
-	<!-- A box that scrolls has to take keyboard focus, or it cannot be scrolled without a mouse -->
+	<!-- The <pre> scrolls, so it needs tabindex="0" for keyboard users to scroll it -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<pre
 		class="key-content"
@@ -127,16 +127,15 @@
 		overflow-y: auto;
 	}
 
-	/* Fingers need a larger target than a mouse pointer does */
 	@media (pointer: coarse) {
 		.action-btn {
 			min-height: 44px;
 		}
 	}
 
-	/* On a phone the two keys run to more than a screen. Each box is shorter, and
-     what is said about a key comes before its text, so that the reminder to save
-     the private key is seen without scrolling. */
+	/* The two keys are taller than a phone screen. Shorter boxes, and order: 1
+	   on the <pre> to put the note above the key text, keep the reminder to save
+	   the private key visible without scrolling. */
 	@media (max-width: 720px) {
 		.key-content {
 			order: 1;

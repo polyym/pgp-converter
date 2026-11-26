@@ -11,7 +11,7 @@ describe('isKeyboardOverPage', () => {
 		expect(isKeyboardOverPage({ layoutHeight: 844, visibleHeight: 508, scale: 1 })).toBe(true);
 	});
 
-	it('should say yes for the lower keyboard of a phone on its side', () => {
+	it('should say yes for the shorter keyboard of a phone in landscape', () => {
 		expect(isKeyboardOverPage({ layoutHeight: 390, visibleHeight: 190, scale: 1 })).toBe(true);
 	});
 

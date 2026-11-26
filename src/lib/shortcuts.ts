@@ -12,7 +12,7 @@ export interface ShortcutKeys {
 /** What a key press asks a tool page to do */
 export type ShortcutAction = 'submit' | 'copy' | 'clear' | 'toggle-help';
 
-/** A key press, reduced to what decides its meaning */
+/** The parts of a keydown event that readShortcut needs, so it can be tested without the DOM */
 export interface KeyStroke {
 	/** The key, as KeyboardEvent.key names it */
 	key: string;
@@ -41,37 +41,28 @@ const OTHER_KEYS: ShortcutKeys = {
 };
 
 /**
- * Reports whether a browser's user agent string describes an Apple device,
- * where shortcuts use the Command key instead of Ctrl
- * @param userAgent - The value of navigator.userAgent
- * @returns True for macOS, iOS and iPadOS
+ * Returns true for a macOS, iOS or iPadOS user agent string, where shortcuts use
+ * Command instead of Ctrl. iPadOS Safari sends a Macintosh user agent, which
+ * this also matches.
  */
 export function isAppleDevice(userAgent: string): boolean {
 	return /Macintosh|Mac OS X|iPhone|iPad|iPod/i.test(userAgent);
 }
 
-/**
- * Returns the shortcut labels that match the user's keyboard
- * @param isApple - Whether the device uses the Command key
- * @returns The key names to show in the shortcuts dialog and on buttons
- */
+/** Returns the key labels for the shortcuts dialog and button hints: Apple symbols or Ctrl names */
 export function getShortcutKeys(isApple: boolean): ShortcutKeys {
 	return isApple ? APPLE_KEYS : OTHER_KEYS;
 }
 
-/**
- * Says what a key press on a tool page means.
- * @param stroke - The key, what was held with it, and where it was pressed
- * @returns The action it asks for, or undefined if it is not a shortcut
- */
+/** Returns the action a key press on a tool page triggers, or undefined if it is not a shortcut */
 export function readShortcut(stroke: KeyStroke): ShortcutAction | undefined {
 	switch (stroke.key) {
 		case 'Enter': {
 			if (stroke.hasModifier) {
 				return 'submit';
 			}
-			// Plain Enter in a single-line field (a name, an email, a passphrase) runs
-			// the action, as it would in any form
+			// Plain Enter submits from a single-line input, as in a native form, but not
+			// the Enter that commits an IME composition
 			const isPlain = !stroke.hasShift && !stroke.hasAlt && !stroke.isComposing;
 			return stroke.target === 'input' && isPlain ? 'submit' : undefined;
 		}

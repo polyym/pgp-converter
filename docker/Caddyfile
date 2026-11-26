@@ -1,0 +1,59 @@
+# Serves the build with the released site's headers, except HSTS, which is up
+# to whoever puts HTTPS in front. scripts/caddy-headers.test.ts keeps the
+# headers in step with netlify.toml.
+{
+	admin off
+	persist_config off
+	# The image cannot know the domain it is served at, so TLS is left to a
+	# reverse proxy in front (README, "HTTPS"). With only a port as the site
+	# address Caddy would not turn on automatic HTTPS anyway; this keeps it off
+	# if a hostname is ever added.
+	auto_https off
+	# The start-up storage check and the storage clean-up write to the data
+	# directory even with no certificates. Off, the container can run read-only.
+	storage_check off
+	storage_clean_interval off
+	# Without TLS, Caddy serves only HTTP/1.1 and warns at start that it skipped
+	# HTTP/2 and HTTP/3; listing h1 alone stops the warning
+	servers {
+		protocols h1
+	}
+}
+
+:8080 {
+	root * /srv
+
+	# The Content-Security-Policy, written from build/_headers when the image is built
+	import /etc/caddy/build-headers.caddy
+
+	header {
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "accelerometer=(), bluetooth=(), browsing-topics=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(), midi=(), payment=(), serial=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+	}
+
+	# Netlify sends this Cache-Control by default, so netlify.toml does not list
+	# it. No ? or - operators here: they defer a header, and deferred headers are
+	# left off error responses such as the 404 page.
+	@revalidated not path /_app/immutable/*
+	header @revalidated Cache-Control "public, max-age=0, must-revalidate"
+	header /_app/immutable/* Cache-Control "public, immutable, max-age=31536000"
+	header /manifest.webmanifest Content-Type "application/manifest+json"
+
+	encode zstd gzip
+
+	try_files {path} {path}.html
+	file_server {
+		hide /srv/_headers
+	}
+
+	# Caddy answers 400 for a name too long for the file system
+	handle_errors 400 404 {
+		rewrite * /404.html
+		file_server {
+			status 404
+		}
+	}
+}

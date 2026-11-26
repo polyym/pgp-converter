@@ -5,7 +5,6 @@ import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import { directives } from './scripts/csp.ts';
 
-// A commit's full hash: forty hexadecimal characters
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const OPENPGP_MANIFEST = new URL('node_modules/openpgp/package.json', import.meta.url);
 const SECURITY_TXT_PATH = '/.well-known/security.txt';
@@ -15,8 +14,7 @@ const openpgpVersion = readOpenpgpVersion();
 
 // SvelteKit 3 is configured here; it has no svelte.config.js
 export default defineConfig({
-	// The pages show the commit beside the version number, and the About page
-	// names the cryptography library's version (see src/app.d.ts)
+	// Declared in src/app.d.ts
 	define: {
 		__BUILD_COMMIT__: JSON.stringify(commit),
 		__OPENPGP_VERSION__: JSON.stringify(openpgpVersion)
@@ -24,38 +22,33 @@ export default defineConfig({
 	plugins: [
 		sveltekit({
 			preprocess: vitePreprocess(),
-			// Every page is built ahead of time, so the site is files only. Netlify
-			// serves 404.html, with a 404, wherever no file answers.
+			// Named 404.html because Netlify serves that file, with status 404, for
+			// any path that has no file of its own
 			adapter: adapter({ fallback: '404.html' }),
-			// The policy is in scripts/csp.ts. SvelteKit names its start-up script in
-			// each page, and scripts/write-csp.ts writes the header.
+			// Prerendered pages get the policy as a <meta> tag that lists the hash of
+			// their inline start-up script; scripts/write-csp.ts then writes the
+			// matching header into build/_headers
 			csp: { mode: 'auto', directives },
-			// Nothing links to security.txt, and its folder's name hides it from the
-			// search for unlinked routes, so it is named here.
+			// Nothing links to security.txt, and '*' skips any route whose id contains
+			// '[', as the escaped folder name [x+2e]well-known does, so it is listed here
 			prerender: { entries: ['*', SECURITY_TXT_PATH] },
-			// The build is named after its commit, not the time, so /_app/version.json
-			// says which commit is running and the same commit builds the same files
-			// (see "Reproducing a Build" in the README). With no commit, the time is used.
+			// The commit, not the time, so /_app/version.json names the commit and the
+			// build is reproducible (README, "Reproducing a Build"). Builds without
+			// GITHUB_SHA fall back to the time.
 			version: { name: commit || Date.now().toString() }
 		})
 	]
 });
 
 /**
- * Reads the commit this build is made from. GitHub Actions supplies it for
- * every build it runs; a build on someone's own machine has none unless they
- * set it.
- * @returns The commit's full hash, or an empty string if none was given
+ * Returns GITHUB_SHA if it is a full commit hash, or '' otherwise. GitHub Actions
+ * sets it; a local build has it only if the builder sets it.
  */
 function readCommit(): string {
 	const sha = process.env.GITHUB_SHA ?? '';
 	return COMMIT_PATTERN.test(sha) ? sha : '';
 }
 
-/**
- * Reads the version of OpenPGP.js that is installed, and so the one the build contains.
- * @returns The version, for example "6.3.2"
- */
 function readOpenpgpVersion(): string {
 	const manifest: unknown = JSON.parse(readFileSync(OPENPGP_MANIFEST, 'utf-8'));
 	if (
@@ -66,5 +59,5 @@ function readOpenpgpVersion(): string {
 	) {
 		return manifest.version;
 	}
-	throw new Error('The installed openpgp package does not state its version.');
+	throw new Error('node_modules/openpgp/package.json has no version. Reinstall with npm install.');
 }

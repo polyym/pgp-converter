@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { PageFrame, SEO } from '#lib/components/index.ts';
+	import { NETLIFY_URL } from '#lib/constants.ts';
 	import { pictureDots, type DotPicture } from '#lib/dot-pictures.ts';
 	import { toDotText } from '#lib/dot-text.ts';
 	import { appVersion } from '#lib/stores/app-version.svelte.ts';
+	import { siteAddress } from '#lib/stores/site-address.svelte.ts';
 	import { toStructuredDataScript, WEB_APPLICATION_DATA } from '#lib/structured-data.ts';
 
-	// The grid spells "PGP" until a word in the sentence is pointed at or focused
+	// The dot grid shows "PGP" until a tool's link is hovered or focused
 	let shown = $state<DotPicture>('pgp');
 	const dots = $derived(pictureDots(shown));
 
-	// The version number, drawn in the same dots as the picture above it
 	const versionDots = toDotText(`v${appVersion.release}`);
 
-	// The commit this build was made from. A build that was not given one shows none.
 	const commit = __BUILD_COMMIT__;
 
 	function show(picture: DotPicture) {
@@ -33,14 +33,14 @@
 />
 
 <svelte:head>
-	<!-- Data for search engines, not code: see structured-data.ts for what makes it safe to place as HTML -->
+	<!-- JSON-LD for search engines. toStructuredDataScript escapes "<", so the
+	     data cannot close the script element. -->
 	{@html toStructuredDataScript(WEB_APPLICATION_DATA)}
 </svelte:head>
 
 <PageFrame currentPage="home">
 	<section class="hero">
 		<div class="hero-text">
-			<!-- The words are the way in: each underlined one leads to its tool -->
 			<h1 class="sentence">
 				I want to
 				<a
@@ -86,9 +86,18 @@
 			<p class="description">
 				It all happens in this browser. No account, no ads, and nothing you type is sent anywhere.
 			</p>
+			<!-- Netlify's Open Source plan asks for this wording, linked to its home page.
+			     It is in the prerendered HTML. The plan covers this project's own sites, so
+			     a copy at any other address drops it once the page has loaded. -->
+			{#if !siteAddress.isSelfHosted}
+				<p class="host">
+					<a href={NETLIFY_URL} target="_blank" rel="noopener noreferrer"
+						>This site is powered by Netlify</a
+					>
+				</p>
+			{/if}
 		</div>
 
-		<!-- Decoration only: redraws itself as the tool whose word is pointed at -->
 		<div class="shape">
 			<div class="grid" aria-hidden="true">
 				{#each dots as lit, index (index)}
@@ -96,9 +105,6 @@
 				{/each}
 			</div>
 
-			<!-- The version, set like a maker's plate under the picture. It leads to the list of releases.
-             Beside it, the commit the build was made from, which leads to that commit's source.
-             Everywhere but the released site it is drawn in its own colour and named a dev build. -->
 			<div class="build">
 				<a
 					class={['version-plate', { candidate: appVersion.isCandidate }]}
@@ -166,8 +172,6 @@
 </PageFrame>
 
 <style>
-	/* Colours, fonts and safe-area values come from the shared tokens in app.css */
-
 	.hero {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
@@ -186,7 +190,6 @@
 		text-wrap: balance;
 	}
 
-	/* The links are the bright words; the rest of the sentence steps back */
 	.sentence a {
 		color: var(--text);
 		text-decoration: underline;
@@ -211,7 +214,36 @@
 		color: var(--text-secondary);
 	}
 
-	/* The dot grid */
+	.host {
+		margin: 16px 0 0;
+		font-size: 13px;
+	}
+
+	.host a {
+		color: var(--text-dim);
+		text-decoration: underline;
+		text-decoration-color: var(--border);
+		text-underline-offset: 3px;
+		transition: color 0.15s ease;
+	}
+
+	.host a:hover {
+		color: var(--text-secondary);
+	}
+
+	/* A 44px touch target, as in the footer */
+	@media (pointer: coarse) {
+		.host {
+			margin-top: 4px;
+		}
+
+		.host a {
+			display: inline-flex;
+			align-items: center;
+			min-height: 44px;
+		}
+	}
+
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(11, 1fr);
@@ -275,8 +307,7 @@
 		width: min(100%, 260px);
 	}
 
-	/* The version: small, grey and always in the same place, so it is easy to
-     find and never competes with the sentence */
+	/* The padding enlarges the link's hit area; the negative margin keeps the dots in place */
 	.version-plate {
 		display: flex;
 		align-self: flex-start;
@@ -285,8 +316,6 @@
 		border-radius: 8px;
 	}
 
-	/* The version and its commit, side by side. A dev build has one part more,
-     and on a narrow screen the commit goes under the rest. */
 	.build {
 		display: flex;
 		flex-wrap: wrap;
@@ -294,7 +323,6 @@
 		gap: 0 14px;
 	}
 
-	/* Shown everywhere but the released site */
 	.build-candidate {
 		font-family: var(--mono);
 		font-size: 12px;
@@ -337,8 +365,6 @@
 		background: var(--text);
 	}
 
-	/* Away from the released site the version has its own colour, which it keeps
-     under the pointer, a little dimmer at rest */
 	.version-plate.candidate .pip.lit {
 		background: var(--candidate);
 		opacity: 0.8;
@@ -365,7 +391,6 @@
 		}
 	}
 
-	/* Desktop: the sentence on the left, the grid on the right */
 	@media (min-width: 1024px) {
 		.hero {
 			grid-template-columns: minmax(0, 1fr) 340px;
@@ -401,8 +426,8 @@
 		}
 	}
 
-	/* Windows high-contrast mode drops backgrounds, which is all that tells a
-     lit dot from an unlit one */
+	/* Forced-colours mode replaces backgrounds, which are all that tell a lit dot
+     from an unlit one */
 	@media (forced-colors: active) {
 		.dot.lit,
 		.pip.lit,
@@ -416,8 +441,8 @@
 		}
 	}
 
-	/* Fingers need a larger target than a mouse pointer does. The words in the
-     sentence grow without moving the lines; the commit grows in place. */
+	/* Vertical padding on an inline link enlarges its hit area without changing the
+     line height */
 	@media (pointer: coarse) {
 		.sentence a {
 			padding: 3px 0;

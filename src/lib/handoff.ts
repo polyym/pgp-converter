@@ -1,7 +1,7 @@
 /**
- * A key on its way from the Generate page to the page that uses it next. Held
- * in memory only: nothing is written to storage, and it is gone once
- * collected or when the tab is reloaded or closed.
+ * A key passed from the Generate page to the next page the visitor opens. It
+ * lives in a module variable and is never written to storage, so it is gone
+ * once collected or when the tab is reloaded or closed.
  */
 export interface KeyHandoff {
 	publicKey?: string;
@@ -10,18 +10,12 @@ export interface KeyHandoff {
 
 let pending: KeyHandoff | undefined;
 
-/**
- * Leaves a key for the next page to collect
- * @param key - The key or keys to pass on
- */
+/** Leaves a key for the next page to collect, replacing any key not yet collected */
 export function offerKey(key: KeyHandoff): void {
 	pending = key;
 }
 
-/**
- * Collects the key left for this page, if there is one. It can be collected once.
- * @returns The key that was left, or undefined
- */
+/** Returns the key left for this page and forgets it, or undefined if there is none */
 export function takeKey(): KeyHandoff | undefined {
 	const key = pending;
 	pending = undefined;

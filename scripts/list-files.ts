@@ -2,9 +2,9 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
- * Lists every file under a directory, however deep.
- * @param dir - The directory to read
- * @returns Forward-slash paths relative to the directory, in the same order on every machine
+ * Returns every file under `dir`, recursively, as forward-slash paths relative
+ * to it, sorted the same way on every machine. Directories are not listed
+ * themselves, and symbolic links are listed as files without being followed.
  */
 export async function listFiles(dir: string): Promise<string[]> {
 	const files = await collect(dir, '');
@@ -25,8 +25,8 @@ async function collect(dir: string, prefix: string): Promise<string[]> {
 	return files;
 }
 
-// By character code, not by the machine's language: the order must not depend
-// on where the build runs
+// Compares UTF-16 code units, not localeCompare, so the order does not depend
+// on the locale of the machine running the build
 function byCharacterCode(a: string, b: string): number {
 	if (a < b) {
 		return -1;

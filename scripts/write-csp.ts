@@ -1,10 +1,8 @@
-// Writes the Content-Security-Policy header into build/_headers, for every
-// file Netlify serves. `npm run build` runs it after each build.
-//
-// SvelteKit starts each page with a short inline script. Instead of allowing
-// every inline script ('unsafe-inline'), this names the ones the build
-// produced by the hash of their text. If it names the wrong hashes no page
-// can start, which scripts/verify-deploy.ts checks on the live site.
+// Writes the Content-Security-Policy for /* into build/_headers, allowing the
+// inline start-up script SvelteKit puts in each page by its SHA-256 hash
+// instead of with 'unsafe-inline'. `npm run build` runs it after vite build.
+// A wrong hash stops every page from starting, which scripts/verify-deploy.ts
+// checks for on the live site.
 //
 // Usage: node scripts/write-csp.ts [build-dir]
 
@@ -14,10 +12,9 @@ import { join } from 'node:path';
 import { inlineScripts, policyHeader, scriptHash } from './csp.ts';
 import { listFiles } from './list-files.ts';
 
-// What the script ends with when the build is not there to work on
 const EXIT_NOTHING_TO_DO = 2;
 const EXIT_WRONG = 1;
-// SvelteKit writes its own copy of the policy into each page it renders
+// SvelteKit's CSP meta tag in each prerendered page; captures its content
 const OWN_POLICY = /<meta http-equiv="content-security-policy" content="([^"]*)"/i;
 
 const [buildDir = 'build'] = process.argv.slice(2);
@@ -29,10 +26,13 @@ async function main(): Promise<void> {
 	if (!existsSync(buildDir)) {
 		stop(`No ${buildDir} directory; build the site first.`, EXIT_NOTHING_TO_DO);
 	}
-	// The SvelteKit adapter copies a _headers file from the project root into the
-	// build. Two sources for one header would give browsers two policies.
+	// A _headers file already in the build came from elsewhere, for example
+	// static/. Overwriting it would silently drop its rules, so headers other
+	// than the CSP belong in netlify.toml.
 	if (existsSync(headersFile)) {
-		stop(`${headersFile} already exists. Put headers in netlify.toml; this script owns that file.`);
+		stop(
+			`${headersFile} already exists, and this script would overwrite it. Put those headers in netlify.toml.`
+		);
 	}
 
 	const built = await listFiles(buildDir);
@@ -63,16 +63,19 @@ async function main(): Promise<void> {
 `
 	);
 	console.log(
-		`Content policy written to ${headersFile}: ${String(hashes.size)} inline scripts in ${String(pages.length)} pages allowed by hash, and no others.`
+		`CSP written to ${headersFile}: ${String(hashes.size)} inline scripts in ${String(pages.length)} pages allowed by hash, and no others.`
 	);
 }
 
-/** Works out the policy's name for each inline script in one page of the build */
+/**
+ * Returns the CSP hash source of each inline script in one built page. Exits
+ * if SvelteKit's CSP meta tag for the page does not list one of them.
+ */
 async function pageScriptHashes(page: string): Promise<string[]> {
 	const html = await readFile(join(buildDir, page), 'utf-8');
-	// Browsers enforce the page's own copy of the policy as well as the header,
-	// so a script that copy does not name would be blocked whatever the header
-	// says. Agreeing with it also shows that the hashing here is right.
+	// Browsers enforce the CSP meta tag as well as the header, so a script the
+	// meta tag does not list is blocked whatever the header says. Agreeing with
+	// SvelteKit's hashes also shows that scriptHash is right.
 	const own = OWN_POLICY.exec(html)?.[1];
 	const hashes: string[] = [];
 	for (const script of inlineScripts(html)) {

@@ -12,7 +12,7 @@ const lines = [
 ];
 const block = lines.join('\n');
 
-/** A block with some of its lines taken out and others put in their place */
+/** Joins `lines` with `count` lines at `from` replaced by `others` */
 function withLines(
 	lines: readonly string[],
 	from: number,
@@ -50,7 +50,7 @@ describe('normaliseArmor', () => {
 });
 
 describe('normaliseArmor, when line breaks were lost', () => {
-	// Long enough to be told apart from a word of a comment, as real data lines are
+	// Full-length lines, as real armour has, so they are not mistaken for header words
 	const data = [
 		'xjMEaQAAABYJKwYBBAHaRw8BAQdAhiBr5lz1+Ox11YCspgHlJz9Bcw0tgKPe',
 		'S/zYwk+NqTzNBVByb2JlwsATBBMWCgCFBYJq9ldhAwsJBwkQbM2EfbuXeBdF',
@@ -99,7 +99,7 @@ describe('normaliseArmor, when line breaks were lost', () => {
 		);
 	});
 
-	it('should give a restored block lines of its own when other words surround it', () => {
+	it('should put a restored block on its own lines when text surrounds it', () => {
 		const inASentence = `my key: ${plain.filter((line) => line !== '').join(' ')} thanks`;
 		expect(normaliseArmor(inASentence)).toBe(`my key:\n${plain.join('\n')}\nthanks`);
 	});
@@ -112,8 +112,8 @@ describe('normaliseArmor, when line breaks were lost', () => {
 		]);
 	});
 
-	it('should keep the lines under a header name on lines of their own', () => {
-		// Joined to "Comment:", they would pass for a comment that somebody wrote
+	it('should not join the lines under an empty header onto it', () => {
+		// Joined onto "Comment:" they would read as its value, which hasOtherText does not flag
 		const paragraphs = [
 			plain[0],
 			'Comment:',
@@ -127,7 +127,7 @@ describe('normaliseArmor, when line breaks were lost', () => {
 		expect(normaliseArmor(paragraphs.join('\n'))).toBe(restored.join('\n'));
 	});
 
-	it('should restore a header whose value was wrapped onto the next line, as two lines', () => {
+	it('should keep a wrapped header value on two lines', () => {
 		const wrapped = `${plain[0]} Comment: made by\na test ${data.join(' ')} =abcd ${must(plain.at(-1))}`;
 		const restored = [
 			plain[0],
@@ -141,13 +141,13 @@ describe('normaliseArmor, when line breaks were lost', () => {
 		expect(normaliseArmor(wrapped)).toBe(restored.join('\n'));
 	});
 
-	it('should leave a block alone when what is inside it is not armor data', () => {
+	it('should leave a block alone when its body is not armoured data', () => {
 		const odd =
 			'-----BEGIN PGP PUBLIC KEY BLOCK----- this is not a key -----END PGP PUBLIC KEY BLOCK-----';
 		expect(normaliseArmor(odd)).toBe(odd);
 	});
 
-	it('should never rearrange a signed message that anyone can read', () => {
+	it('should never reflow a cleartext signed message', () => {
 		const signed = [
 			'-----BEGIN PGP SIGNED MESSAGE-----',
 			'Hash: SHA512',
@@ -182,34 +182,34 @@ describe('splitKeyBlocks', () => {
 	});
 });
 
-/** How long the clean-up takes on a text, in milliseconds */
+/** Milliseconds that normaliseArmor and splitKeyBlocks take on the text */
 function timeOf(text: string): number {
 	const start = performance.now();
 	splitKeyBlocks(normaliseArmor(text));
 	return performance.now() - start;
 }
 
-describe('the clean-up, on text built to be slow', () => {
-	// Each of these once took seconds to minutes at this size. The limit is far
-	// above what they take now, so that a slow machine does not fail the test.
+describe('normaliseArmor and splitKeyBlocks, on input built to be slow', () => {
+	// Quadratic code takes seconds to minutes on these inputs. The limit is far
+	// above the linear time, so a slow machine does not fail the test.
 	const LIMIT_MS = 3000;
 	const SIZE = 1_000_000;
 	const data = 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5';
 	const flattened = `-----BEGIN PGP MESSAGE----- ${data} ${data} =abcd -----END PGP MESSAGE-----`;
 
-	it('should read through first lines that have no last line', () => {
+	it('should stay fast on BEGIN lines with no END line', () => {
 		const text = '-----BEGIN PGP MESSAGE-----\n'.repeat(SIZE / 28);
 		expect(timeOf(text)).toBeLessThan(LIMIT_MS);
 		expect(normaliseArmor(text)).toBe(text.trim());
 	});
 
-	it('should read through key first lines that have no last line', () => {
+	it('should stay fast on key BEGIN lines with no END line', () => {
 		const text = '-----BEGIN PGP PUBLIC KEY BLOCK-----\n'.repeat(SIZE / 37);
 		expect(timeOf(text)).toBeLessThan(LIMIT_MS);
 		expect(splitKeyBlocks(text)).toEqual([text]);
 	});
 
-	it('should not be held up by a long run of spaces after a block it has laid out again', () => {
+	it('should stay fast on a long run of spaces after a restored block', () => {
 		const text = `${flattened}\nbefore${' '.repeat(SIZE)}after`;
 		expect(timeOf(text)).toBeLessThan(LIMIT_MS);
 		const cleaned = normaliseArmor(text);
@@ -217,7 +217,7 @@ describe('the clean-up, on text built to be slow', () => {
 		expect(cleaned.endsWith(`before${' '.repeat(SIZE)}after`)).toBe(true);
 	});
 
-	it('should take apart thousands of header names that have run together', () => {
+	it('should stay fast on thousands of flattened headers', () => {
 		const text = `-----BEGIN PGP MESSAGE----- ${'Comment: abc '.repeat(SIZE / 13)}${data} =abcd -----END PGP MESSAGE-----`;
 		expect(timeOf(text)).toBeLessThan(LIMIT_MS);
 		expect(
@@ -228,14 +228,14 @@ describe('the clean-up, on text built to be slow', () => {
 	});
 });
 
-describe('the clean-up, where blocks meet', () => {
-	it('should pair a first line with the nearest last line of its own kind', () => {
+describe('splitKeyBlocks, where blocks meet', () => {
+	it('should pair a BEGIN line with the nearest END line of the same type', () => {
 		const message = '-----BEGIN PGP MESSAGE-----\n\nabcd\n-----END PGP MESSAGE-----';
 		const text = `${block}\n${message}\n${block}`;
 		expect(splitKeyBlocks(text)).toEqual([block, block]);
 	});
 
-	it('should skip a first line whose kind never ends, and still find the block after it', () => {
+	it('should skip an unmatched BEGIN line and find the block after it', () => {
 		const text = `-----BEGIN PGP PRIVATE KEY BLOCK-----\n${block}`;
 		expect(splitKeyBlocks(text)).toEqual([block]);
 	});
@@ -257,8 +257,7 @@ describe('hasOtherText', () => {
 		'-----END PGP MESSAGE-----'
 	];
 	const message = messageLines.join('\n');
-	// The signed text holds a line that looks like a first line. It is escaped
-	// with a dash and a space, as the format requires, so it is no boundary.
+	// The signed text holds a dash-escaped BEGIN line (RFC 9580 section 7.2), which is no boundary
 	const signedLines = [
 		'-----BEGIN PGP SIGNED MESSAGE-----',
 		'Hash: SHA512',
@@ -277,12 +276,12 @@ describe('hasOtherText', () => {
 	const LINE_SEPARATOR = String.fromCodePoint(0x20_28);
 	const ZERO_WIDTH_SPACE = String.fromCodePoint(0x20_0b);
 
-	it('should find nothing more in a message that stands alone', () => {
+	it('should find nothing else in a lone message', () => {
 		expect(hasOtherText(message)).toBe(false);
 		expect(hasOtherText(signed)).toBe(false);
 	});
 
-	it('should allow the header lines the format names, and a message with no checksum', () => {
+	it('should allow known armour headers and a missing checksum', () => {
 		const headers = ['Version: Example 1.0', 'Comment: made here'];
 		expect(hasOtherText(withLines(messageLines, 1, 0, ...headers))).toBe(false);
 		expect(hasOtherText(withLines(signedLines, SIGNATURE_FIRST_LINE + 1, 0, ...headers))).toBe(
@@ -291,7 +290,7 @@ describe('hasOtherText', () => {
 		expect(hasOtherText(withLines(messageLines, 4, 1))).toBe(false);
 	});
 
-	it('should allow a checksum on the end of the data, as a block laid out again from one line has it', () => {
+	it('should allow a checksum on the end of the last data line', () => {
 		expect(hasOtherText(withLines(messageLines, 2, 3, 'abcdefgh=abcd'))).toBe(false);
 		expect(hasOtherText(withLines(messageLines, 2, 3, 'abcdefg===abcd'))).toBe(false);
 		expect(hasOtherText(withLines(messageLines, 2, 3, 'abcdefgh=abcd Pay Mallory'))).toBe(true);
@@ -299,17 +298,17 @@ describe('hasOtherText', () => {
 		expect(hasOtherText(withLines(messageLines, 2, 3, 'abcdefgh=abcd', 'ijkl'))).toBe(true);
 	});
 
-	it('should find lines under a header name that the clean-up kept apart from it', () => {
+	it('should find a line that normaliseArmor kept below an empty header', () => {
 		const underName = ['Comment:', 'Pay Mallory 1000.'];
 		expect(hasOtherText(withLines(messageLines, 1, 0, ...underName))).toBe(true);
 	});
 
-	it('should allow a header line that names its kind and says nothing', () => {
+	it('should allow a known header with an empty value', () => {
 		expect(hasOtherText(withLines(messageLines, 1, 0, 'Comment: ', 'Version:'))).toBe(false);
 	});
 
-	it('should take for an empty line what the library takes for one', () => {
-		// A space of a kind that is not on the library's list, so the library reads on for the empty line
+	it('should read as blank exactly what OpenPGP.js reads as blank', () => {
+		// U+1680 OGHAM SPACE MARK is whitespace, but not in the library's blank-line class
 		const oghamSpace = String.fromCodePoint(0x16_80);
 		expect(hasOtherText(withLines(messageLines, 1, 1, oghamSpace))).toBe(true);
 		const noBreakSpace = String.fromCodePoint(0xa0);
@@ -320,22 +319,22 @@ describe('hasOtherText', () => {
 		);
 	});
 
-	it('should allow lines that show nothing between the checksum and the last line', () => {
+	it('should allow invisible lines between the checksum and the END line', () => {
 		const noBreakSpace = String.fromCodePoint(0xa0);
 		expect(hasOtherText(withLines(messageLines, 5, 0, '', noBreakSpace))).toBe(false);
 	});
 
-	it('should find words after the data, even where each stands on a line of its own', () => {
-		// As a block looks once the app has laid it out again: every word a line
+	it('should find words after the data, even one per line', () => {
+		// As rebuildBlock lays out a sentence that was flattened into the data
 		const words = ['Please', 'send', '4500', 'EUR'];
 		expect(hasOtherText(withLines(messageLines, 4, 1, ...words))).toBe(true);
 		expect(hasOtherText(withLines(messageLines, 3, 2, 'efg=', ...words))).toBe(true);
-		// The library reads nothing after the padding, so one word there is one too many
+		// OpenPGP.js reads nothing after the padding, so even one word there is other text
 		expect(hasOtherText(withLines(messageLines, 3, 2, 'efg=', 'send'))).toBe(true);
 		expect(hasOtherText(withLines(messageLines, 3, 2, 'efg='))).toBe(false);
 	});
 
-	it('should allow data that a mail program wrapped a second time, but not two short lines in a row', () => {
+	it('should allow rewrapped data but not two short lines in a row', () => {
 		const wrappedTwice = ['abcdef', 'gh', 'ijklmn', 'op', 'qrs'];
 		expect(hasOtherText(withLines(messageLines, 2, 2, ...wrappedTwice))).toBe(false);
 		// Two short lines in a row, with more data to come
@@ -353,14 +352,14 @@ describe('hasOtherText', () => {
 		expect(hasOtherText(`${signed}\nP.S. Pay Mallory 1000.`)).toBe(true);
 	});
 
-	it('should not count lines at either end that show nothing', () => {
+	it('should ignore invisible lines at either end', () => {
 		expect(hasOtherText(`\n  \n${message}\n\n \t\n`)).toBe(false);
 		expect(hasOtherText(`${ZERO_WIDTH_SPACE}\n${signed}\n${LINE_SEPARATOR}`)).toBe(false);
-		// The mark that old software ends a file with
+		// U+001A, the DOS end-of-file marker
 		expect(hasOtherText(`${message}\n${String.fromCodePoint(0x1a)}`)).toBe(false);
 	});
 
-	it('should read lines that end in a carriage return and a line feed, or in spaces', () => {
+	it('should accept CRLF line endings and trailing whitespace', () => {
 		expect(hasOtherText(signed.replaceAll('\n', '\r\n'))).toBe(false);
 		expect(hasOtherText(signed.replaceAll('\n', ' \t\n'))).toBe(false);
 		expect(hasOtherText(`${signed}\nmore`.replaceAll('\n', '\r\n'))).toBe(true);
@@ -372,7 +371,7 @@ describe('hasOtherText', () => {
 	});
 
 	it('should find text among the lines of a message', () => {
-		// As a header line of a kind the format does not name, even one that could pass for data
+		// Among the headers: an unknown header key, or a word that could pass for data
 		expect(hasOtherText(withLines(messageLines, 1, 0, 'Pay: Mallory 1000'))).toBe(true);
 		expect(hasOtherText(withLines(messageLines, 1, 0, 'PayMallory1000'))).toBe(true);
 		expect(
@@ -381,14 +380,15 @@ describe('hasOtherText', () => {
 		// Among the data, and where the checksum goes
 		expect(hasOtherText(withLines(messageLines, 3, 0, 'Pay Mallory 1000.'))).toBe(true);
 		expect(hasOtherText(withLines(messageLines, 4, 1, '=Pay Mallory 1000.'))).toBe(true);
-		// Between the checksum and the last line
+		// Between the checksum and the END line
 		expect(hasOtherText(withLines(signedLines, SIGNATURE_LAST_LINE, 0, 'Pay Mallory 1000.'))).toBe(
 			true
 		);
 	});
 
-	it('should find text behind a line that only OpenPGP.js takes for the end of a message', () => {
-		// For the library two lines of dashes close a message, and so do dashes around words
+	it('should find text after a line that only OpenPGP.js reads as an END line', () => {
+		// In the library's boundary regex [^-]+ can span line breaks, so two lines of
+		// dashes, or dashes around any text, end the message for it
 		const endings = [
 			['-----', '-----', 'Pay Mallory 1000.'],
 			['-----', 'Pay Mallory 1000.', '-----'],
@@ -400,34 +400,34 @@ describe('hasOtherText', () => {
 		}
 	});
 
-	it('should find a signature that opens under another name', () => {
+	it('should find a signature with a different BEGIN line', () => {
 		const renamed = '-----Pay Mallory 1000.-----';
 		expect(hasOtherText(withLines(signedLines, SIGNATURE_FIRST_LINE, 1, renamed))).toBe(true);
 	});
 
-	it('should find text that shares a line with the first or the last line', () => {
+	it('should find text on the same line as the BEGIN or END line', () => {
 		expect(hasOtherText(`Pay Mallory 1000. ${signed}`)).toBe(true);
 		expect(hasOtherText(`${signed} Pay Mallory 1000.`)).toBe(true);
-		// The library also starts and ends a line at a Unicode line separator
+		// The library's m-flag regex also breaks lines at U+2028
 		expect(hasOtherText(`Pay Mallory 1000.${LINE_SEPARATOR}${signed}`)).toBe(true);
 		expect(hasOtherText(`${signed}${LINE_SEPARATOR}Pay Mallory 1000.`)).toBe(true);
 	});
 
-	it('should end the signed text where the library does, at dashes after a line separator', () => {
-		// The library takes the first of these lines for the signature's, and stops
-		// reading at the true one. Everything from there on only looks like a block.
+	it('should end the signed text where OpenPGP.js does, at dashes after U+2028', () => {
+		// The library reads "-----X-----" as the signature's BEGIN line and stops at the
+		// real one, so the signature block that follows only looks like one
 		const hidden = [`Pay Mallory 1000.${LINE_SEPARATOR}-----X-----`, '', 'abcd'];
 		expect(hasOtherText(withLines(signedLines, SIGNATURE_FIRST_LINE, 0, ...hidden))).toBe(true);
 	});
 
-	it('should read a first line through a carriage return, as the library does', () => {
-		// The library drops every carriage return, wherever in a line it stands
+	it('should ignore a carriage return inside the BEGIN line, as OpenPGP.js does', () => {
+		// The library removes every \r, not only those at the end of a line
 		const broken = signed.replace('SIGNED MESSAGE', 'SIGNED\r MESSAGE');
 		expect(hasOtherText(broken)).toBe(false);
 		expect(hasOtherText(`Pay Mallory 1000.\n${broken}`)).toBe(true);
 	});
 
-	it('should say yes for anything that is not one whole message', () => {
+	it('should return true for anything but one whole message', () => {
 		expect(hasOtherText('')).toBe(true);
 		expect(hasOtherText('only some words')).toBe(true);
 		expect(hasOtherText(block)).toBe(true);

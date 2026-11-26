@@ -5,9 +5,9 @@
 		text,
 		isProse = false
 	}: {
-		/** The whole result. Only its beginning is put on the page if it is very long. */
+		/** The full result. Above RESULT_PREVIEW_CHARS only the start is rendered (see previewOf). */
 		text: string;
-		/** Whether this is writing to be read, such as a message, and not a PGP block */
+		/** Plaintext to read, not an armoured block: body font and dir="auto" */
 		isProse?: boolean;
 	} = $props();
 
@@ -15,7 +15,7 @@
 	const count = (length: number) => length.toLocaleString('en-GB');
 </script>
 
-<!-- The note comes first, so that nobody takes the beginning for the whole -->
+<!-- Before the text, so the truncation is read before the truncated result -->
 {#if preview.isCut}
 	<p class="cut-note">
 		<strong>Only the beginning is shown.</strong>

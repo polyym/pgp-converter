@@ -1,14 +1,14 @@
 export type DotPicture = 'pgp' | 'key' | 'encrypt' | 'decrypt' | 'sign' | 'verify';
 
-/** The pictures are square: this many dots across and this many down */
+/** Width and height of every picture, in dots */
 export const DOT_PICTURE_SIZE = 11;
 
 const LIT = '#';
 
-// The pictures the dot grid on the homepage can draw. A "#" is a lit dot.
+// Pictures for the homepage dot grid, one string per row. A "#" is a lit dot.
 const PICTURES: Readonly<Record<DotPicture, readonly string[]>> = {
-	// At rest the grid spells the name of what the sentence is about. It has to
-	// differ from every tool's picture, so that each word visibly redraws it.
+	// Shown at rest. It must differ from every tool's picture so the grid visibly
+	// redraws when a tool's link in the hero sentence is hovered or focused.
 	pgp: [
 		'...........',
 		'...........',
@@ -100,9 +100,8 @@ export const DOT_PICTURE_NAMES: readonly DotPicture[] = [
 ];
 
 /**
- * Lays a picture out as the dots of the grid, row by row.
- * @param picture - Which picture to draw
- * @returns One entry for each dot, true where the dot is lit
+ * Returns the picture as DOT_PICTURE_SIZE squared booleans, row by row from the
+ * top left, true where a dot is lit
  */
 export function pictureDots(picture: DotPicture): boolean[] {
 	const dots: boolean[] = [];

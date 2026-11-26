@@ -3,7 +3,7 @@ import { isKeyboardOverPage } from '#lib/on-screen-keyboard.ts';
 
 let isOpen = $state(false);
 
-/** What the page frame reads to know that a keyboard is over the page */
+/** Whether an on-screen keyboard is open, kept current by watchOnScreenKeyboard */
 export const onScreenKeyboard = {
 	/** True while an on-screen keyboard covers part of the window */
 	get isOpen() {
@@ -12,11 +12,11 @@ export const onScreenKeyboard = {
 };
 
 /**
- * Starts noticing when an on-screen keyboard opens and closes. Call once, in
- * the browser. Phones lay the keyboard over the page without resizing it,
- * which no media query can see; the part of the window that can be seen
- * getting shorter is the only sign.
- * @returns A function that stops noticing
+ * Tracks the on-screen keyboard through visualViewport resize events. Mobile
+ * browsers lay the keyboard over the page without resizing the layout
+ * viewport, so no media query can see it, and only the visual viewport
+ * shrinks. Call once, in the browser. Returns the cleanup function, which does
+ * nothing where visualViewport is unsupported.
  */
 export function watchOnScreenKeyboard(): () => void {
 	const viewport = window.visualViewport;
@@ -37,5 +37,5 @@ export function watchOnScreenKeyboard(): () => void {
 }
 
 function doNothing(): void {
-	// What watchOnScreenKeyboard hands back where the browser cannot say what is visible
+	// Cleanup where visualViewport is unsupported
 }

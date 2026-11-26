@@ -1,38 +1,51 @@
 import { describe, it, expect } from 'vitest';
-import { isTestAddress } from './site-address.ts';
+import { siteCopy } from './site-address.ts';
 
-describe('isTestAddress', () => {
-	it('should say no at the released site', () => {
-		expect(isTestAddress('pgp-converter.com')).toBe(false);
+describe('siteCopy', () => {
+	it('should know the released site', () => {
+		expect(siteCopy('pgp-converter.com', false)).toBe('released');
 	});
 
-	it('should say no however the released site is spelt', () => {
-		expect(isTestAddress('PGP-Converter.com')).toBe(false);
-		expect(isTestAddress('pgp-converter.com.')).toBe(false);
+	it('should know the released site in any case and with a trailing dot', () => {
+		expect(siteCopy('PGP-Converter.com', false)).toBe('released');
+		expect(siteCopy('pgp-converter.com.', false)).toBe('released');
 	});
 
-	it('should say yes at the staging address', () => {
-		expect(isTestAddress('dev--pgp-converter.netlify.app')).toBe(true);
+	it('should call the staging deploy a test copy', () => {
+		expect(siteCopy('dev--pgp-converter.netlify.app', false)).toBe('test');
 	});
 
-	it("should say yes at the preview of a pull request and at the host's own address", () => {
-		expect(isTestAddress('6916f0a1b2c3d4e5f6a7b8c9--pgp-converter.netlify.app')).toBe(true);
-		expect(isTestAddress('pgp-converter.netlify.app')).toBe(true);
+	it('should call deploy previews and the bare Netlify hostname test copies', () => {
+		expect(siteCopy('6916f0a1b2c3d4e5f6a7b8c9--pgp-converter.netlify.app', false)).toBe('test');
+		expect(siteCopy('deploy-preview-12--pgp-converter.netlify.app', false)).toBe('test');
+		expect(siteCopy('pgp-converter.netlify.app', false)).toBe('test');
+		expect(siteCopy('Dev--PGP-Converter.netlify.app.', false)).toBe('test');
 	});
 
-	it('should say yes at a name that only contains the released one', () => {
-		expect(isTestAddress('pgp-converter.com.example.org')).toBe(true);
-		expect(isTestAddress('staging.pgp-converter.com')).toBe(true);
+	it('should call the development server a test copy at any address', () => {
+		expect(siteCopy('localhost', true)).toBe('test');
+		expect(siteCopy('192.168.1.20', true)).toBe('test');
 	});
 
-	it("should say yes on a developer's own machine", () => {
-		expect(isTestAddress('localhost')).toBe(true);
-		expect(isTestAddress('127.0.0.1')).toBe(true);
-		expect(isTestAddress('[::1]')).toBe(true);
-		expect(isTestAddress('192.168.1.20')).toBe(true);
+	it('should call a production build on a local address self-hosted', () => {
+		expect(siteCopy('localhost', false)).toBe('self-hosted');
+		expect(siteCopy('127.0.0.1', false)).toBe('self-hosted');
+		expect(siteCopy('[::1]', false)).toBe('self-hosted');
+		expect(siteCopy('192.168.1.20', false)).toBe('self-hosted');
 	});
 
-	it('should say no where there is no host at all', () => {
-		expect(isTestAddress('')).toBe(false);
+	it("should call a copy at someone's own domain self-hosted", () => {
+		expect(siteCopy('pgp.example.org', false)).toBe('self-hosted');
+	});
+
+	it('should not match a host that only contains a known name', () => {
+		expect(siteCopy('pgp-converter.com.example.org', false)).toBe('self-hosted');
+		expect(siteCopy('staging.pgp-converter.com', false)).toBe('self-hosted');
+		expect(siteCopy('my-pgp-converter.netlify.app', false)).toBe('self-hosted');
+		expect(siteCopy('pgp-converter.netlify.app.example.org', false)).toBe('self-hosted');
+	});
+
+	it('should call a page with no host at all self-hosted', () => {
+		expect(siteCopy('', false)).toBe('self-hosted');
 	});
 });

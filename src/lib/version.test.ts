@@ -8,17 +8,17 @@ describe('candidateVersion', () => {
 		expect(candidateVersion('4.1.0', 3)).toBe('4.1.0-rc.3');
 	});
 
-	it('should keep a number of two digits', () => {
+	it('should keep a two-digit candidate number', () => {
 		expect(candidateVersion('4.1.0', 12)).toBe('4.1.0-rc.12');
 	});
 });
 
 describe('the version of this project', () => {
-	it('should be three numbers, with the candidate kept apart from it', () => {
+	it('should be major.minor.patch, without the candidate suffix', () => {
 		expect(version).toMatch(/^\d+\.\d+\.\d+$/);
 	});
 
-	it('should have a candidate number beside it: a whole number from 1 up', () => {
+	it('should have a releaseCandidate that is an integer of 1 or more', () => {
 		expect(Number.isSafeInteger(releaseCandidate)).toBe(true);
 		expect(releaseCandidate).toBeGreaterThanOrEqual(1);
 	});

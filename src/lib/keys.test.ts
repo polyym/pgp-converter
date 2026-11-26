@@ -55,13 +55,12 @@ function linesOf(block: string): string[] {
 		.filter((line) => line !== '');
 }
 
-/** What the page would say is wrong with the one key in a box */
+/** Returns the encrypt-purpose problem for the first key in `box` */
 async function problemIn(box: string): Promise<string | undefined> {
 	const [info] = await inspectKeys(box, 'encrypt');
 	return info.problem;
 }
 
-/** What adding a text to a box of keys would bring */
 async function judge(held: string, addition: string) {
 	const { outcome } = await addToKeys(held, addition);
 	return outcome;
@@ -86,7 +85,7 @@ describe('readPublicKeys', () => {
 		expect(keys[1].getUserIDs()[0]).toContain('Bob');
 	});
 
-	it('should return a key that was pasted twice only once', async () => {
+	it('should merge a key that was pasted twice', async () => {
 		const alice = await createKeyPair('Alice');
 		const keys = await readPublicKeys(`${alice.publicKey}\n${alice.publicKey}`);
 		expect(keys).toHaveLength(1);
@@ -113,26 +112,26 @@ describe('readPublicKeys', () => {
 });
 
 describe('readPublicKeys, when line breaks were lost', () => {
-	it('should read a key copied from a page that showed it as one long line', async () => {
+	it('should read a key whose line breaks became spaces', async () => {
 		const alice = await createKeyPair('Alice');
 		const keys = await readPublicKeys(linesOf(alice.publicKey).join(' '));
 		expect(keys).toHaveLength(1);
 		expect(keys[0].getUserIDs()[0]).toContain('Alice');
 	});
 
-	it('should read a key pasted through a box that takes a single line', async () => {
+	it('should read a key with every line break removed', async () => {
 		const alice = await createKeyPair('Alice');
 		const keys = await readPublicKeys(linesOf(alice.publicKey).join(''));
 		expect(keys).toHaveLength(1);
 	});
 
-	it('should read a key that lost only the empty line after its first line', async () => {
+	it('should read a key missing the blank line after BEGIN', async () => {
 		const alice = await createKeyPair('Alice');
 		const keys = await readPublicKeys(linesOf(alice.publicKey).join('\n'));
 		expect(keys).toHaveLength(1);
 	});
 
-	it('should read two such keys, and describe them for the page', async () => {
+	it('should read and inspect two such keys on one line', async () => {
 		const alice = await createKeyPair('Alice');
 		const bob = await createKeyPair('Bob');
 		const oneLine = `${linesOf(alice.publicKey).join(' ')} ${linesOf(bob.publicKey).join(' ')}`;
@@ -145,7 +144,7 @@ describe('readPublicKeys, when line breaks were lost', () => {
 });
 
 describe('describeKey', () => {
-	it('should report the identity, fingerprint and algorithm of a usable key', async () => {
+	it('should summarise a usable key', async () => {
 		const alice = await createKeyPair('Alice');
 		const [key] = await readPublicKeys(alice.publicKey);
 		const info = await describeKey(key);
@@ -207,14 +206,14 @@ describe('inspectKeys', () => {
 		]);
 	});
 
-	it('should return an empty list instead of throwing for unreadable text', async () => {
+	it('should return an empty array for unreadable text', async () => {
 		expect(
 			await inspectKeys('-----BEGIN PGP PUBLIC KEY BLOCK-----\nhalf a key', 'encrypt')
 		).toEqual([]);
 	});
 });
 
-describe('readPublicKeys, when the box holds several copies of one key', () => {
+describe('readPublicKeys, with several copies of one key', () => {
 	it('should apply a revocation whichever copy holds it', async () => {
 		const alice = await makeDatedKey('Alice');
 		const copies = [alice.toPublic().armor(), await revokedCopyOf(alice)];
@@ -226,10 +225,10 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		}
 	}, 15_000);
 
-	it('should apply a revocation when both copies share one armoured block', async () => {
+	it('should merge two copies in one armoured block', async () => {
 		const alice = await makeDatedKey('Alice');
 		const revoked = await revokeKey({ key: alice, format: 'object' });
-		// What a file of keys holds when the newer copy was appended to the older one
+		// A keyring file with the revoked copy appended to the original
 		const oneBlock = armor(
 			enums.armor.publicKey,
 			new Uint8Array([...alice.toPublic().write(), ...revoked.publicKey.write()])
@@ -239,7 +238,7 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		expect(await problemIn(oneBlock)).toContain('revoked');
 	}, 15_000);
 
-	it('should keep the other keys, and the order the keys were first pasted in', async () => {
+	it('should keep the other keys, in first-pasted order', async () => {
 		const alice = await makeDatedKey('Alice');
 		const bob = await makeDatedKey('Bob');
 		const box = [alice.toPublic().armor(), bob.toPublic().armor(), await revokedCopyOf(alice)].join(
@@ -252,16 +251,16 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		expect(infos[1].problem).toBeUndefined();
 	}, 15_000);
 
-	it('should read a key the same however many copies of it there are', async () => {
+	it('should give the same key for one copy or several', async () => {
 		const revoked = await revokedCopyOf(await makeDatedKey('Alice'));
 		const asRead = await readKey({ armoredKey: revoked });
 
 		const [once] = await readPublicKeys(revoked);
 		const [twice] = await readPublicKeys(`${revoked}\n${revoked}`);
 		expect(twice.armor()).toBe(once.armor());
-		// A key that came once, and lists each of its parts once, is the key the library reads
+		// One copy with no duplicate packets merges to exactly what readKey returns
 		expect(once.armor()).toBe(asRead.armor());
-		// One copy that holds a signature twice is read as two copies are
+		// A copy with a duplicated signature packet merges like two copies
 		const [keyPacket, revocation, ...rest] = asRead.toPacketList();
 		const [doubled] = await readPublicKeys(
 			armorPackets([keyPacket, revocation, revocation, ...rest])
@@ -269,11 +268,11 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		expect(doubled.armor()).toBe(once.armor());
 	}, 15_000);
 
-	it('should keep a revocation when another copy holds it in a form that fails its check', async () => {
+	it('should keep a revocation despite a zero-padded duplicate', async () => {
 		const alice = await makeDatedKey('Alice');
 		const revoked = await revokedCopyOf(alice);
-		// Anyone can write the number in a signature with a zero in front. The library
-		// reads the two forms as the same signature, and the changed one fails its check.
+		// Anyone can pad a signature MPI with leading zero bytes. Both forms serialise
+		// to the same bytes, but OpenPGP.js fails to verify the padded one.
 		const padded = await padRevocation(revoked);
 		expect(await (await readKey({ armoredKey: padded })).isRevoked()).toBe(false);
 
@@ -282,13 +281,13 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		}
 	}, 15_000);
 
-	it('should keep a revocation on its own subkey when the copy before it carries it behind another', async () => {
+	it('should keep a subkey revocation that another copy misplaces', async () => {
 		const alice = await makeDatedKey('Alice', { subkeys: [{ sign: true }, {}] });
 		const signing = must(alice.subkeys.at(0));
 		const signingID = signing.getKeyID();
 		const revoked = await signing.revoke(secretPacketOf(alice), { flag: REASON.keyCompromised });
-		// Anyone can move a signature to another part of a key, where it says nothing.
-		// Here the revocation stands last, behind the other subkey.
+		// Anyone can move a signature to another key component, where it does not
+		// verify. Here the revocation follows the other subkey.
 		const moved = armorPackets([
 			...alice.toPublic().toPacketList(),
 			must(revoked.revocationSignatures.at(0))
@@ -307,7 +306,7 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		}
 	}, 15_000);
 
-	it('should keep a subkey that holds the bytes of the key itself', async () => {
+	it('should keep a subkey with the same body as the primary key', async () => {
 		const alice = (await makeDatedKey('Alice')).toPublic();
 		const twin = new PublicSubkeyPacket();
 		await twin.read(alice.keyPacket.write());
@@ -318,14 +317,14 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		expect(key.armor()).toBe((await readKey({ armoredKey: armored })).armor());
 	}, 15_000);
 
-	it('should keep a user ID when the copy before it holds the same bytes as a user attribute', async () => {
-		// A user attribute is a run of pieces, each behind its length. A name reads
-		// as one piece when its first letter stands for the length of the rest.
+	it('should keep a user ID apart from a user attribute with its bytes', async () => {
+		// A user attribute body is a list of length-prefixed subpackets (RFC 9580
+		// section 5.12). "A" is 65, so "A" and 65 more bytes parse as one subpacket.
 		const name = `A${'a'.repeat(must('A'.codePointAt(0)))}`;
 		const alice = (await makeDatedKey(name)).toPublic();
 		const attribute = new UserAttributePacket();
 		attribute.read(must(alice.users.at(0)?.userID).write());
-		// Anyone can make this copy: the key with the name filed as a user attribute
+		// Anyone can build this copy: the user ID's bytes re-tagged as a user attribute
 		const renamed = armorPackets([alice.keyPacket, attribute]);
 
 		for (const order of everyOrder([renamed, alice.armor()])) {
@@ -333,7 +332,7 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		}
 	}, 15_000);
 
-	it('should not read a key that holds a revoked user ID a second time behind byte order marks', async () => {
+	it('should reject a key that hides a user ID behind byte order marks', async () => {
 		const alice = await makeDatedKey('Alice');
 		const old = alice.toPublic().armor();
 		alice.users[0] = await must(alice.users.at(0)).revoke(secretPacketOf(alice), {
@@ -341,9 +340,9 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		});
 		const revoked = alice.toPublic().armor();
 		expect(await problemIn(revoked)).toContain('revoked');
-		// Anyone can make this copy. The library drops one mark each time it reads
-		// a user ID: read once the name is not Alice's, read again it is, and no
-		// revocation stands with it.
+		// Anyone can build this copy. OpenPGP.js strips one BOM each time it parses a
+		// user ID, so it differs from Alice's on the first parse and equals it after
+		// the merge parses it again, without the revocation.
 		const marked = await markUserIDs(old, 2);
 
 		for (const order of everyOrder([old, revoked, marked])) {
@@ -352,11 +351,11 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		expect(await addToKeys(revoked, marked)).toEqual({ outcome: 'unreadable', box: revoked });
 	}, 15_000);
 
-	it('should apply what each copy says when no copy says it all', async () => {
+	it('should apply subkey revocations that are in different copies', async () => {
 		const alice = await makeDatedKey('Alice', { subkeys: [{}, { sign: true }] });
 		const encryptionID = (await alice.getEncryptionKey()).getKeyID();
 		const signingID = (await alice.getSigningKey()).getKeyID();
-		// Two copies, each with a different subkey revoked. Neither is the more cautious of the two.
+		// Two copies, each revoking a different subkey, so neither copy alone is enough
 		const copies = await Promise.all(
 			[encryptionID, signingID].map(async (id) => {
 				const copy = await copyKey(alice);
@@ -379,9 +378,9 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		}
 	}, 15_000);
 
-	it('should let the newest record of the expiry date decide, as it does inside one copy', async () => {
+	it('should take the expiry from the newest self-signature in any copy', async () => {
 		const shortened = await makeDatedKey('Shortened');
-		// Ten days ago the owner set the key to expire, and two days ago it did
+		// Reformatted ten days ago with an expiry that passed two days ago
 		const expired = await reformatKey({
 			privateKey: shortened,
 			userIDs: [{ name: 'Shortened' }],
@@ -396,7 +395,7 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		}
 
 		const extended = await makeDatedKey('Extended', { keyExpirationTime: 10 * SECONDS_PER_DAY });
-		// The key expired twenty days ago; five days ago its owner gave it more time
+		// Expired twenty days ago, then reformatted five days ago with no expiry
 		const renewed = await reformatKey({
 			privateKey: extended,
 			userIDs: [{ name: 'Extended' }],
@@ -410,7 +409,7 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		}
 	}, 15_000);
 
-	it('should keep a revocation when the copy before it carries one that does not count', async () => {
+	it('should keep a revocation beside one made by another key', async () => {
 		const alice = await makeDatedKey('Alice');
 		const mallory = await makeDatedKey('Mallory');
 		const notAlices = must(
@@ -427,20 +426,20 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		}
 	}, 15_000);
 
-	it('should not let a copy made without the private key change what a good key does', async () => {
+	it('should ignore a binding signature moved from another subkey', async () => {
 		const privateKey = await makeDatedKey('Alice');
 		const alice = privateKey.toPublic();
 		const later = await privateKey.addSubkey({ date: daysAgo(5) });
 		const subkeyID = must(alice.subkeys.at(0)).getKeyID();
-		// A copy whose subkey carries, in place of its own signature, a newer one
-		// that the owner made for another subkey
+		// A copy whose subkey has its binding signature replaced by a newer one the
+		// owner made for a different subkey
 		const ownBinding = must(must(alice.subkeys.at(0)).bindingSignatures.at(0));
 		const newerBinding = must(must(later.subkeys.at(1)).bindingSignatures.at(0));
 		const swapped = armorPackets([
 			...alice.toPacketList().filter((packet) => packet !== ownBinding),
 			newerBinding
 		]);
-		// Of no use by itself
+		// Unusable on its own, because the binding signature does not verify for this subkey
 		expect(await problemIn(swapped)).toBeDefined();
 
 		for (const order of everyOrder([alice.armor(), swapped])) {
@@ -450,7 +449,7 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 		}
 	}, 15_000);
 
-	it('should stay a private key when a public copy stands beside it', async () => {
+	it('should stay private when pasted with its public key', async () => {
 		const pair = await createKeyPair('Alice');
 		const boxes = [
 			`${pair.publicKey}\n${pair.privateKey}`,
@@ -468,7 +467,7 @@ describe('readPublicKeys, when the box holds several copies of one key', () => {
 });
 
 describe('addToKeys', () => {
-	it('should put in the box only text that brings something', async () => {
+	it('should append only text that adds something', async () => {
 		const alice = await makeDatedKey('Alice');
 		const bob = (await makeDatedKey('Bob')).toPublic().armor();
 		const held = alice.toPublic().armor();
@@ -477,13 +476,13 @@ describe('addToKeys', () => {
 			'-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nnot a key\n-----END PGP PUBLIC KEY BLOCK-----';
 
 		expect((await addToKeys(held, bob)).box).toBe(appendBlock(held, bob));
-		// A revoked copy of a listed key adds no key to the list, and goes in all the same
+		// A revoked copy adds no key but is still appended
 		expect((await addToKeys(held, revoked)).box).toBe(appendBlock(held, revoked));
 		expect((await addToKeys(held, held)).box).toBe(held);
 		expect(await addToKeys(held, noKey)).toEqual({ outcome: 'unreadable', box: held });
 	}, 15_000);
 
-	it('should say that a key the box does not hold is a new key', async () => {
+	it('should report new-key for a key not yet held', async () => {
 		const alice = await makeDatedKey('Alice');
 		const bob = (await makeDatedKey('Bob')).toPublic().armor();
 		const held = alice.toPublic().armor();
@@ -492,7 +491,7 @@ describe('addToKeys', () => {
 		expect(await judge(held, `${await revokedCopyOf(alice)}\n${bob}`)).toBe('new-key');
 	}, 15_000);
 
-	it('should say that a revoked copy of a listed key brings new details', async () => {
+	it('should report new-details for a revoked copy of a held key', async () => {
 		const alice = await makeDatedKey('Alice');
 		const bob = (await makeDatedKey('Bob')).toPublic().armor();
 		const held = alice.toPublic().armor();
@@ -501,11 +500,11 @@ describe('addToKeys', () => {
 		expect(await judge(held, revoked)).toBe('new-details');
 		expect(await judge(appendBlock(held, bob), revoked)).toBe('new-details');
 		expect(await judge(appendBlock(bob, held), revoked)).toBe('new-details');
-		// Once it is in the box, the same copy brings nothing more
+		// Once appended, the same copy adds nothing
 		expect(await judge(appendBlock(held, revoked), revoked)).toBe('nothing-new');
 	}, 15_000);
 
-	it('should find nothing new in a copy that says no more than the box does', async () => {
+	it('should report nothing-new for a copy with nothing extra', async () => {
 		const alice = await makeDatedKey('Alice');
 		const held = alice.toPublic().armor();
 		const revoked = await revokedCopyOf(alice);
@@ -516,7 +515,7 @@ describe('addToKeys', () => {
 		expect(await judge(held, 'Here is my key.')).toBe('nothing-new');
 	}, 15_000);
 
-	it('should find nothing new in what the box holds, arranged another way', async () => {
+	it('should report nothing-new for held packets in another order', async () => {
 		const alice = await makeDatedKey('Alice');
 		const reissued = await reformatKey({
 			privateKey: alice,
@@ -527,7 +526,7 @@ describe('addToKeys', () => {
 		const [keyPacket, userID, certification, subkey, binding] = alice.toPublic().toPacketList();
 		const laterCertification = must(reissued.publicKey.users.at(0)?.selfCertifications.at(0));
 		const laterBinding = must(reissued.publicKey.subkeys.at(0)?.bindingSignatures.at(0));
-		// One copy with every record of the key, as a program that keeps keys gives out
+		// One copy holding both sets of self-signatures, as a keyring program exports a merged key
 		const whole = armorPackets([
 			keyPacket,
 			userID,
@@ -542,7 +541,7 @@ describe('addToKeys', () => {
 		expect(await judge(held, whole)).toBe('nothing-new');
 	}, 15_000);
 
-	it('should say so when the text cannot be read', async () => {
+	it('should report unreadable for damaged text', async () => {
 		const alice = await createKeyPair('Alice');
 		const bob = await createKeyPair('Bob');
 		const lines = bob.publicKey.trim().split('\n');
@@ -557,7 +556,7 @@ describe('addToKeys', () => {
 		expect(await judge(alice.publicKey, alice.revocationCertificate)).toBe('unreadable');
 	}, 15_000);
 
-	it('should see a change that the summary of a key does not show', async () => {
+	it('should detect a change the key summary does not show', async () => {
 		const carol = await makeDatedKey('Carol', { subkeys: [{}, {}] });
 		const updated = await copyKey(carol);
 		// One of two encryption subkeys is revoked; the key still encrypts with the other
@@ -573,9 +572,10 @@ describe('addToKeys', () => {
 		expect(await judge(held, addition)).toBe('new-details');
 	}, 15_000);
 
-	it('should say that an older copy with an older record brings new details', async () => {
+	it('should report new-details for a copy from before a reformat', async () => {
 		const alice = await makeDatedKey('Alice');
-		// The owner changed the key with a tool that kept only the newest record of it
+		// reformatKey replaces every self-signature, so the original copy holds
+		// self-signatures that the reformatted copy lacks
 		const reissued = await reformatKey({
 			privateKey: alice,
 			userIDs: [{ name: 'Alice' }],
@@ -586,19 +586,19 @@ describe('addToKeys', () => {
 		expect(await judge(reissued.publicKey, alice.toPublic().armor())).toBe('new-details');
 	}, 15_000);
 
-	it('should keep the private copy of a listed public key out of the box', async () => {
+	it('should keep out the private copy of a held key', async () => {
 		const pair = await createKeyPair('Alice');
 
 		expect(await addToKeys(pair.publicKey, pair.privateKey)).toEqual({
 			outcome: 'private-key',
 			box: pair.publicKey
 		});
-		// Let in, it would turn the listed key into a private one and stop the page
+		// Appended, it would make the held key private, and the page would reject it
 		const infos = await inspectKeys(appendBlock(pair.publicKey, pair.privateKey), 'encrypt');
 		expect(infos.map((info) => info.problem)).toEqual([PRIVATE_KEY_PROBLEM]);
 	}, 15_000);
 
-	it('should keep out a private key that comes with a new key, in either order', async () => {
+	it('should keep out a private key pasted with a new key', async () => {
 		const alice = await createKeyPair('Alice');
 		const bob = await createKeyPair('Bob');
 		const keep = { outcome: 'private-key', box: alice.publicKey };
@@ -609,7 +609,7 @@ describe('addToKeys', () => {
 		expect(await addToKeys(alice.publicKey, bob.privateKey)).toEqual(keep);
 	}, 15_000);
 
-	it('should keep out a private key that has lost its first or last line', async () => {
+	it('should keep out a private key missing its BEGIN or END line', async () => {
 		const alice = await createKeyPair('Alice');
 		const bob = await createKeyPair('Bob');
 		const lines = alice.privateKey.trim().split('\n');

@@ -1,3 +1,8 @@
+<!--
+@component
+Donation prompt under a tool's result. It stays in the page flow and is never fixed or floating,
+on any screen size.
+-->
 <script lang="ts">
 	import Icon from '../Icon.svelte';
 
@@ -10,8 +15,6 @@
 	} = $props();
 </script>
 
-<!-- Part of the page, under the result it follows. It never floats over
-     anything, on any screen size. -->
 {#if isVisible}
 	<div class="donation-banner">
 		<p class="donation-text">
@@ -116,7 +119,6 @@
 		border-color: var(--border-hover);
 	}
 
-	/* Narrow screens: the text first, the two buttons under it */
 	@media (max-width: 480px) {
 		.donation-banner {
 			flex-direction: column;
@@ -134,7 +136,6 @@
 		}
 	}
 
-	/* Fingers need a larger target than a mouse pointer does */
 	@media (pointer: coarse) {
 		.donate-btn {
 			min-height: 44px;

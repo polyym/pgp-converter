@@ -1,37 +1,54 @@
-# Proposes updates as pull requests, so that pinned versions do not quietly go
-# stale. Each pull request runs the Tests workflow; nothing is merged or
-# deployed until someone merges it.
+# Updates target dev, so they reach the staging address before a release.
+# GitHub reads this file from main, and opens security updates against main
+# whatever target-branch says.
 #
-# The pull requests go to dev, like every other change, so an update is on the
-# staging address before it is released. GitHub reads this file from main, and
-# opens security updates against main whatever is written here.
+# With the cooldown, a release is proposed only once it is a week old, because
+# a malicious release is usually found and pulled within days. Security updates
+# are not held back.
 version: 2
 updates:
-  # The workflows name each action by the commit it was reviewed at. A commit
-  # never moves, so without this the actions would stay as they are for good.
   - package-ecosystem: github-actions
     directory: /
     target-branch: dev
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
 
-  # The packages in package.json. Minor and patch releases arrive together in one
-  # pull request a month; a new major version gets a pull request of its own,
-  # because those need reading before they are accepted.
+  # Major versions stay out of the group, so each one gets a pull request of its
+  # own and is reviewed on its own
   - package-ecosystem: npm
     directory: /
     target-branch: dev
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     groups:
       minor-and-patch:
         update-types:
           - minor
           - patch
-    # TypeScript stays on version 6. SvelteKit, svelte-check and typescript-eslint
-    # accept nothing newer yet, so a pull request for 7 could only fail its tests.
-    # Minor and patch releases of 6 still arrive with the rest.
+    # SvelteKit, svelte-check and typescript-eslint do not accept TypeScript 7
+    # yet. Remove this once they do.
     ignore:
       - dependency-name: typescript
         update-types:
           - version-update:semver-major
+
+  # The Netlify CLI for deploy.yml, which has its own lockfile
+  - package-ecosystem: npm
+    directory: /.github/deploy
+    target-branch: dev
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: docker
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7

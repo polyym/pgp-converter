@@ -11,13 +11,12 @@
 		armedStatus = 'Press Escape again to clear the form.'
 	}: {
 		tool: ToolPage;
-		/** The main action's icon */
 		icon: IconName;
-		/** The wording on the main action's button */
+		/** Label of the submit button */
 		text: string;
-		/** What the Clear button says while a first press waits to be confirmed */
+		/** Clear button label after the first press, while it waits for the second */
 		armedText?: string;
-		/** The same, in full, for screen readers */
+		/** Announced in the status region while Clear is armed */
 		armedStatus?: string;
 	} = $props();
 </script>

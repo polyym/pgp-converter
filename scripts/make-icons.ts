@@ -1,11 +1,10 @@
-// Draws the icons for the installed app and the picture shown when a link to
-// the site is shared. Its output in static/ is committed, so it only needs
-// running again if the design changes:
+// Draws the PWA icons and the Open Graph image. The output in static/ is
+// committed, so run this again only when the design changes:
 //
 //   node scripts/make-icons.ts
 //
-// It uses nothing but Node. Each pixel is worked out from its distance to the
-// key's outline, which gives smooth edges at any size.
+// Each pixel is shaded by its distance to the key outline, which anti-aliases
+// the edges at any size without an image library.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { crc32, deflateSync } from 'node:zlib';
@@ -14,7 +13,7 @@ import { DOT_PICTURE_SIZE, pictureDots } from '../src/lib/dot-pictures.ts';
 /** A colour as red, green and blue, each from 0 to 255 */
 type Rgb = readonly [number, number, number];
 
-/** A straight stroke of the key's outline, from one point to another */
+/** A line segment of the key outline, in outline units */
 type Stroke = readonly [x1: number, y1: number, x2: number, y2: number];
 
 interface IconSpec {
@@ -52,26 +51,27 @@ const ICONS: readonly IconSpec[] = [
 	// Shown as they are: a rounded tile, like the logo in the top bar
 	{ name: 'icon-192.png', size: 192, keyShare: 0.6, cornerShare: 0.22 },
 	{ name: 'icon-512.png', size: 512, keyShare: 0.6, cornerShare: 0.22 },
-	// Cropped to a circle or another shape by the phone, so the key is smaller and the square is full
+	// Maskable: the platform crops it to its own shape, so the key is smaller to
+	// stay inside the safe zone and the background fills the square
 	{ name: 'icon-maskable-512.png', size: 512, keyShare: 0.46, cornerShare: 0 },
-	// The iPhone home screen rounds the corners itself and does not allow see-through ones
+	// apple-touch-icon: iOS rounds the corners itself and does not support transparency
 	{ name: 'icon-180.png', size: 180, keyShare: 0.56, cornerShare: 0 }
 ];
 
-// The link-preview picture is the homepage's dot grid at rest
+// The Open Graph image is the homepage's dot grid at rest
 const PGP_DOTS = pictureDots('pgp');
 const UNLIT: Rgb = [22, 22, 26];
 const UNLIT_EDGE: Rgb = [36, 36, 42];
 const PREVIEW = { file: 'static/og-image.png', width: 1200, height: 630, cell: 40, gap: 9 };
 // A dot's corner radius as a share of its width
 const DOT_CORNER_SHARE = 0.3;
-// How far outside an unlit dot its lighter rim reaches, in pixels
+// How far in from an unlit dot's edge its lighter rim begins, in pixels
 const RIM_REACH_PX = 2.5;
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const PNG_HEADER_BYTES = 13;
 const PNG_BITS_PER_CHANNEL = 8;
-// Red, green, blue and opacity
+// Truecolour with alpha (RGBA)
 const PNG_COLOUR_TYPE = 6;
 const PNG_BEST_COMPRESSION = 9;
 
@@ -93,10 +93,7 @@ function main(): void {
 	);
 }
 
-/**
- * Draws one icon.
- * @returns The pixels as RGBA bytes, row by row
- */
+/** Returns the icon as RGBA bytes, row by row from the top */
 function drawIcon({ size, keyShare, cornerShare }: IconSpec): Buffer {
 	const pixels = Buffer.alloc(size * size * BYTES_PER_PIXEL);
 	const pixelsPerUnit = (size * keyShare) / KEY_WIDTH_UNITS;
@@ -125,9 +122,8 @@ function drawIcon({ size, keyShare, cornerShare }: IconSpec): Buffer {
 }
 
 /**
- * Draws the link-preview picture: the dot grid, centred, so that it survives
- * being cropped to a square by apps that do that.
- * @returns The pixels as RGBA bytes, row by row
+ * Returns the Open Graph image as RGBA bytes, row by row from the top. The
+ * grid is centred so that it survives the square crop some apps apply.
  */
 function drawPreview(): Buffer {
 	const { width, height, cell, gap } = PREVIEW;
@@ -144,7 +140,7 @@ function drawPreview(): Buffer {
 			const column = Math.floor((x + 0.5 - left + gap / 2) / pitch);
 			const row = Math.floor((y + 0.5 - top + gap / 2) / pitch);
 			if (column >= 0 && column < DOT_PICTURE_SIZE && row >= 0 && row < DOT_PICTURE_SIZE) {
-				// Distance from the edge of this dot's rounded square: negative inside it
+				// Signed distance to the edge of this dot's rounded square, negative inside
 				const dx = Math.abs(x + 0.5 - (left + column * pitch + cell / 2)) - (cell / 2 - corner);
 				const dy = Math.abs(y + 0.5 - (top + row * pitch + cell / 2)) - (cell / 2 - corner);
 				const distance =
@@ -184,7 +180,7 @@ function toPng(pixels: Buffer, width: number, height = width): Buffer {
 	header.writeUInt32BE(height, 4);
 	header[8] = PNG_BITS_PER_CHANNEL;
 	header[9] = PNG_COLOUR_TYPE;
-	// Each row is stored as it is, with a leading zero that says so
+	// Each scanline starts with filter type 0 (None); Buffer.alloc already zeroed it
 	const rowBytes = width * BYTES_PER_PIXEL;
 	const rows = Buffer.alloc(height * (rowBytes + 1));
 	for (let y = 0; y < height; y++) {
@@ -198,7 +194,7 @@ function toPng(pixels: Buffer, width: number, height = width): Buffer {
 	]);
 }
 
-/** Wraps data in a PNG chunk */
+/** Wraps data in a PNG chunk: length, type, data, then a CRC-32 of type and data */
 function chunk(type: string, data: Buffer): Buffer {
 	const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
 	const length = Buffer.alloc(4);
@@ -216,7 +212,7 @@ function writePixel(pixels: Buffer, at: number, [red, green, blue]: Rgb, opacity
 	pixels[at + 3] = Math.round(opacity * OPAQUE);
 }
 
-/** The colour part of the way from one colour to another */
+/** Interpolates linearly between two colours: 0 gives `from`, 1 gives `to` */
 function mix(from: Rgb, to: Rgb, amount: number): Rgb {
 	return [
 		from[0] + (to[0] - from[0]) * amount,

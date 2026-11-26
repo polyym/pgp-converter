@@ -1,10 +1,6 @@
 import { COPY_FEEDBACK_MS } from '#lib/constants.ts';
 
-/**
- * Copies text to the clipboard.
- * @param text - The text to copy
- * @returns True if the browser accepted the copy
- */
+/** Writes text to the clipboard. Resolves to false, and never rejects, if the browser refuses. */
 export async function copyText(text: string): Promise<boolean> {
 	try {
 		await navigator.clipboard.writeText(text);
@@ -16,9 +12,9 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 /**
- * Creates the state behind a Copy button: it copies on request and stays
- * marked as copied for a moment, so the button can say so.
- * @returns The reactive flag, the copy function and a way to lower the flag
+ * Creates the state behind a Copy button: `copy` writes to the clipboard and,
+ * if that works, sets `isCopied` for COPY_FEEDBACK_MS so the button can say so.
+ * `reset` clears the flag early.
  */
 export function createCopyFlag() {
 	let isCopied = $state(false);

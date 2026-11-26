@@ -12,6 +12,7 @@
 		TextField,
 		ToolFrame
 	} from '#lib/components/tool/index.ts';
+	import { IDLE_CLEAR_MINUTES } from '#lib/constants.ts';
 	import { decryptMessage } from '#lib/decryption.ts';
 	import type { SignatureCheck } from '#lib/signatures.ts';
 	import { createKeyInspector } from '#lib/stores/key-inspector.svelte.ts';
@@ -26,9 +27,10 @@
 	let hasOutput = $state(false);
 	let senderKey = $state('');
 	let signatures = $state<SignatureCheck[]>([]);
-	// Whether the result on screen was checked against a sender's key
+	// isChecking as it was at the last successful decrypt, so editing the sender's
+	// key box does not change the verdict already on screen
 	let wasSenderChecked = $state(false);
-	// Whether the box held anything besides the message, which the verdicts are not about
+	// True when the input held text outside the armoured message; the verdict does not cover it
 	let hasOtherText = $state(false);
 
 	const sender = createKeyInspector(() => senderKey, 'verify');
@@ -50,7 +52,8 @@
 		canClear: () => !!(encrypted || privateKey || passphrase || senderKey || hasOutput),
 		onClear: clearAll,
 		copyable: () => decrypted,
-		// Your own key and passphrase open the message; the result is a matter of the message and the sender's key
+		// The private key and passphrase only unlock the message, so changing them
+		// does not make the result stale
 		resultInputs: () => [encrypted, senderKey]
 	});
 
@@ -228,8 +231,8 @@
 			<p>
 				Only where you can be confident it stays on your device. On this page the key is read by
 				code running in your browser. It is not uploaded or saved, and the page clears itself after
-				15 minutes without activity. You can check this by disconnecting from the internet before
-				you paste.
+				{IDLE_CLEAR_MINUTES} minutes without activity. You can check this by disconnecting from the internet
+				before you paste.
 			</p>
 			<p>
 				You are still trusting this site to serve the code it publishes. Every release is signed so
@@ -291,7 +294,7 @@
 		<Question q="Is the decrypted message stored anywhere?">
 			<p>
 				No. It exists only in this page's memory. It is gone when you press Clear, close the tab, or
-				leave the page untouched for 15 minutes.
+				leave the page untouched for {IDLE_CLEAR_MINUTES} minutes.
 			</p>
 			<p>If you copy the message, it stays on your clipboard until you copy something else.</p>
 		</Question>

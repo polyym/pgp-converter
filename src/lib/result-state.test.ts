@@ -22,7 +22,7 @@ describe('isOutOfDate', () => {
 		expect(isOutOfDate(['message', 'key'], ['', 'key'])).toBe(true);
 	});
 
-	it('should count a change of nothing but spacing, which changes what is encrypted', () => {
+	it('should count a change to whitespace alone', () => {
 		expect(isOutOfDate(['message', 'key'], ['message ', 'key'])).toBe(true);
 	});
 
@@ -31,7 +31,7 @@ describe('isOutOfDate', () => {
 		expect(isOutOfDate(madeFrom, [...madeFrom])).toBe(false);
 	});
 
-	it('should be true when the two lists do not line up', () => {
+	it('should be true when the lists differ in length', () => {
 		expect(isOutOfDate(['message'], ['message', 'key'])).toBe(true);
 	});
 });

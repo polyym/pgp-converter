@@ -6,15 +6,13 @@
 		title,
 		children
 	}: {
-		/** What the section explains, as a heading: "How to encrypt a PGP message" */
+		/** For example "How to encrypt a PGP message" */
 		title: string;
-		/** The explanation */
 		children: Snippet;
 	} = $props();
 </script>
 
-<!-- How to use the tool above. Closed until asked for; the title is a heading
-     so that the section is part of the page's outline. -->
+<!-- The h2 inside <summary> keeps the collapsed section in the page's heading outline -->
 <details class="explainer">
 	<summary>
 		<h2>{title}</h2>

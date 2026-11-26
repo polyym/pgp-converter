@@ -1,11 +1,10 @@
 import { MS_PER_SECOND } from '../constants.ts';
 
 /**
- * Says when this build was made, for the dates written into the sitemap and
- * security.txt. The build server gives the time of the commit
- * (SOURCE_DATE_EPOCH, in seconds), which keeps the same commit building the
- * same files. A build that was not given one uses the clock.
- * @returns The time, in milliseconds since the start of 1970
+ * Returns the build time in Unix epoch milliseconds, for the dates in the sitemap
+ * and security.txt. CI sets SOURCE_DATE_EPOCH (in seconds) to the commit time, so
+ * every build of one commit produces the same files. When it is unset or not a
+ * positive number, the current time is used.
  */
 export function getBuildTime(): number {
 	const epochSeconds = Number(process.env.SOURCE_DATE_EPOCH);

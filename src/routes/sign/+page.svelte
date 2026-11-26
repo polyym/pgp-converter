@@ -32,7 +32,8 @@
 		canClear: () => !!(message || privateKey || passphrase || signed),
 		onClear: clearAll,
 		copyable: () => signed,
-		// The passphrase unlocks the key but changes nothing in what is signed
+		// The passphrase only unlocks the key, so changing it does not make the
+		// result stale
 		resultInputs: () => [message, privateKey]
 	});
 
@@ -62,7 +63,7 @@
 	}
 
 	onMount(() => {
-		// A key just made on the Generate page arrives ready to use
+		// Prefills a private key passed on from the Generate page
 		const handed = takeKey();
 		if (handed?.privateKey) {
 			privateKey = handed.privateKey;

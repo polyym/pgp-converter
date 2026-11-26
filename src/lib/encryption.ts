@@ -14,12 +14,12 @@ import { SIGNING_PASSPHRASE_REQUIRED_ERROR } from './signatures.ts';
 export interface EncryptionResult {
 	success: boolean;
 	data?: string;
-	/** Details of every key the message was encrypted to */
+	/** One entry per recipient key; copies of the same key count once */
 	recipients?: KeyInfo[];
 	/** The key that signed the message, when it was signed */
 	signer?: KeyInfo;
 	error?: string;
-	/** The input the error is about, when it is about one in particular */
+	/** The input field to highlight; undefined when the error is not about one input */
 	errorField?: 'publicKey' | 'signingKey' | 'signingPassphrase';
 }
 
@@ -29,7 +29,7 @@ export interface Signer {
 	passphrase: string;
 }
 
-/** Library errors that mean a recipient's key is at fault, though they only surface when encrypting */
+/** Recipient-key errors that OpenPGP.js raises only inside encrypt(), at the 'operation' stage */
 const RECIPIENT_KEY_FAULT =
 	/expired|revoked|could not find valid encryption key|considered too weak/i;
 
@@ -37,11 +37,11 @@ export const PRIVATE_KEY_ERROR =
 	"That is a private key. Encryption needs the recipient's public key; never paste or share a private key.";
 
 /**
- * Encrypts a plaintext message to one or more PGP public keys, optionally signing it first
- * @param plaintext - The message to encrypt
- * @param armoredPublicKeys - One or more armored PGP public keys
- * @param signer - The sender's private key and passphrase; leave out to send the message unsigned
- * @returns EncryptionResult with the encrypted message and its recipients, or an error
+ * Encrypts text to every public key in `armoredPublicKeys` and, when a signer
+ * is given, signs it as well. On success `data` is an armoured PGP MESSAGE.
+ * Keys are cleaned up with normaliseArmor first, and a private key is refused.
+ * Never throws: a failure returns a user-facing error and the field to highlight.
+ * @param signer - omit to send the message unsigned
  */
 export async function encryptMessage(
 	plaintext: string,
@@ -49,12 +49,13 @@ export async function encryptMessage(
 	signer?: Signer
 ): Promise<EncryptionResult> {
 	let stage: ErrorStage = 'public-key';
-	// Errors from the signing key must not be described as problems with the recipient's key
+	// 'sign' while the signing key is read and checked, so its errors are not worded
+	// as problems with a recipient's key
 	let context: 'encrypt' | 'sign' = 'encrypt';
 	try {
 		const publicKeys = await readPublicKeys(armoredPublicKeys);
-		// OpenPGP.js would quietly use the public half of a private key. Refuse instead,
-		// so nobody learns that pasting a private key into this box is acceptable.
+		// OpenPGP.js would silently encrypt to the public half of a private key. Refuse
+		// it, so nobody learns that pasting a private key into this box is acceptable.
 		if (publicKeys.some((key) => key.isPrivate())) {
 			return { success: false, error: PRIVATE_KEY_ERROR, errorField: 'publicKey' };
 		}
@@ -67,7 +68,8 @@ export async function encryptMessage(
 				signer.passphrase,
 				(s) => (stage = s)
 			);
-			// Checked here so that a key that cannot sign is reported as that, not as a failed encryption
+			// Check now, while the context is 'sign', so an expired, revoked or weak signing
+			// key is reported as such rather than as a failed encryption
 			stage = 'operation';
 			await signingKey.getSigningKey(undefined, undefined, undefined, KEY_CHECK_CONFIG);
 			context = 'encrypt';
@@ -75,9 +77,9 @@ export async function encryptMessage(
 
 		stage = 'operation';
 		const message = await createMessage({ text: plaintext });
-		// Typed by hand: the library's own type for this result needs a types package
-		// (@openpgp/web-stream-tools) that is only installed for streaming. A text
-		// message comes back as armoured text.
+		// Typed as unknown: OpenPGP.js's declared return type needs the types from
+		// @openpgp/web-stream-tools, which this project does not install. For a text
+		// message the result is an armoured string.
 		const encryptedMessage: unknown = await encrypt({
 			message,
 			encryptionKeys: publicKeys,
@@ -103,7 +105,7 @@ export async function encryptMessage(
 			console.error(e);
 		}
 		const message = e instanceof Error ? e.message : String(e);
-		// The step is updated from inside a callback, which the compiler cannot follow
+		// Widen to ErrorStage: narrowing does not see the assignment in the onStage callback
 		const failedAt = stage as ErrorStage;
 		const signerField = failedAt === 'passphrase' ? 'signingPassphrase' : 'signingKey';
 		return {

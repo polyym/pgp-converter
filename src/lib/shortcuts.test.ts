@@ -57,20 +57,20 @@ describe('getShortcutKeys', () => {
 });
 
 describe('readShortcut', () => {
-	it('should run the action on Ctrl or Command + Enter, wherever it is pressed', () => {
+	it('should submit on Ctrl or Command + Enter in any target', () => {
 		expect(readShortcut(stroke('Enter', { hasModifier: true }))).toBe('submit');
 		expect(readShortcut(stroke('Enter', { hasModifier: true, target: 'textarea' }))).toBe('submit');
 		expect(readShortcut(stroke('Enter', { hasModifier: true, target: 'input' }))).toBe('submit');
 	});
 
-	it('should run the action on plain Enter in a single-line field only', () => {
+	it('should submit on plain Enter in a single-line input only', () => {
 		expect(readShortcut(stroke('Enter', { target: 'input' }))).toBe('submit');
-		// Enter in a message box starts a new line, and on a button it presses the button
+		// Enter in a textarea starts a new line, and on a button it presses the button
 		expect(readShortcut(stroke('Enter', { target: 'textarea' }))).toBeUndefined();
 		expect(readShortcut(stroke('Enter'))).toBeUndefined();
 	});
 
-	it('should leave Enter alone when it is held with Shift or Alt, or finishes a composition', () => {
+	it('should ignore Enter with Shift or Alt, or during IME composition', () => {
 		expect(readShortcut(stroke('Enter', { target: 'input', hasShift: true }))).toBeUndefined();
 		expect(readShortcut(stroke('Enter', { target: 'input', hasAlt: true }))).toBeUndefined();
 		expect(readShortcut(stroke('Enter', { target: 'input', isComposing: true }))).toBeUndefined();
@@ -79,18 +79,18 @@ describe('readShortcut', () => {
 	it('should copy on Ctrl or Command + Shift + C, in either case', () => {
 		expect(readShortcut(stroke('C', { hasModifier: true, hasShift: true }))).toBe('copy');
 		expect(readShortcut(stroke('c', { hasModifier: true, hasShift: true }))).toBe('copy');
-		// The browser's own copy must keep working
+		// Ctrl or Command + C without Shift must still copy the selection
 		expect(readShortcut(stroke('c', { hasModifier: true }))).toBeUndefined();
 		expect(readShortcut(stroke('C', { hasShift: true }))).toBeUndefined();
 	});
 
-	it('should clear on Esc, except while an input method is composing', () => {
+	it('should clear on Esc, except during IME composition', () => {
 		expect(readShortcut(stroke('Escape'))).toBe('clear');
 		expect(readShortcut(stroke('Escape', { target: 'textarea' }))).toBe('clear');
 		expect(readShortcut(stroke('Escape', { target: 'input', isComposing: true }))).toBeUndefined();
 	});
 
-	it('should open the shortcuts on ?, but not while the user is typing', () => {
+	it('should toggle the shortcuts dialog on ?, but not in a text field', () => {
 		expect(readShortcut(stroke('?', { hasShift: true }))).toBe('toggle-help');
 		expect(readShortcut(stroke('?', { hasShift: true, target: 'input' }))).toBeUndefined();
 		expect(readShortcut(stroke('?', { hasShift: true, target: 'textarea' }))).toBeUndefined();

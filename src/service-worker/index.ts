@@ -1,29 +1,28 @@
-// Lets the app open with no connection: the browser keeps a copy of the app's
-// own pages, code and fonts, and reads them from the device after the first
-// visit. Only GET requests for the files listed below are answered from the
-// copy. Nothing a visitor types, pastes or generates passes through here, and
-// everything else, the wallet service included, goes to the network.
+// Cache-first service worker, so the app works offline after the first visit.
+// Only same-origin GET requests for the app's own files are answered from the
+// cache. Everything else, the wallet proxy included, goes to the network, so
+// nothing a visitor types, pastes or generates is ever cached.
 //
-// A new version is fetched in the background and waits. It takes over when
-// every tab is closed, or at once if the visitor presses Update.
+// There is no skipWaiting on install: a new version waits until every tab is
+// closed, or until the visitor presses Update (see app-update.svelte.ts).
 //
-// If offline support is ever withdrawn, do not delete this file: browsers that
-// have a copy would keep running the old app. Ship a version that unregisters
-// itself and deletes its caches.
+// To withdraw offline support, ship a worker that unregisters itself and
+// deletes its caches. Deleting this file would leave existing installs running
+// the old version.
 
 import { version } from '$app/env';
 import { assets, immutable, prerendered } from '$app/manifest';
 import { self as sw } from '$app/service-worker';
 import { ACTIVATE_UPDATE_MESSAGE, selectPrecache, isKeptOnceUsed } from '#lib/offline.ts';
 
-// SvelteKit lists the app's files relative to the site's root; requests and
-// the cache are keyed by the path from the root, which starts with a slash
+// The manifest lists paths relative to the site root, but the fetch handler
+// matches against URL.pathname, which has a leading slash.
 function fromRoot(list: readonly { path: string }[]): string[] {
 	return list.map(({ path }) => (path.startsWith('/') ? path : `/${path}`));
 }
 
 const CACHE_PREFIX = 'pgp-converter-';
-// One copy per version of the app, so files from two versions are never mixed
+// One cache per build, so a page never mixes files from two versions
 const CACHE = `${CACHE_PREFIX}${version}`;
 const PRECACHE = selectPrecache({
 	build: fromRoot(immutable),
@@ -38,13 +37,13 @@ sw.addEventListener('install', (event) => {
 			const cache = await caches.open(CACHE);
 			await Promise.all(
 				PRECACHE.map(async (path) => {
-					// Asked of the server afresh, so a new version never keeps an old page
+					// Revalidate, so the HTTP cache cannot hand the new version an old page
 					const response = await fetch(path, { cache: 'no-cache' });
-					// A missing file fails the whole install: an incomplete copy must never take over
+					// Throwing fails the install, so a partial cache never activates
 					if (!response.ok) {
 						throw new Error(`Could not fetch ${path}: HTTP ${String(response.status)}`);
 					}
-					// An address that redirects has no content of its own to keep
+					// Browsers reject a redirected response used to answer a navigation
 					if (response.redirected) {
 						return;
 					}
@@ -64,7 +63,8 @@ sw.addEventListener('activate', (event) => {
 					await caches.delete(name);
 				}
 			}
-			// The page that installed this is served from the copy from now on
+			// Control open pages without a reload, including the page of a first visit,
+			// which loaded before this worker was installed
 			await sw.clients.claim();
 		})()
 	);
@@ -77,7 +77,8 @@ sw.addEventListener('message', (event) => {
 	}
 });
 
-/** Answers from the device's copy, and from the network only if the file is not there */
+// Cache first. The lookup uses the path alone and ignores Vary, so a query
+// string or a Vary header on the stored response cannot cause a miss.
 async function respond(request: Request, pathname: string): Promise<Response> {
 	const cache = await caches.open(CACHE);
 	const kept = await cache.match(pathname, { ignoreVary: true });
@@ -102,6 +103,7 @@ sw.addEventListener('fetch', (event) => {
 	if (url.origin !== sw.location.origin) {
 		return;
 	}
+	// Non-Latin font subsets are not precached, but are cached once a page loads them
 	if (!PRECACHED.has(url.pathname) && !isKeptOnceUsed(url.pathname)) {
 		return;
 	}

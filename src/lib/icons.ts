@@ -1,6 +1,7 @@
 /**
- * The app's line icons, each as the inside of a 24 by 24 SVG. One set, so a tool
- * looks the same in the navigation, on its own page and on its button.
+ * Inner SVG markup of the app's line icons, drawn on a 24 by 24 viewBox.
+ * Icon.svelte supplies the svg element and stroke, and inserts this markup with
+ * {@html}, so it must stay constant and never include user input.
  */
 export const ICONS = {
 	encrypt:

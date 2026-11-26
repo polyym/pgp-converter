@@ -1,4 +1,3 @@
-// The lint rules. The presets are strict; every rule switched off below says why.
 import js from '@eslint/js';
 import { defineConfig } from 'eslint/config';
 import prettierConfig from 'eslint-config-prettier';
@@ -28,36 +27,38 @@ export default defineConfig(
 			'@typescript-eslint/no-floating-promises': 'error',
 			'@typescript-eslint/require-await': 'error',
 			'@typescript-eslint/consistent-type-imports': 'error',
-			// TypeScript reports undefined names itself, and knows the build's constants
+			// TypeScript reports undefined names, and no-undef does not know the globals
+			// declared in src/app.d.ts
 			'no-undef': 'off',
 			// The catch binding is `e` throughout
 			'unicorn/catch-error-name': ['error', { name: 'e' }],
-			// Too noisy on standard short names (props, args, refs)
+			// Flags short names the code uses widely (e, res, msg, args, dir), even the catch
+			// binding `e` that catch-error-name requires
 			'unicorn/name-replacements': 'off',
 			'unicorn/filename-case': ['error', { case: 'kebabCase' }],
 			// Documentation is written as JSDoc blocks, one-line ones included
 			'unicorn/single-line-block-comment-style': 'off',
 			'unicorn/no-asterisk-prefix-in-documentation-comments': 'off',
-			// Individual symbols are imported by name
+			// Node built-ins are imported by name (import { join } from 'node:path')
 			'unicorn/import-style': 'off',
-			// The DOM and OpenPGP.js both speak in null
+			// The DOM and OpenPGP.js use null, so the code does too
 			'unicorn/no-null': 'off',
-			// An element known by its id is looked up by its id
+			// Elements with an id are found with getElementById
 			'unicorn/prefer-query-selector': 'off',
-			// Code that only runs in a browser says `window`
+			// Browser-only code refers to `window`, not globalThis
 			'unicorn/prefer-global-this': 'off',
-			// Guard clauses are written one to a line, each with its own reason
+			// Guard clauses stay separate if statements, so each can have its own comment
 			'unicorn/prefer-ternary': 'off',
 			'unicorn/prefer-combined-guards': 'off',
+			// Conditions are ordered for the reader, not by how cheap they are to evaluate
 			'unicorn/prefer-simple-condition-first': 'off',
 			// A fallback for one call that may fail is written with .catch()
 			'unicorn/prefer-await': 'off',
-			// Encodings are named as the WHATWG standard spells them
+			// 'utf-8', as the WHATWG Encoding Standard spells it
 			'unicorn/text-encoding-identifier-case': ['error', { withDash: true }],
 			// Also fires on functions that report success and on SvelteKit's own `prerender`
 			'unicorn/consistent-boolean-name': 'off',
-			// State kept in a module and changed through its functions is how the
-			// modules in src/lib/stores work
+			// Components and modules here keep state at the top level and change it in their functions
 			'unicorn/no-top-level-assignment-in-function': 'off'
 		}
 	},
@@ -73,7 +74,8 @@ export default defineConfig(
 		rules: {
 			// Links are plain hrefs; resolve() adds nothing on a site with no base path
 			'svelte/no-navigation-without-resolve': 'off',
-			// A component's functions close over its state; there is no outer scope to move them to
+			// Asks to move nested functions that use nothing from the function around them, such as
+			// an onMount cleanup or a listener in watchForUpdates, away from the code they belong with
 			'unicorn/consistent-function-scoping': 'off'
 		}
 	},
@@ -93,8 +95,8 @@ export default defineConfig(
 		rules: { 'unicorn/filename-case': 'off' }
 	},
 	{
-		// Each of these places a fixed string from this app's own source: the icon
-		// drawings, the coin logos, and the data for search engines
+		// {@html} here renders only constants from the source: the SVG icons, the
+		// coin logos and the JSON-LD structured data
 		files: [
 			'src/lib/components/Icon.svelte',
 			'src/routes/+page.svelte',
@@ -103,8 +105,8 @@ export default defineConfig(
 		rules: { 'svelte/no-at-html-tags': 'off' }
 	},
 	{
-		// Two old browser calls are used on purpose: one keeps Undo working after
-		// Paste, the other is how some browsers report a key pressed mid-composition
+		// document.execCommand('insertText') is the only way to insert text that Undo
+		// can remove, and some browsers report IME composition only as keyCode 229
 		files: ['src/lib/text-entry.ts', 'src/lib/stores/tool-page.svelte.ts'],
 		rules: {
 			'@typescript-eslint/no-deprecated': 'off',
@@ -112,7 +114,7 @@ export default defineConfig(
 		}
 	},
 	{
-		// The build scripts are command-line programs
+		// The build scripts are CLIs that end with an exit code
 		files: ['scripts/**'],
 		rules: { 'unicorn/no-process-exit': 'off' }
 	},

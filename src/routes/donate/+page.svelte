@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { Icon, PageFrame, PageHeader, SEO } from '#lib/components/index.ts';
+	import { SITE_URL } from '#lib/constants.ts';
 	import { truncateAddress } from '#lib/donations.ts';
 	import { createWalletLoader } from '#lib/stores/wallet-loader.svelte.ts';
 	import { onMount } from 'svelte';
 
 	const loader = createWalletLoader();
+	const releasedHost = new URL(SITE_URL).hostname;
 
 	onMount(() => {
 		void loader.load();
@@ -37,103 +39,115 @@
 
 	<section class="section">
 		<h2>Donate with Crypto</h2>
-		{#if loader.isFake}
-			<p class="fake-note">
-				<strong>These wallet addresses are fake.</strong>
-				The real ones are shown only on the released site.
-			</p>
-		{/if}
-		<div class={['wallets', { fake: loader.isFake }]}>
-			{#if loader.error}
-				<div class="info-box" role="alert">
-					<p>{loader.error}</p>
-					<button
-						class="retry-btn"
-						onclick={() => {
-							void loader.load();
-						}}>Try again</button
-					>
-				</div>
-			{:else if loader.isLoading}
-				<div class="wallet-loading" role="status" aria-label="Loading wallet addresses">
-					<div class="wallet-loading-spinner" aria-hidden="true"></div>
-					<div class="wallet-loading-coin" aria-hidden="true">
-						{#key loader.loadingCoin.name}
-							<span class="wallet-loading-coin-name" style:color={loader.loadingCoin.color}>
-								{loader.loadingCoin.name}
-							</span>
-						{/key}
-					</div>
-					<p class="wallet-loading-subtitle">
-						{#if loader.isWaking}
-							Fetching wallet addresses, this may take a moment...
-						{:else}
-							Fetching wallet addresses...
-						{/if}
-					</p>
-				</div>
-			{:else}
-				{#each loader.wallets as wallet (wallet.id)}
-					{@const qrCode = loader.qrDataUrls[wallet.id]}
-					<div class="wallet-card">
-						<div class="wallet-header">
-							<div class="wallet-icon" style="background: {wallet.bg}; color: {wallet.color}">
-								{@html wallet.icon}
-							</div>
-							<div class="wallet-title">
-								<span class="wallet-name">{wallet.name}</span>
-								{#if wallet.badge}
-									<span class="wallet-badge">{wallet.badge}</span>
-								{/if}
-							</div>
-							<span class="wallet-ticker">{wallet.ticker}</span>
-						</div>
-
-						<div class="wallet-body">
-							<div class="address-row">
-								<code class="address" title={wallet.address}>
-									<span class="address-full">{wallet.address}</span>
-									<span class="address-short">{truncateAddress(wallet.address)}</span>
-								</code>
-								<button
-									class={['copy-btn', { copied: loader.copiedAddress === wallet.address }]}
-									onclick={() => {
-										void loader.copyAddress(wallet.address);
-									}}
-									aria-label="Copy {wallet.name} address"
-								>
-									{#if loader.copiedAddress === wallet.address}
-										<Icon name="check" size={14} strokeWidth={2.5} />
-										<span>Copied</span>
-									{:else}
-										<Icon name="copy" size={14} strokeWidth={2} />
-										<span>Copy</span>
-									{/if}
-								</button>
-							</div>
-
-							<div class="qr-wrapper">
-								{#if qrCode}
-									<img
-										src={qrCode}
-										alt="QR code for {loader.isFake ? 'the fake ' : ''}{wallet.name}{wallet.badge
-											? ` (${wallet.badge})`
-											: ''} address"
-										class="qr-img"
-										width="140"
-										height="140"
-									/>
-								{:else if !loader.isQrReady}
-									<div class="qr-spinner" aria-label="Loading QR code"></div>
-								{:else}
-									<span class="qr-missing">QR code unavailable. Use the address above.</span>
-								{/if}
-							</div>
-						</div>
-					</div>
-				{/each}
+		{#if loader.isSelfHosted}
+			<div class="info-box elsewhere">
+				<p>
+					<strong>This copy of the app does not show the wallet addresses.</strong>
+					They are on the
+					<a href="{SITE_URL}/donate" rel="noreferrer">Donate page at {releasedHost}</a>.
+				</p>
+			</div>
+		{:else}
+			{#if loader.isFake}
+				<p class="fake-note">
+					<strong>These wallet addresses are fake.</strong>
+					The real ones are shown only on the released site.
+				</p>
 			{/if}
-		</div>
+			<div class={['wallets', { fake: loader.isFake }]}>
+				{#if loader.error}
+					<div class="info-box" role="alert">
+						<p>{loader.error}</p>
+						<button
+							class="retry-btn"
+							onclick={() => {
+								void loader.load();
+							}}>Try again</button
+						>
+					</div>
+				{:else if loader.isLoading}
+					<div class="wallet-loading" role="status" aria-label="Loading wallet addresses">
+						<div class="wallet-loading-spinner" aria-hidden="true"></div>
+						<div class="wallet-loading-coin" aria-hidden="true">
+							{#key loader.loadingCoin.name}
+								<span class="wallet-loading-coin-name" style:color={loader.loadingCoin.color}>
+									{loader.loadingCoin.name}
+								</span>
+							{/key}
+						</div>
+						<p class="wallet-loading-subtitle">
+							{#if loader.isWaking}
+								Fetching wallet addresses, this may take a moment...
+							{:else}
+								Fetching wallet addresses...
+							{/if}
+						</p>
+					</div>
+				{:else}
+					{#each loader.wallets as wallet (wallet.id)}
+						{@const qrCode = loader.qrDataUrls[wallet.id]}
+						<div class="wallet-card">
+							<div class="wallet-header">
+								<div class="wallet-icon" style="background: {wallet.bg}; color: {wallet.color}">
+									<!-- A bundled SVG from donations.ts; the fetched data
+									     supplies only the address -->
+									{@html wallet.icon}
+								</div>
+								<div class="wallet-title">
+									<span class="wallet-name">{wallet.name}</span>
+									{#if wallet.badge}
+										<span class="wallet-badge">{wallet.badge}</span>
+									{/if}
+								</div>
+								<span class="wallet-ticker">{wallet.ticker}</span>
+							</div>
+
+							<div class="wallet-body">
+								<div class="address-row">
+									<code class="address" title={wallet.address}>
+										<span class="address-full">{wallet.address}</span>
+										<span class="address-short">{truncateAddress(wallet.address)}</span>
+									</code>
+									<button
+										class={['copy-btn', { copied: loader.copiedAddress === wallet.address }]}
+										onclick={() => {
+											void loader.copyAddress(wallet.address);
+										}}
+										aria-label="Copy {wallet.name} address"
+									>
+										{#if loader.copiedAddress === wallet.address}
+											<Icon name="check" size={14} strokeWidth={2.5} />
+											<span>Copied</span>
+										{:else}
+											<Icon name="copy" size={14} strokeWidth={2} />
+											<span>Copy</span>
+										{/if}
+									</button>
+								</div>
+
+								<div class="qr-wrapper">
+									{#if qrCode}
+										<img
+											src={qrCode}
+											alt="QR code for {loader.isFake ? 'the fake ' : ''}{wallet.name}{wallet.badge
+												? ` (${wallet.badge})`
+												: ''} address"
+											class="qr-img"
+											width="140"
+											height="140"
+										/>
+									{:else if !loader.isQrReady}
+										<div class="qr-spinner" aria-label="Loading QR code"></div>
+									{:else}
+										<span class="qr-missing">QR code unavailable. Use the address above.</span>
+									{/if}
+								</div>
+							</div>
+						</div>
+					{/each}
+				{/if}
+			</div>
+		{/if}
 	</section>
 </PageFrame>
 
@@ -170,8 +184,18 @@
 		margin-bottom: 0;
 	}
 
-	/* Everywhere but the released site the addresses are fake, and are shown in
-     the colour of a dev build so that they look it */
+	.elsewhere strong {
+		font-weight: 600;
+		color: var(--text);
+	}
+	.elsewhere a {
+		color: var(--text);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	/* A test copy shows fake addresses, in the yellow that marks test copies, so they
+     are not mistaken for real ones */
 	.fake-note {
 		font-size: 14px;
 		line-height: 1.6;
@@ -247,22 +271,20 @@
 		gap: 12px;
 	}
 
-	/* With room for it, the four wallets sit two by two. The loading and error
-     states are a single item and take the full width. */
 	@media (min-width: 768px) {
 		.wallets {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			gap: 16px;
 		}
 
+		/* The loading and error states replace the cards and span both columns */
 		.wallets > .wallet-loading,
 		.wallets > .info-box {
 			grid-column: 1 / -1;
 		}
 
-		/* Cards in a row are the same height. A long address takes two lines and a
-       short one takes one, so each QR code sits at the foot of its card: that
-       keeps the codes in a row level with each other. */
+		/* Cards in a row stretch to the same height, but addresses wrap to one or
+       two lines. Pinning each QR code to the foot of its card keeps the codes level. */
 		.wallet-card {
 			display: flex;
 			flex-direction: column;
@@ -277,8 +299,8 @@
 		}
 	}
 
-	/* Desktop: the same two columns and the same gap as the tool pages, with the
-     explanation set in those two columns above the wallets */
+	/* Desktop: matches the 28px column gap of the tool pages' .workspace grid in
+     app.css, and sets the intro's two paragraphs in the same columns */
 	@media (min-width: 1024px) {
 		.wallets {
 			gap: 28px;
@@ -494,7 +516,6 @@
 		}
 	}
 
-	/* Fingers need a larger target than a mouse pointer does */
 	@media (pointer: coarse) {
 		.retry-btn {
 			min-height: 44px;

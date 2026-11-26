@@ -10,7 +10,7 @@
 		name: IconName;
 		/** Width and height in pixels */
 		size?: number;
-		/** Line thickness, in the icon's own 24 by 24 units */
+		/** Stroke width in viewBox units; the viewBox is 24 by 24 */
 		strokeWidth?: number;
 		class?: string;
 	} = $props();
@@ -28,6 +28,6 @@
 	stroke-linejoin="round"
 	aria-hidden="true"
 >
-	<!-- Safe as raw HTML: the drawings are fixed strings from this app's own source -->
+	<!-- {@html} is safe here: ICONS holds constant SVG markup from icons.ts, never user input -->
 	{@html ICONS[name]}
 </svg>

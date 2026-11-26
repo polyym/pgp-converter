@@ -23,10 +23,9 @@
 	let encrypted = $state('');
 	let signingKey = $state('');
 	let signingPassphrase = $state('');
-	// Who signed the message now in the output; undefined if it was sent unsigned
+	// The signer of the message in the output; undefined when it is unsigned
 	let signedBy = $state<KeyInfo>();
 
-	// Show whose keys have been pasted, shortly after the user stops typing
 	const recipients = createKeyInspector(() => publicKey, 'encrypt');
 	const signer = createKeyInspector(() => signingKey, 'sign');
 	const isSigning = $derived(signingKey.trim().length > 0);
@@ -45,7 +44,8 @@
 		canClear: () => !!(plaintext || publicKey || signingKey || signingPassphrase || encrypted),
 		onClear: clearAll,
 		copyable: () => encrypted,
-		// The passphrase unlocks the signing key but changes nothing in the message
+		// The passphrase only unlocks the signing key, so changing it does not make
+		// the result stale
 		resultInputs: () => [plaintext, publicKey, signingKey]
 	});
 
@@ -81,7 +81,7 @@
 	}
 
 	onMount(() => {
-		// A key just made on the Generate page arrives ready to use
+		// Prefills a public key passed on from the Generate page
 		const handed = takeKey();
 		if (handed?.publicKey) {
 			publicKey = handed.publicKey;

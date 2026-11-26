@@ -17,7 +17,7 @@ describe('missingForPreload', () => {
 		]);
 	});
 
-	it('should name each word that has gone', () => {
+	it('should name each missing directive', () => {
 		expect(missingForPreload('max-age=63072000; preload')).toEqual(['includeSubDomains']);
 		expect(missingForPreload('max-age=63072000; includeSubDomains')).toEqual(['preload']);
 	});

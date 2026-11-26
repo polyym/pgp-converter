@@ -31,7 +31,7 @@ describe('createIdleWatch', () => {
 		expect(state.cleared).toBe(1);
 	});
 
-	it('should start counting again whenever the user does something', () => {
+	it('should restart the timeout on activity', () => {
 		const { state, watch } = setup();
 		state.time = 10 * MINUTE;
 		watch.touch();
@@ -41,7 +41,7 @@ describe('createIdleWatch', () => {
 		expect(watch.check()).toBe(true);
 	});
 
-	it('should act only once for one idle spell', () => {
+	it('should act only once per idle period', () => {
 		const { state, watch } = setup();
 		state.time = 16 * MINUTE;
 		watch.check();
@@ -57,7 +57,7 @@ describe('createIdleWatch', () => {
 		expect(state.cleared).toBe(0);
 	});
 
-	it('should give a full spell to something that appears on a long-empty page', () => {
+	it('should give the full timeout to content that appears on a long-idle page', () => {
 		const { state, watch } = setup(false);
 		state.time = 60 * MINUTE;
 		watch.check();
@@ -68,7 +68,7 @@ describe('createIdleWatch', () => {
 		expect(watch.check()).toBe(true);
 	});
 
-	it('should catch up at once when a frozen page wakes after the limit', () => {
+	it('should act at once when a frozen page wakes after the timeout', () => {
 		const { state, watch } = setup();
 		// No checks ran while the page was frozen in the background
 		state.time = 3 * 60 * MINUTE;

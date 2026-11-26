@@ -8,12 +8,11 @@ import {
 	scriptSources
 } from './csp.ts';
 
-// The site's content policy names each page's start-up script by hash. If the
-// hashing or the reading of a page were wrong, no page would start, so both
-// are pinned here.
+// The CSP allows each page's start-up script by hash. A wrong hash, or a
+// script missed when reading a page, would stop every page from starting.
 
 describe('scriptHash', () => {
-	it('should give the hash the Content Security Policy specification gives for its own example', async () => {
+	it("should match the hash in the CSP specification's example", async () => {
 		expect(await scriptHash("alert('Hello, world.');")).toBe(
 			'sha256-qznLcsROx4GACP2dm0UCKCzCG+HiZ1guq6ZZDob/Tng='
 		);
@@ -25,43 +24,42 @@ describe('scriptHash', () => {
 });
 
 describe('inlineScripts', () => {
-	it('should find scripts written into the page, whatever their attributes', () => {
+	it('should find inline scripts whatever their other attributes', () => {
 		const html =
 			'<head><script>one()</script></head><body><script type="module" data-x="1">two()</script></body>';
 		expect(inlineScripts(html)).toEqual(['one()', 'two()']);
 	});
 
-	it('should leave out scripts loaded from a file', () => {
+	it('should skip scripts with a src attribute', () => {
 		expect(
 			inlineScripts('<script src="/a.js"></script><script type="module" src="/b.js"></script>')
 		).toEqual([]);
 	});
 
-	it('should leave out data that is not run, such as structured data for search engines', () => {
+	it('should skip data blocks such as JSON-LD', () => {
 		expect(
 			inlineScripts('<script type="application/ld+json">{"a":1}</script><script>run()</script>')
 		).toEqual(['run()']);
 	});
 
-	it('should keep the text exactly, spaces and line breaks included', () => {
+	it('should keep whitespace exactly', () => {
 		expect(inlineScripts('<script>\n\t a(); \n</script>')).toEqual(['\n\t a(); \n']);
 	});
 
-	it('should read line endings as a browser does', () => {
+	it('should turn CRLF and CR into LF, as the HTML parser does', () => {
 		expect(inlineScripts('<script>a();\r\nb();\rc();</script>')).toEqual(['a();\nb();\nc();']);
 	});
 });
 
 describe('the policy itself', () => {
-	it('should allow nothing that it does not name', () => {
+	it("should default to 'none'", () => {
 		expect(directives['default-src']).toEqual(['none']);
 	});
 
-	it('should name no other site anywhere', () => {
+	it('should list no other origin, remote scheme or wildcard', () => {
 		const lists = directives as Record<string, string[]>;
 		for (const [name, sources] of Object.entries(lists)) {
 			for (const source of sources) {
-				// Only this site, nothing, or a kind of content: never an address, a scheme for remote content, or a wildcard
 				expect(
 					['self', 'none', 'data:', 'unsafe-inline', 'wasm-unsafe-eval'],
 					`${name} lists ${source}`
@@ -74,7 +72,7 @@ describe('the policy itself', () => {
 		expect(directives['connect-src']).toEqual(['self']);
 	});
 
-	it('should allow data only as pictures, which is how the donation QR codes are drawn', () => {
+	it('should allow data: URLs for images only, for the donation QR codes', () => {
 		const lists = directives as Record<string, string[]>;
 		const withData = Object.entries(lists)
 			.filter(([, sources]) => sources.includes('data:'))
@@ -84,14 +82,14 @@ describe('the policy itself', () => {
 });
 
 describe('policyHeader', () => {
-	it('should never allow inline scripts or eval', () => {
+	it("should allow neither 'unsafe-inline' nor 'unsafe-eval'", () => {
 		const sources = scriptSources(policyHeader(['sha256-abc=']));
 		expect(sources).not.toContain("'unsafe-inline'");
 		expect(sources).not.toContain("'unsafe-eval'");
 		expect(directives['script-src']).not.toContain('unsafe-inline');
 	});
 
-	it('should name the given scripts and keeps this site as the only other source', () => {
+	it('should append the given hashes to script-src', () => {
 		expect(scriptSources(policyHeader(['sha256-abc=', 'sha256-def=']))).toEqual([
 			"'self'",
 			"'wasm-unsafe-eval'",
@@ -133,7 +131,7 @@ describe('policyProblem', () => {
 		expect(policyProblem(policyHeader(['sha256-other=']), page)).toMatch(/cannot start/);
 	});
 
-	it('should report a policy with no script rule', () => {
+	it('should report a policy with no script-src', () => {
 		expect(policyProblem("default-src 'self'", page)).toMatch(/no script-src/);
 	});
 });

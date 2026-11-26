@@ -9,17 +9,17 @@ function dataInside(script: string): unknown {
 }
 
 describe('toStructuredDataScript', () => {
-	it('should wrap the data in a script element that browsers do not run', () => {
+	it('should wrap the data in an application/ld+json script element', () => {
 		const script = toStructuredDataScript({ name: 'PGP Converter' });
 		expect(script.startsWith(OPENING)).toBe(true);
 		expect(script.endsWith(CLOSING)).toBe(true);
 	});
 
-	it('should give back the same data when the element is read', () => {
+	it('should keep the data unchanged through JSON.parse', () => {
 		expect(dataInside(toStructuredDataScript(WEB_APPLICATION_DATA))).toEqual(WEB_APPLICATION_DATA);
 	});
 
-	it('should not let the data end the element early', () => {
+	it('should escape "<" so the data cannot close the element', () => {
 		const script = toStructuredDataScript({ name: '</script><script>alert(1)</script>' });
 		expect(script.slice(OPENING.length, -CLOSING.length)).not.toContain('<');
 		expect(dataInside(script)).toEqual({ name: '</script><script>alert(1)</script>' });

@@ -4,9 +4,8 @@ const SECTION_SELECTOR = '.doc-body > section[id]';
 const TOP_BAR_SELECTOR = '.nav';
 
 /**
- * Finds the section of a long page that is being read, for marking it in
- * the list of contents.
- * @returns The id of that section, or undefined on a page without sections
+ * Returns the id of the section being read, for marking it in the table of
+ * contents, or undefined on a page without `.doc-body > section[id]` elements.
  */
 export function findCurrentSection(): string | undefined {
 	const sections = [...document.querySelectorAll<HTMLElement>(SECTION_SELECTOR)];
@@ -24,11 +23,11 @@ export function findCurrentSection(): string | undefined {
 }
 
 /**
- * Chooses the section being read from where each one starts on screen.
- * @param tops - How far down the window each section starts, in page order
- * @param line - How far down the window a section must have reached to count
- * @param isAtBottom - Whether the page is scrolled to its very end
- * @returns The position of the section in the list, or undefined if the list is empty
+ * Returns the index of the last section whose top is at or above `line`, or 0
+ * while none has reached it. At the bottom of the page it returns the last
+ * section instead. Returns undefined for an empty list.
+ * @param tops - Each section's top edge relative to the viewport, in CSS pixels and page order
+ * @param line - The viewport y coordinate a section's top must reach to count as current
  */
 export function pickSection(
 	tops: readonly number[],
@@ -38,11 +37,10 @@ export function pickSection(
 	if (tops.length === 0) {
 		return undefined;
 	}
-	// At the very bottom the last section may be too short to reach the line
+	// The last section may be too short ever to reach the line
 	if (isAtBottom) {
 		return tops.length - 1;
 	}
-	// The last section whose start has passed the line; the first until one has
 	let picked = 0;
 	for (const [index, top] of tops.entries()) {
 		if (top <= line) {

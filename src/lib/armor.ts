@@ -1,75 +1,79 @@
-/** How the first and the last line of an armored block open, and how both close */
 const FIRST_LINE_OPENING = '-----BEGIN PGP ';
 const LAST_LINE_OPENING = '-----END PGP ';
 const LINE_CLOSING = '-----';
-/** What the name of a block's kind is written in: "PUBLIC KEY BLOCK", "MESSAGE" */
+/** A character of the block type in a BEGIN or END line, such as "PUBLIC KEY BLOCK" */
 const KIND_CHARACTER = /[A-Z ]/;
 const KEY_KINDS: ReadonlySet<string> = new Set(['PUBLIC KEY BLOCK', 'PRIVATE KEY BLOCK']);
-/** A signed message that anyone can read. Its text is part of what was signed, so it is never rearranged. */
+/** BEGIN line of a cleartext signed message (RFC 9580 section 7) */
 export const CLEARTEXT_HEADER = '-----BEGIN PGP SIGNED MESSAGE-----';
-/** A line such as "Comment: made with GnuPG", which may sit between the first line and the data */
+/** An armour header such as "Comment: made with GnuPG" */
 const HEADER_LINE = /^[A-Za-z][A-Za-z-]*: \S/;
-/** The names such lines can have, used to find them again once they have run into the data */
+/** A KNOWN_HEADER key as one word, for finding the headers of a block flattened onto one line */
 const HEADER_NAME = /^(?:Version|Comment|Hash|Charset|MessageID):$/i;
-/** How the data itself begins: letters, digits, "+" and "/" only, for longer than any word of a comment runs */
+/**
+ * 32 Base64 characters in a row, taken as the start of the data. A header value
+ * rarely holds a word that long, but one can: rebuildBlock misreads a Comment
+ * holding a fingerprint written without spaces as data.
+ */
 const DATA_START = /^[A-Za-z0-9+/]{32}/;
-/** The lines that open and close a message, and the signature inside a signed message that anyone can read */
 const MESSAGE_FIRST_LINE = '-----BEGIN PGP MESSAGE-----';
 const MESSAGE_LAST_LINE = '-----END PGP MESSAGE-----';
 const SIGNATURE_FIRST_LINE = '-----BEGIN PGP SIGNATURE-----';
 const SIGNATURE_LAST_LINE = '-----END PGP SIGNATURE-----';
 /**
- * OpenPGP.js's own test for the first or the last line of a block, flag and
- * all. With that flag a line also starts and ends at the two Unicode line
- * separators, so text can share a line of the box with what the library reads
- * as a boundary.
+ * The regex that OpenPGP.js's unarmor() uses to find BEGIN and END lines. With
+ * the m flag, ^ and $ also match at U+2028 and U+2029, so the library can find
+ * a boundary in what a text box shows as one line with other text.
  */
 const LIBRARY_BOUNDARY = /^-----[^-]+-----$/m;
-/** A header line of one of the kinds the format names. One with nothing after its name holds no words. */
+/**
+ * An armour header with a key from RFC 9580 section 6.2.2, or MessageID, which
+ * RFC 4880 section 6.2 also defined and OpenPGP.js still recognises. An empty
+ * value holds no text, so it is allowed.
+ */
 const KNOWN_HEADER = /^(?:Version|Comment|MessageID|Hash|Charset):(?: |$)/;
-/** A line of the data that is not the last */
+/** A Base64 data line with no padding, as every line but the last must be */
 const DATA_LINE = /^[A-Za-z0-9+/]+$/;
 /**
- * The last line of the data, which may end in padding. In a block that had
- * lost every line break and was laid out again, the checksum follows on the
- * same line.
+ * The last data line, which may end in padding. A block whose line breaks were
+ * removed outright, not turned into spaces, is restored with its checksum on the
+ * end of this line. Every other data line matches too, so hasOtherText uses it to
+ * skip the whole data section and leaves the stricter checks to isEvenlyWrapped.
  */
 const LAST_DATA_LINE = /^[A-Za-z0-9+/]+={0,2}(?:=[A-Za-z0-9+/]{4})?$/;
-/** The checksum that may follow the data on a line of its own */
+/** The optional CRC-24 checksum line (RFC 9580 section 6.1) */
 const CHECKSUM_LINE = /^=[A-Za-z0-9+/]{4}$/;
-/** What the library takes for an empty line: its own list of spaces, less the carriage return, which is gone by then */
+/** OpenPGP.js's blank-line class without \r, which readAsLibraryDoes removes. Keep in sync with the library. */
 const BLANK_LINE = /^[ \f\t\u{A0}\u{2000}-\u{200A}\u{202F}\u{205F}\u{3000}]*$/u;
-/** Characters that draw nothing, such as a zero-width space or the mark old software ends a file with */
+/** Invisible characters, such as U+200B ZERO WIDTH SPACE and the DOS end-of-file marker U+001A */
 const INVISIBLE = /[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu;
 
-/** The first or the last line of a block, as found in a text */
+/** A BEGIN or END line, as string offsets into the text (end exclusive) */
 interface BlockLine {
-	/** The kind of block the line names */
+	/** Block type, such as "PUBLIC KEY BLOCK" */
 	kind: string;
-	/** Where the line starts in the text, and where it ends */
 	start: number;
-	end: number;
-}
-
-/** One armored block in a text: a key, a message or a signature */
-interface ArmorBlock {
-	kind: string;
-	/** Where the block's first line starts */
-	start: number;
-	/** Where what lies between its first and last lines starts, and where that ends */
-	bodyStart: number;
-	bodyEnd: number;
-	/** Where the block's last line ends */
 	end: number;
 }
 
 /**
- * Cleans up a pasted PGP block so that otherwise valid input still parses.
- * Removes the indentation and email quote markers ("> ") that mail clients,
- * forums and chat apps add to each line, normalises line endings, and puts
- * back line breaks that were turned into spaces or lost altogether.
- * @param text - Raw text pasted by the user
- * @returns The text with per-line prefixes and trailing whitespace removed, and each block on lines of its own
+ * One armoured block, as string offsets with exclusive ends. The body lies
+ * between the BEGIN and END lines.
+ */
+interface ArmorBlock {
+	kind: string;
+	start: number;
+	bodyStart: number;
+	bodyEnd: number;
+	end: number;
+}
+
+/**
+ * Cleans up pasted armour so that OpenPGP.js can parse it. Converts CRLF and CR
+ * to LF, strips the indentation and "> " quote marks that mail clients and
+ * forums add to each line, strips trailing whitespace, and restores the line
+ * breaks of any block that lost them (see restoreArmorLines). Returns the
+ * result trimmed.
  */
 export function normaliseArmor(text: string): string {
 	const cleaned = text
@@ -82,11 +86,10 @@ export function normaliseArmor(text: string): string {
 }
 
 /**
- * Splits pasted text into its individual armored key blocks.
- * OpenPGP.js reads only the first block of a string, so several keys pasted
+ * Returns each public or private key block in the text, BEGIN to END line, or
+ * the whole text as the only element when it holds no complete key block.
+ * OpenPGP.js reads only the first armoured block of a string, so keys pasted
  * one after another have to be parsed separately.
- * @param text - Normalised text that may contain one or more key blocks
- * @returns Each key block found, or the whole text if no complete block is present
  */
 export function splitKeyBlocks(text: string): string[] {
 	const blocks = findBlocks(text, KEY_KINDS);
@@ -94,27 +97,18 @@ export function splitKeyBlocks(text: string): string[] {
 }
 
 /**
- * Says whether a message that OpenPGP.js accepted came with anything else.
- * The library reads the first block it finds and passes over the rest without
- * a word: text above or below it, a second message, and text slipped in among
- * the block's own lines. None of that is part of the message, and no verdict
- * on the message is about it, so the page has to say that it was there.
+ * Returns false only when the text is one cleanly laid-out armoured message or
+ * cleartext signed message, and true for anything else. OpenPGP.js parses the
+ * first block it finds and silently skips text around it, a second block and
+ * some text inside it, so a signature verdict does not cover that text and the
+ * page has to warn about it.
  *
- * The answer is "no" only for text that is one message laid out as the format
- * describes, and "yes" for everything else. Following how the library finds a
- * block would have to be right about every text anyone can build. Describing
- * a clean message only has to be right about honest ones, and a wrong "yes"
- * costs a caution where a wrong "no" costs a green verdict beside unsigned
- * text.
- *
- * Three things are not seen. Words in a header line of a kind the format
- * names, such as a Comment: honest messages have those. White space and ">"
- * marks at the start of a line: that is how email programs quote. And text
- * among the data that is written in the data's own characters, which are
- * letters, digits, "+" and "/": OpenPGP.js can be made to pass over it, and
- * nothing tells it from data.
- * @param text - The message as it was handed to OpenPGP.js, which accepted it
- * @returns False if the text is one plainly laid-out message and nothing more
+ * It accepts a clean layout instead of imitating the library's parser, because
+ * a false positive only adds a warning, while a false negative shows a valid
+ * signature beside unsigned text. It does not flag the values of known armour
+ * headers, or words made only of Base64 characters placed among the data
+ * lines, which cannot be told apart from data.
+ * @param text - Exactly the text that OpenPGP.js accepted
  */
 export function hasOtherText(text: string): boolean {
 	const lines = dropBlankEnds(readAsLibraryDoes(text));
@@ -128,7 +122,8 @@ export function hasOtherText(text: string): boolean {
 		if (!isBlank(lines.at(index))) {
 			return true;
 		}
-		// The signed text runs to the first line the library takes for a boundary, which must be the signature's
+		// The signed text ends at the first line OpenPGP.js reads as a BEGIN or END
+		// line (dash-escaped lines do not match), and that must be the signature's.
 		index = skipWhile(lines, index + 1, (line) => !LIBRARY_BOUNDARY.test(line));
 		if (lines.at(index) !== SIGNATURE_FIRST_LINE) {
 			return true;
@@ -153,16 +148,11 @@ export function hasOtherText(text: string): boolean {
 }
 
 /**
- * Finds every complete block in a text: a first line, and the nearest last
- * line of the same kind after it. Blocks do not overlap.
- *
- * The text is read through once. Searching onwards from each first line for
- * its last line would read the rest of the text again for every first line
- * that has none, and a pasted megabyte of those would hold the page up for
- * seconds.
- * @param text - The text to search
- * @param kinds - The kinds of block to look for; every kind if left out
- * @returns The blocks, in the order they appear
+ * Pairs each BEGIN line with the nearest END line of the same type after it,
+ * skipping BEGIN lines inside a block already found, so blocks never overlap.
+ * Runs in one pass: searching forward from every BEGIN line is quadratic, and
+ * a pasted megabyte of unmatched BEGIN lines would freeze the page for seconds.
+ * @param kinds - Block types to look for; all types when omitted
  */
 function findBlocks(text: string, kinds?: ReadonlySet<string>): ArmorBlock[] {
 	const lastLines = new Map<string, BlockLine[]>();
@@ -175,8 +165,8 @@ function findBlocks(text: string, kinds?: ReadonlySet<string>): ArmorBlock[] {
 		}
 	}
 
-	// How far into each kind's last lines the search has come. First lines are
-	// taken in order, so it never has to go back.
+	// Per type, the index of the first END line not yet passed. BEGIN lines come
+	// in text order, so this index only moves forward.
 	const reached = new Map<string, number>();
 	const blocks: ArmorBlock[] = [];
 	let afterLastBlock = 0;
@@ -207,12 +197,7 @@ function findBlocks(text: string, kinds?: ReadonlySet<string>): ArmorBlock[] {
 	return blocks;
 }
 
-/**
- * Lists the first lines, or the last lines, of the blocks in a text
- * @param text - The text to search
- * @param opening - How such a line opens
- * @returns Each line found, in order, with the kind of block it names
- */
+/** Finds every BEGIN or END line, depending on `opening`, in text order. A match need not start a line. */
 function findBlockLines(text: string, opening: string): BlockLine[] {
 	const lines: BlockLine[] = [];
 	let start = text.indexOf(opening);
@@ -235,11 +220,10 @@ function findBlockLines(text: string, opening: string): BlockLine[] {
 }
 
 /**
- * Says whether the inside of a block is laid out as the format requires: any
- * header lines first, then an empty line, then the data.
+ * True when a block body still has its line breaks: the BEGIN and END lines on
+ * lines of their own, then any armour headers, then a blank line before the data.
  */
 function isLaidOut(body: string): boolean {
-	// The first and last lines of a block stand alone, so its inside starts and ends with a line break
 	if (!body.startsWith('\n') || !body.endsWith('\n')) {
 		return false;
 	}
@@ -249,17 +233,18 @@ function isLaidOut(body: string): boolean {
 }
 
 /**
- * Lays one block out again from whatever is left of it
- * @param type - What the block is, as its first line says: "PUBLIC KEY BLOCK", "MESSAGE"
- * @param body - Everything between the block's first and last lines
- * @returns The block with its lines restored, or undefined if it cannot be worked out
+ * Rebuilds a block whose line breaks were lost or turned into spaces: armour
+ * headers one per line, a blank line, then each remaining word on a line of its
+ * own. Returns undefined when the body is not headers followed by Base64 data,
+ * so the caller leaves the text as it was.
+ * @param type - Block type from the BEGIN line, such as "PUBLIC KEY BLOCK"
  */
 function rebuildBlock(type: string, body: string): string | undefined {
 	const lines = body.split('\n').filter((line) => line !== '');
 	const headers: string[] = [];
 
-	// Where the lines survived and only the empty one went missing, headers are still
-	// whole lines. One that has run into the data is taken apart below instead.
+	// When only the blank line was lost, headers are still whole lines. A line that
+	// also holds data is split up word by word below.
 	const isWholeHeader = (line: string) =>
 		HEADER_LINE.test(line) && line.split(/\s+/).every((word) => !DATA_START.test(word));
 	let wholeHeaders = 0;
@@ -268,7 +253,7 @@ function rebuildBlock(type: string, body: string): string | undefined {
 		wholeHeaders++;
 	}
 
-	// Every word that is left, and the number of the line it stood on
+	// lineOf[i] is the source line that words[i] came from
 	const words: string[] = [];
 	const lineOf: number[] = [];
 	for (const [lineNumber, line] of lines.slice(wholeHeaders).entries()) {
@@ -280,10 +265,10 @@ function rebuildBlock(type: string, body: string): string | undefined {
 			lineOf.push(lineNumber);
 		}
 	}
-	// Where everything ran together, a header is its name and the words up to the
-	// next name or the data. Words from the lines below the name stay on lines of
-	// their own: joined to it, they would pass for a header that somebody wrote,
-	// and hasOtherText could no longer see them.
+	// In a flattened block, a header is a known key plus the words up to the next
+	// key or the data. Words from a later source line stay on a line of their own:
+	// joined onto the header they would read as its value, which hasOtherText does
+	// not flag.
 	let next = 0;
 	while (next < words.length && HEADER_NAME.test(words[next])) {
 		const nameAt = next;
@@ -306,8 +291,8 @@ function rebuildBlock(type: string, body: string): string | undefined {
 		}
 	}
 
-	// What is left must be the data, and data opens with a long unbroken run.
-	// Anything else means this is not a block that lost its lines, and it is left as it was.
+	// The rest must be Base64 data opening with a long word. Anything else is not
+	// a block that lost its line breaks, so it is left alone.
 	const data = words.slice(next);
 	if (data.length === 0 || !DATA_START.test(data[0])) {
 		return undefined;
@@ -322,13 +307,14 @@ function rebuildBlock(type: string, body: string): string | undefined {
 }
 
 /**
- * Puts back the line breaks of a PGP block that has lost them: shown by a web
- * page as one long line, pasted through a single-line box, or missing the
- * empty line after its first line. Nothing is missing from such a block.
- * @param text - Text whose lines have already been trimmed
- * @returns The text with every such block laid out again; blocks that were fine are untouched
+ * Restores the line breaks of every block that lost them, for example armour
+ * that a web page shows as one line, that went through a single-line input, or
+ * that lacks the blank line before the data. Blocks that are already laid out,
+ * or that cannot be rebuilt, are left as they are.
+ * @param text - Text whose lines are already trimmed
  */
 function restoreArmorLines(text: string): string {
+	// The signature covers the text of a cleartext signed message, so never reflow it
 	if (text.includes(CLEARTEXT_HEADER)) {
 		return text;
 	}
@@ -340,7 +326,7 @@ function restoreArmorLines(text: string): string {
 		if (rebuilt === undefined) {
 			continue;
 		}
-		// The block's first and last lines must not share a line with anything else
+		// The BEGIN and END lines must stand on lines of their own
 		const before = block.start > 0 && text.charAt(block.start - 1) !== '\n' ? '\n' : '';
 		const after = block.end < text.length && text.charAt(block.end) !== '\n' ? '\n' : '';
 		pieces.push(text.slice(copiedTo, block.start), before, rebuilt, after);
@@ -350,16 +336,15 @@ function restoreArmorLines(text: string): string {
 		return text;
 	}
 	pieces.push(text.slice(copiedTo));
-	// Words that shared a line with a block are left with a space where the block was
+	// Text that shared a line with a block is left with a space beside the inserted
+	// line break, so trim it
 	return trimAroundLineBreaks(pieces.join(''));
 }
 
 /**
- * Removes the spaces and tabs on either side of every line break. Done by
- * hand: a pattern for "spaces before a line break" tries again from every
- * space of a long run that no line break follows.
- * @param text - The text to tidy
- * @returns The text with no space or tab next to a line break
+ * Removes the spaces and tabs on either side of every line break. A regex such
+ * as /[ \t]+\n/ would be quadratic on a long run of spaces with no line break
+ * after it, so this scans by hand.
  */
 function trimAroundLineBreaks(text: string): string {
 	const lines = text.split('\n');
@@ -384,9 +369,9 @@ function isSpaceOrTab(character: string): boolean {
 }
 
 /**
- * Splits a text into lines as OpenPGP.js does when it reads a block: every
- * carriage return gone, and no spaces or tabs at the end of a line. Other
- * white space stays, because the library keeps it.
+ * Splits text into lines as OpenPGP.js's unarmor() does: it removes every \r,
+ * not only those before \n, and trailing spaces and tabs, and keeps all other
+ * whitespace.
  */
 function readAsLibraryDoes(text: string): string[] {
 	return text
@@ -402,17 +387,15 @@ function readAsLibraryDoes(text: string): string[] {
 }
 
 /**
- * Says whether lines of data are wrapped as software wraps them. Every line
- * but the last is as long as the longest. A shorter one is allowed where the
- * next is full again or is the last, which is what a mail program leaves when
- * it wraps a block a second time. Only the last line may end in padding.
+ * True when Base64 data lines are wrapped at a fixed width, as an encoder writes
+ * them. Every line but the last has the full width, except that a short line may
+ * come before a full line or the last one, which is what a mail client leaves
+ * when it wraps armour again. Only the last line may have padding.
  *
- * A sentence fails this: where a block was laid out again, each of its words
- * has become a line, and they come one after another. The rule is needed
- * because such a sentence need not spoil the message. OpenPGP.js reads nothing
- * after the padding, and a sentence can be built for it to skip. Words in the
- * data's own characters that are set between full lines still pass, as
- * hasOtherText says.
+ * This catches a sentence after the data, which rebuildBlock turns into a run of
+ * short lines, one word each. Words made of Base64 characters can be chosen to
+ * decode to a packet that OpenPGP.js skips, such as a trust packet, so the
+ * message still verifies. A sentence after padding fails the padding rule instead.
  */
 function isEvenlyWrapped(lines: readonly string[]): boolean {
 	const allButLast = lines.filter((line) => line !== '').slice(0, -1);
@@ -429,7 +412,7 @@ function isEvenlyWrapped(lines: readonly string[]): boolean {
 	);
 }
 
-/** Leaves out the lines at either end that show nothing */
+/** Drops lines at either end that showsNothing matches, a looser test than isBlank */
 function dropBlankEnds(lines: readonly string[]): string[] {
 	let start = 0;
 	while (start < lines.length && showsNothing(lines[start])) {
@@ -442,17 +425,16 @@ function dropBlankEnds(lines: readonly string[]): string[] {
 	return lines.slice(start, end);
 }
 
-/** True for a line that the library reads as an empty one. A line that is not there is not one. */
+/** True when OpenPGP.js would read the line as blank. Undefined, past the last line, is not blank. */
 function isBlank(line: string | undefined): boolean {
 	return line !== undefined && BLANK_LINE.test(line);
 }
 
-/** True for a line that is empty, or holds only white space and characters that draw nothing */
 function showsNothing(line: string): boolean {
 	return line.replaceAll(INVISIBLE, '').trim() === '';
 }
 
-/** Moves on from a line for as long as the lines pass a test, and says where it stopped */
+/** Returns the index of the first line from `from` on that fails `passes`, or lines.length */
 function skipWhile(
 	lines: readonly string[],
 	from: number,

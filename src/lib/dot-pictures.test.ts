@@ -16,7 +16,7 @@ describe('pictureDots', () => {
 		}
 	});
 
-	it('should draw every picture differently, so that each word redraws the grid', () => {
+	it('should give every picture its own drawing', () => {
 		const drawings = DOT_PICTURE_NAMES.map((name) => pictureDots(name).join(','));
 		expect(new Set(drawings).size).toBe(DOT_PICTURE_NAMES.length);
 	});

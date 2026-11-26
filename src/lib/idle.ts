@@ -1,34 +1,27 @@
 export interface IdleWatchOptions {
-	/** How long without activity counts as idle, in milliseconds */
 	timeoutMs: number;
-	/** Whether there is anything on the page worth clearing */
+	/** Returns whether the page holds anything worth clearing */
 	isArmed: () => boolean;
-	/** What to do once the time is up */
 	onIdle: () => void;
-	/** The clock; replaced in tests */
+	/** Clock in milliseconds; tests replace it */
 	now?: () => number;
 }
 
 export interface IdleWatch {
-	/** Records that the user has just done something */
+	/** Records activity, restarting the timeout */
 	touch(): void;
-	/**
-	 * Runs the idle action if the time is up
-	 * @returns True if it ran
-	 */
+	/** Runs onIdle and returns true if the timeout has passed while armed */
 	check(): boolean;
 }
 
 /**
- * Keeps track of how long it has been since the user last did anything, and
- * acts once that has been too long. It holds no timer of its own: the caller
- * reports activity with touch() and asks with check(), which also works after
- * a phone has frozen the page in the background and woken it again.
- * @param options - The time limit, when it applies, and what to do
- * @returns The watch
+ * Returns an IdleWatch that starts no setTimeout or setInterval of its own: the
+ * caller reports activity with touch() and polls with check(). Because check()
+ * compares timestamps, it still fires on the first call after a phone wakes a
+ * page it froze in the background. After onIdle runs the timeout starts again,
+ * so it fires once per idle period.
  */
 export function createIdleWatch(options: IdleWatchOptions): IdleWatch {
-	// Read through Date each time, not captured once, so the page's clock is the only clock
 	const now = options.now ?? (() => Date.now());
 	let lastActivity = now();
 
@@ -37,7 +30,8 @@ export function createIdleWatch(options: IdleWatchOptions): IdleWatch {
 			lastActivity = now();
 		},
 		check() {
-			// With nothing to clear there is nothing to time; the clock starts when something appears
+			// Keep restarting while there is nothing to clear, so content that appears
+			// on a long-idle page gets the full timeout
 			if (!options.isArmed()) {
 				lastActivity = now();
 				return false;

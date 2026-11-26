@@ -1,7 +1,7 @@
 /**
- * Attributes that ask writing-assistant extensions (Grammarly, LanguageTool)
- * to leave a field alone. They check text by sending it to their own servers.
- * This is a request, not a lock: an extension is free to ignore it.
+ * Attributes that ask the Grammarly and LanguageTool extensions to skip a field,
+ * because they send its text to their servers for checking. Extensions honour
+ * them voluntarily; nothing enforces them.
  */
 export const KEEP_ASSISTANTS_OUT = {
 	'data-gramm': 'false',

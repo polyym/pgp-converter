@@ -14,14 +14,14 @@ import { checkSignatures, PRIVATE_KEY_AS_SENDER_ERROR, type SignatureCheck } fro
 export interface DecryptionResult {
 	success: boolean;
 	data?: string;
-	/** True when the message carried at least one digital signature */
+	/** True when the message carries at least one signature, whether or not it verified */
 	isSigned?: boolean;
 	/** The result of checking each signature against the sender's keys; empty if the message is unsigned */
 	signatures?: SignatureCheck[];
-	/** True when the text held anything besides the message. The verdicts are not about that. */
+	/** True when the pasted text holds more than the message. The signature verdicts do not cover the rest. */
 	hasOtherText?: boolean;
 	error?: string;
-	/** The input the error is about, when it is about one in particular */
+	/** The input field to highlight; undefined when the error is not about one input */
 	errorField?: 'encrypted' | 'privateKey' | 'passphrase' | 'senderKey';
 }
 
@@ -36,7 +36,11 @@ export const PASSPHRASE_REQUIRED_ERROR =
 export const SIGNED_NOT_ENCRYPTED_ERROR =
 	'This is a signed message, not an encrypted one: anyone can read it as it is. To check who signed it, use the Verify page.';
 
-/** Errors that are about the message itself, though they only surface once decryption is tried */
+/**
+ * User-facing errors for faults in the message. When OpenPGP.js reports one from
+ * decrypt(), at the 'operation' stage, which FIELD_FOR_STAGE maps to no field, the
+ * error still goes under the message field.
+ */
 const MESSAGE_ERRORS: ReadonlySet<string> = new Set([
 	PASSWORD_ONLY_MESSAGE_ERROR,
 	NOT_ENCRYPTED_MESSAGE_ERROR,
@@ -44,13 +48,13 @@ const MESSAGE_ERRORS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Decrypts a PGP encrypted message using a private key and passphrase,
- * and checks its signature when the sender's public key is supplied
- * @param armoredMessage - The armored PGP encrypted message
- * @param armoredPrivateKey - The armored PGP private key
- * @param passphrase - The passphrase to unlock the private key; ignored if the key is not protected
- * @param armoredSenderKeys - Public keys of the people who may have signed the message; leave empty to skip the check
- * @returns DecryptionResult with the decrypted message or error
+ * Decrypts an armoured message and checks its signatures against the sender's
+ * public keys. Every input is cleaned up with normaliseArmor first, so quoted,
+ * indented or reflowed text is accepted. Never throws: a failure returns a
+ * user-facing error and the field to highlight.
+ * @param armoredPrivateKey - may also hold the public key, as the combined key pair file does
+ * @param passphrase - ignored when the private key is not protected
+ * @param armoredSenderKeys - public keys of possible signers; without them each signature's key is unknown
  */
 export async function decryptMessage(
 	armoredMessage: string,
@@ -59,7 +63,8 @@ export async function decryptMessage(
 	armoredSenderKeys = ''
 ): Promise<DecryptionResult> {
 	let stage: ErrorStage = 'private-key';
-	// Errors from the sender's key must not be described as problems with the reader's own key
+	// 'verify' while the sender's keys are read, so their errors are not worded as
+	// problems with the reader's own key
 	let context: 'decrypt' | 'verify' = 'decrypt';
 	try {
 		const usableKey = await readUsablePrivateKey(armoredPrivateKey, passphrase, (s) => (stage = s));
@@ -107,7 +112,7 @@ export async function decryptMessage(
 		}
 		const message = e instanceof Error ? e.message : String(e);
 		const error = getUserFriendlyError(message, context, stage);
-		// The step is updated from inside a callback, which the compiler cannot follow
+		// Widen to ErrorStage: narrowing does not see the assignment in the onStage callback
 		const failedAt = stage as ErrorStage;
 		const messageField = MESSAGE_ERRORS.has(error) ? 'encrypted' : undefined;
 		return {

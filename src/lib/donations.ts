@@ -12,7 +12,7 @@ export interface Wallet {
 	icon: string;
 }
 
-/** A coin that donations are taken in: its name, its colours and its logo */
+/** A coin the Donate page accepts, with its brand colours and its logo as SVG markup */
 export interface Coin {
 	name: string;
 	ticker: string;
@@ -21,6 +21,7 @@ export interface Coin {
 	icon: string;
 }
 
+// The address fields of the wallet proxy's JSON response
 interface ApiAddresses {
 	solana: string;
 	ethereum: string;
@@ -28,7 +29,7 @@ interface ApiAddresses {
 	bitcoin_native_segwit: string;
 }
 
-/** One address to show: the coin it is for, and the field of the API's answer that carries it */
+/** One address card: its coin and the response field it reads */
 interface WalletSlot {
 	id: string;
 	coin: Coin;
@@ -73,7 +74,7 @@ const BITCOIN: Coin = {
 /** The coins, in the order the Donate page lists them */
 export const COINS: readonly Coin[] = [SOLANA, ETHEREUM, BITCOIN];
 
-// The addresses to show, in display order. Bitcoin has two, in different formats.
+// In display order. Bitcoin has two addresses: Taproot and native SegWit.
 const WALLET_SLOTS: readonly WalletSlot[] = [
 	{ id: 'sol', coin: SOLANA, field: 'solana' },
 	{ id: 'eth', coin: ETHEREUM, field: 'ethereum' },
@@ -81,8 +82,10 @@ const WALLET_SLOTS: readonly WalletSlot[] = [
 	{ id: 'btc-segwit', coin: BITCOIN, field: 'bitcoin_native_segwit', badge: 'Native SegWit' }
 ];
 
-// Shape checks for each chain. They reject missing, truncated or garbled values
-// before anything is shown to a donor; they are not checksum validation.
+// Format checks: Base58 for Solana, 0x and 40 hex digits for Ethereum, and the
+// Bech32 alphabet for Bitcoin (bc1q with 38 data characters for P2WPKH or 58 for
+// P2WSH, bc1p with 58 for Taproot). They stop missing, truncated or garbled values
+// reaching a donor, but do not verify checksums.
 const ADDRESS_FORMATS: Record<keyof ApiAddresses, RegExp> = {
 	solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
 	ethereum: /^0x[0-9a-fA-F]{40}$/,
@@ -90,10 +93,10 @@ const ADDRESS_FORMATS: Record<keyof ApiAddresses, RegExp> = {
 	bitcoin_native_segwit: /^bc1q(?:[02-9ac-hj-np-z]{38}|[02-9ac-hj-np-z]{58})$/
 };
 
-// What every copy but the released site shows in place of the real addresses.
-// Each is about as long as a real one, so the cards keep their shape, and has
-// characters no chain allows, so no wallet will send to it. No two are alike:
-// the page tells which address was copied by its text.
+// Placeholders for test copies. Each is about as long as a real address, so the
+// cards keep their layout, and contains hyphens, which no chain's format allows, so
+// no wallet will send to it. They must all differ because the page identifies the
+// copied address by its text.
 const FAKE_ADDRESSES: ApiAddresses = {
 	solana: 'FAKE-SOLANA-ADDRESS-FAKE-FAKE-FAKE-FAKE-FAKE',
 	ethereum: 'FAKE-ETHEREUM-ADDRESS-FAKE-FAKE-FAKE-FAKE',
@@ -105,38 +108,39 @@ const FAKE_WALLETS: readonly Wallet[] = WALLET_SLOTS.map((slot) =>
 	toWallet(slot, FAKE_ADDRESSES[slot.field])
 );
 
-// The wallet proxy function at its default Netlify address: /.netlify/functions/
-// followed by the name of its file in netlify/functions. The proxy is locked to
-// this project's own wallet record. See the note in that file before moving it
-// to a custom path.
+// Netlify's default URL for netlify/functions/wallet-proxy.mts. Read the note at
+// the top of that file before giving the function a custom path.
 const WALLETS_ENDPOINT = '/.netlify/functions/wallet-proxy';
 
-// The statuses the host answers with while the wallet service is waking up
+// Statuses the page retries. The proxy answers 503 while the wallet service wakes and
+// never sends 502 or 504, so those can only come from Netlify, in front of the proxy.
 const WAKING_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
 // Dark modules on a light background, whatever the colour scheme. Inverted
 // codes look better on a dark page but many wallet scanners cannot read them.
 const QR_COLORS = { dark: '#111111', light: '#ffffff' };
-// A fake address has its code on the yellow that marks a dev build (--candidate
-// in app.css), so the code looks as fake as the address reads
+// Codes for fake addresses use the yellow that marks test copies (--candidate in app.css)
 const FAKE_QR_COLORS = { dark: '#111111', light: '#fde68a' };
 const QR_SIZE_PX = 160;
-// The quiet border around a code, in modules
+// Quiet zone, in modules
 const QR_MARGIN = 2;
 const ELLIPSIS = '\u{2026}';
 
-/** The one message donors see when addresses cannot be shown; internal errors stay internal */
+/**
+ * The only error the Donate page shows for a failed load. The cause is logged in
+ * development only.
+ */
 export const WALLET_LOAD_ERROR =
 	'Wallet addresses could not be loaded right now. Please try again in a few minutes.';
 
 export interface FetchWalletsOptions {
 	/** Cancels the request and any retries still to come */
 	signal?: AbortSignal;
-	/** Called on the first retry, so the page can say that the service is waking up */
+	/** Called once, before the first retry, so the page can say that the service is starting up */
 	onWaking?: () => void;
 }
 
 export interface LoadWalletsOptions extends FetchWalletsOptions {
-	/** True on every copy that is not the released site: it shows fake addresses */
+	/** True on a test copy, which shows fake addresses */
 	isFake: boolean;
 }
 
@@ -153,11 +157,10 @@ export interface WalletsResult {
 }
 
 /**
- * Gets the wallets the Donate page shows. Only the released site asks the
- * wallet service. A copy anywhere else has no key for the service and must
- * not pass for somewhere to send money, so it gets fake addresses.
- * @param options - Whether this is such a copy, and how to cancel the request
- * @returns The wallets to show, or the message to show in their place
+ * Returns the wallets for the Donate page: fake placeholders when `isFake` is
+ * set, otherwise whatever fetchWallets returns. Test copies get placeholders
+ * because they have no API key for the wallet service and must not look like a
+ * real place to send money. Never rejects.
  */
 export function loadWallets({ isFake, ...options }: LoadWalletsOptions): Promise<WalletsResult> {
 	return isFake
@@ -166,11 +169,9 @@ export function loadWallets({ isFake, ...options }: LoadWalletsOptions): Promise
 }
 
 /**
- * Turns an API response into the wallets to display.
- * A wallet is included only if its address is present and has the expected
- * shape for its chain, so one bad value never hides the others.
- * @param data - The parsed JSON body returned by the wallet API
- * @returns The wallets whose addresses passed validation, in display order
+ * Returns a wallet for each address in the parsed response body that is present
+ * and matches its chain's format, in display order. Accepts any value: a body of
+ * the wrong shape gives an empty list, and one bad address does not hide the others.
  */
 export function parseWallets(data: unknown): Wallet[] {
 	const addresses = isRecord(data) && isRecord(data.addresses) ? data.addresses : {};
@@ -185,11 +186,10 @@ export function parseWallets(data: unknown): Wallet[] {
 }
 
 /**
- * Fetches addresses from the API and merges them with the static UI config.
- * Retries for up to about 2.5 minutes if the service is waking up, and stops
- * at once when the signal is aborted (for example when the visitor leaves the page).
- * @param options - How to cancel, and what to call when the service is waking
- * @returns The wallets with valid addresses, or the message to show in their place
+ * Fetches the addresses from the wallet proxy. On a 502, 503 or 504 it retries
+ * every WALLET_RETRY_DELAY_MS, up to WALLET_MAX_RETRIES times, and aborting
+ * `signal` stops it at once. Never rejects: every failure, including a successful
+ * response with no valid address, returns WALLET_LOAD_ERROR.
  */
 export async function fetchWallets(options: FetchWalletsOptions = {}): Promise<WalletsResult> {
 	try {
@@ -203,21 +203,18 @@ export async function fetchWallets(options: FetchWalletsOptions = {}): Promise<W
 }
 
 /**
- * Truncates a wallet address for display, showing the first and last characters.
- * @param address - The full address
- * @param startChars - How many characters to keep from the start
- * @param endChars - How many characters to keep from the end
- * @returns The shortened address, with an ellipsis in the middle
+ * Shortens an address for display to its first `startChars` and last `endChars`
+ * characters, joined by an ellipsis. Expects an address longer than the two
+ * parts together; a shorter one comes back with characters repeated.
  */
 export function truncateAddress(address: string, startChars = 8, endChars = 6): string {
 	return `${address.slice(0, startChars)}${ELLIPSIS}${address.slice(-endChars)}`;
 }
 
 /**
- * Generates QR code data URLs for each wallet address.
- * @param wallets - The wallets to generate codes for
- * @param options - Whether the addresses are fake ones
- * @returns Data URLs keyed by wallet id; a wallet whose code failed is left out
+ * Returns a PNG data URL of each wallet's address as a QR code, keyed by wallet
+ * id. A wallet whose code fails to render is left out. With `isFake`, codes are
+ * drawn on the yellow that marks test copies.
  */
 export async function generateQrDataUrls(
 	wallets: readonly Wallet[],
@@ -226,8 +223,8 @@ export async function generateQrDataUrls(
 	const urls: Record<string, string> = {};
 	const color = isFake ? FAKE_QR_COLORS : QR_COLORS;
 
-	// The async wrapper turns a synchronous throw for one wallet into a rejection,
-	// so the others are still generated
+	// The async arrow turns a synchronous throw from toDataURL into a rejection,
+	// so allSettled still renders the other codes
 	const results = await Promise.allSettled(
 		wallets.map(async (wallet) =>
 			QRCode.toDataURL(wallet.address, { width: QR_SIZE_PX, margin: QR_MARGIN, color })
@@ -246,18 +243,17 @@ export async function generateQrDataUrls(
 	return urls;
 }
 
-/** Puts an address on the coin and the label of the place it is shown in */
 function toWallet({ id, coin, badge }: WalletSlot, address: string): Wallet {
 	return badge ? { ...coin, id, badge, address } : { ...coin, id, address };
 }
 
-/** Asks the wallet service for its addresses, waiting and asking again while it wakes up */
+/** Throws on any failure, including an abort. fetchWallets turns that into WALLET_LOAD_ERROR. */
 async function requestWallets({ signal, onWaking }: FetchWalletsOptions): Promise<Wallet[]> {
 	for (let attempt = 0; attempt <= WALLET_MAX_RETRIES; attempt++) {
 		const res = await fetch(WALLETS_ENDPOINT, { signal });
 
 		if (res.ok) {
-			// A body that is not JSON is treated like one with no addresses in it
+			// A body that is not JSON counts as one with no addresses
 			const data: unknown = await res.json().catch(() => null);
 			const wallets = parseWallets(data);
 			if (wallets.length === 0) {
@@ -276,6 +272,7 @@ async function requestWallets({ signal, onWaking }: FetchWalletsOptions): Promis
 		await wait(WALLET_RETRY_DELAY_MS, signal);
 	}
 
+	// Not reached: the last attempt returns or throws, which TypeScript cannot tell
 	throw new Error('The wallet service did not answer');
 }
 

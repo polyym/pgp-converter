@@ -2,10 +2,11 @@ import { tick } from 'svelte';
 import { onScreenKeyboard } from './stores/on-screen-keyboard.svelte.ts';
 
 /**
- * Brings a fresh result on screen; on a phone it would otherwise appear below
- * the fold.
- * @param element - Where the result is shown
- * @param shouldMoveFocus - Whether focus goes to it as well, so that screen readers announce it and an on-screen keyboard gets out of the way
+ * Scrolls a new result into view unless it is already wholly visible between the
+ * top bar and the bottom action bar; on a phone it would otherwise appear below
+ * the fold. With `shouldMoveFocus` it also takes focus, so a screen reader
+ * announces it and an on-screen keyboard closes. Does nothing when `element` is
+ * undefined.
  */
 export function revealResult(element: HTMLElement | undefined, shouldMoveFocus: boolean): void {
 	if (!element) {
@@ -19,7 +20,6 @@ export function revealResult(element: HTMLElement | undefined, shouldMoveFocus: 
 			? actions.getBoundingClientRect().top
 			: window.innerHeight;
 	const box = element.getBoundingClientRect();
-	// Leave the page alone when the whole result is already in view
 	if (box.top < navBottom || box.bottom > actionsTop) {
 		element.scrollIntoView({ block: 'start' });
 	}
@@ -29,9 +29,10 @@ export function revealResult(element: HTMLElement | undefined, shouldMoveFocus: 
 }
 
 /**
- * Takes the user to the field an error is about, opening the optional section
- * the field sits in if that is closed.
- * @param id - The id of the field
+ * Opens the details element that holds the field with this id, if it is closed,
+ * then focuses the field and scrolls its .field wrapper to the middle of the
+ * window. Waits for Svelte to apply pending updates first, such as the error
+ * message under the field, so the scroll lands in the right place.
  */
 export async function revealField(id: string): Promise<void> {
 	const element = document.getElementById(id);
@@ -44,32 +45,26 @@ export async function revealField(id: string): Promise<void> {
 	element?.closest('.field')?.scrollIntoView({ block: 'center' });
 }
 
-/**
- * Moves focus to a control and brings it into view.
- * @param selector - Matches the control
- */
+/** Scrolls the first element matching `selector` to the middle of the window and focuses it */
 export function revealControl(selector: string): void {
 	const control = document.querySelector<HTMLElement>(selector);
 	control?.scrollIntoView({ block: 'center' });
 	control?.focus({ preventScroll: true });
 }
 
-/**
- * Measures how much of the top of the window the top bar covers.
- * @returns The height in pixels that a result has to stay below
- */
+/** Returns how far down the window the top bar reaches, in CSS pixels */
 function topBarCover(): number {
 	const bar = document.querySelector('.nav');
 	if (!bar) {
 		return 0;
 	}
 	const box = bar.getBoundingClientRect();
-	// The bar scrolls away while an on-screen keyboard is open, and is back at
-	// the top of the window when the keyboard closes, which showing a result
-	// brings about
+	// While an on-screen keyboard is open the bar may be scrolled out of view, but
+	// revealing a result closes the keyboard and brings the bar back, so allow
+	// for its full height
 	if (onScreenKeyboard.isOpen) {
 		return box.height;
 	}
-	// In a short window it scrolls away for good, and the window's edge is the limit
+	// In a short window the bar can scroll away for good; then the top edge is the limit
 	return Math.max(0, box.bottom);
 }

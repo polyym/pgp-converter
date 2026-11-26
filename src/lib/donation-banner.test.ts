@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('donation banner cooldown', () => {
-	it('should stay away for a day once dismissed', () => {
+	it('should use a cooldown of one day', () => {
 		expect(DONATION_COOLDOWN_MS).toBe(24 * 60 * 60 * 1000);
 	});
 

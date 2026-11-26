@@ -19,7 +19,7 @@ async function createTestKeyPair(name = 'Test User') {
 }
 
 describe('encryptMessage', () => {
-	it('should successfully encrypt a message with a valid public key', async () => {
+	it('should encrypt a message to a public key', async () => {
 		const { publicKey } = await createTestKeyPair();
 		const result = await encryptMessage('Hello, World!', publicKey);
 
@@ -29,18 +29,17 @@ describe('encryptMessage', () => {
 		expect(result.error).toBeUndefined();
 	}, 15_000);
 
-	it('should return a user-friendly error for invalid public key', async () => {
+	it('should report an invalid public key', async () => {
 		const result = await encryptMessage('Hello', 'not-a-valid-key');
 
 		expect(result.success).toBe(false);
 		expect(result.error).toBeDefined();
 		expect(result.data).toBeUndefined();
-		// Should be a friendly message, not raw OpenPGP error
 		expect(result.error).not.toContain('Error encrypting message:');
 		expect(result.error).toContain('The public key appears to be invalid');
 	});
 
-	it('should return a user-friendly error for empty key', async () => {
+	it('should report an empty key', async () => {
 		const result = await encryptMessage('Hello', '');
 
 		expect(result.success).toBe(false);
@@ -56,7 +55,7 @@ describe('encryptMessage', () => {
 		expect(must(result.recipients)[0].fingerprint).toMatch(/^[0-9A-F ]+$/);
 	}, 15_000);
 
-	it('should refuse a private key instead of quietly using it', async () => {
+	it('should refuse a private key rather than encrypt to its public half', async () => {
 		const { privateKey } = await createTestKeyPair();
 		const result = await encryptMessage('Hello', privateKey);
 
@@ -118,7 +117,7 @@ describe('encryptMessage', () => {
 
 		expect(result.success).toBe(false);
 		expect(result.error).toContain('expired');
-		// Shown under the key box, where it stays, not in a message that fades
+		// Shown under the key box, where it stays, rather than in a toast that fades
 		expect(result.errorField).toBe('publicKey');
 	}, 15_000);
 
@@ -137,7 +136,7 @@ describe('encryptMessage', () => {
 	}, 15_000);
 
 	it('should explain that a short RSA key is no longer accepted', async () => {
-		// The library will only make a key this short when told the limit is lower
+		// OpenPGP.js generates an RSA key under its minRSABits of 2047 only when the limit is lowered
 		const weak = await generateKey({
 			type: 'rsa',
 			rsaBits: 1024,
@@ -153,7 +152,7 @@ describe('encryptMessage', () => {
 	}, 30_000);
 });
 
-describe("encryptMessage, when the box holds several copies of a recipient's key", () => {
+describe("encryptMessage, with several copies of a recipient's key", () => {
 	it('should refuse a key that any copy shows as revoked', async () => {
 		const alice = await makeDatedKey('Alice');
 
@@ -180,10 +179,10 @@ describe("encryptMessage, when the box holds several copies of a recipient's key
 		}
 	}, 15_000);
 
-	it('should refuse the file that holds both keys of a pair', async () => {
+	it('should refuse the combined key pair file', async () => {
 		const { publicKey, privateKey } = await createTestKeyPair();
 
-		// The public key comes first in that file
+		// combineKeyPair puts the public key first, so the first block alone would pass
 		const result = await encryptMessage('Hello', combineKeyPair(publicKey, privateKey));
 		expect(result.success).toBe(false);
 		expect(result.error).toBe(PRIVATE_KEY_ERROR);

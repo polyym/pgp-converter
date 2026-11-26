@@ -6,13 +6,13 @@
 	let {
 		currentPage
 	}: {
-		/** The page being shown; leave out where no entry should be marked */
+		/** Its link gets aria-current="page". Omit on pages with no link here, such as the error page. */
 		currentPage?: PageName;
 	} = $props();
 
-	// Moves keyboard focus to the page's content. Done here, not left to the
-	// link's address alone, so that it works every time it is used and leaves the
-	// address bar as it was. Without scripts the link still jumps to the content.
+	// Focus <main> from script instead of relying on the #main fragment, so a
+	// repeat press still works and the URL gains no fragment. Without JavaScript
+	// the href still jumps to the content.
 	function skipToContent(e: MouseEvent) {
 		const main = document.getElementById('main');
 		if (!main) {
@@ -25,9 +25,9 @@
 
 	let height = $state(0);
 
-	// The bar is pinned to the top and is taller on phones, where it has two rows.
-	// Publishing its real height lets anchor jumps, floating messages and the
-	// sticky result panel stop below it instead of underneath it.
+	// The sticky bar wraps to two rows on phones, so its height varies. app.css
+	// reads --nav-height for scroll-padding-top, the toast and the sticky result
+	// column, so that none of them ends up underneath the bar.
 	$effect(() => {
 		if (height) {
 			document.documentElement.style.setProperty('--nav-height', `${String(height)}px`);
@@ -57,8 +57,8 @@
 			{/each}
 		</nav>
 
-		<!-- Appears only when a newer version of the app has been fetched. Switching
-         reloads the page, so it waits for the visitor to ask. -->
+		<!-- Shown once a new service worker is waiting. Activating it reloads the
+		     page, so the switch waits for a click. -->
 		{#if appUpdate.isReady}
 			<button
 				type="button"

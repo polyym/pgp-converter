@@ -1,14 +1,22 @@
 <script lang="ts">
 	import { Icon, PageFrame, PageHeader, SEO } from '#lib/components/index.ts';
+	import { IDLE_CLEAR_MINUTES, NETLIFY_URL, REPOSITORY_URL, SITE_URL } from '#lib/constants.ts';
 	import { findCurrentSection } from '#lib/sections.ts';
 	import { appVersion } from '#lib/stores/app-version.svelte.ts';
+	import { siteAddress } from '#lib/stores/site-address.svelte.ts';
 	import { onMount } from 'svelte';
 
-	// The commit this build was made from, and the cryptography library it contains
 	const commit = __BUILD_COMMIT__;
 	const openpgpVersion = __OPENPGP_VERSION__;
+	const releasedHost = new URL(SITE_URL).hostname;
+	const IMAGE_NAME = 'ghcr.io/polyym/pgp-converter';
+	const IMAGE_PAGE_URL = `${REPOSITORY_URL}/pkgs/container/pgp-converter`;
+	const RUN_IT_YOURSELF_URL = `${REPOSITORY_URL}#run-it-yourself`;
+	// The verify commands check SITE_URL, or a self-hosted copy's own origin.
+	// isSelfHosted is false while prerendering, so window is only read in the browser.
+	const checkedSite = $derived(siteAddress.isSelfHosted ? window.location.origin : SITE_URL);
 
-	// The section nearest the top of the window, marked in the list of contents
+	// id of the section highlighted in the table of contents
 	let current = $state('about-this-app');
 
 	function markCurrentSection() {
@@ -108,7 +116,16 @@
 					</li>
 					<li>
 						The only outside request the app makes is for the donation addresses on the Donate page,
-						and it carries no user data
+						and it carries no user data. A self-hosted copy makes none
+					</li>
+					<li>
+						You can run your own copy, on your own machine or from the <a
+							href={IMAGE_PAGE_URL}
+							target="_blank"
+							rel="noopener noreferrer">Docker image</a
+						>
+						that each release publishes. The
+						<a href={RUN_IT_YOURSELF_URL} target="_blank" rel="noopener noreferrer">README</a> says how
 					</li>
 					<li>
 						The source code is on <a
@@ -122,10 +139,19 @@
 
 			<section class="section" id="hosting-privacy">
 				<h2>Privacy Policy</h2>
+				<!-- The policy covers the Netlify-hosted site, not a self-hosted copy's server -->
+				{#if siteAddress.isSelfHosted}
+					<p>
+						<strong>This copy is not served from {releasedHost}.</strong>
+						The policy below is
+						<a href="{SITE_URL}/about#hosting-privacy" rel="noreferrer">{releasedHost}'s</a>.
+						Whoever runs this copy decides what its server logs.
+					</p>
+				{/if}
 				<div class="info-box">
 					<p>
 						PGP Converter is hosted on <a
-							href="https://www.netlify.com/"
+							href={NETLIFY_URL}
 							target="_blank"
 							rel="noopener noreferrer">Netlify</a
 						>. Netlify's server logs give us aggregate figures such as page views, unique visitors
@@ -146,8 +172,9 @@
 							Once the app is on your device, the host sees that request but not which tool you open
 						</li>
 						<li>
-							A tool page left untouched for 15 minutes clears itself. The Generate page clears only
-							the passphrase and keeps the new keys, because nothing can bring a cleared key back
+							A tool page left untouched for {IDLE_CLEAR_MINUTES} minutes clears itself. The Generate
+							page clears only the passphrase and keeps the new keys, because nothing can bring a cleared
+							key back
 						</li>
 						<li>No client-side tracking scripts are loaded</li>
 						<li>
@@ -178,15 +205,24 @@
 						</li>
 					</ul>
 					<p>
-						<strong>If you would rather not rely on this,</strong> a trustworthy VPN hides your IP
-						address and approximate location from Netlify's logs. A VPN moves that trust to its
-						provider and does not make you anonymous. For anonymity, use
+						<strong>If you would rather not rely on this,</strong> run your own copy, on your own
+						machine or from the
+						<a href={IMAGE_PAGE_URL} target="_blank" rel="noopener noreferrer">Docker image</a>, as
+						the
+						<a href={RUN_IT_YOURSELF_URL} target="_blank" rel="noopener noreferrer">README</a>
+						describes. Once it runs, it sends nothing to Netlify or anyone else. Otherwise, a trustworthy
+						VPN hides your IP address and approximate location from Netlify's logs. A VPN moves that trust
+						to its provider and does not make you anonymous. For anonymity, use
 						<a href="https://www.torproject.org/" target="_blank" rel="noopener noreferrer"
 							>Tor Browser</a
 						>.
 						<a href="https://www.privacyguides.org/" target="_blank" rel="noopener noreferrer"
 							>Privacy Guides</a
-						> keeps recommendations for both.
+						>
+						and
+						<a href="https://awesome-privacy.xyz/" target="_blank" rel="noopener noreferrer"
+							>Awesome Privacy</a
+						> keep recommendations for both.
 					</p>
 				</div>
 			</section>
@@ -462,7 +498,7 @@
 						tabindex="0"
 						role="group"
 						aria-label="Commands that check a file"><code
-							>curl -O https://pgp-converter.com/_app/version.json
+							>curl -O {checkedSite}/_app/version.json
 gh attestation verify version.json --repo polyym/pgp-converter</code
 						></pre>
 					<p>
@@ -481,6 +517,25 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 							rel="noopener noreferrer">README</a
 						> gives the commands.
 					</p>
+				</div>
+
+				<div class="concept">
+					<h3>The Docker image is signed too</h3>
+					<p>
+						Each release is also published as a <a
+							href={IMAGE_PAGE_URL}
+							target="_blank"
+							rel="noopener noreferrer">Docker image</a
+						>, for running your own copy. Its files are the site's own for that version, byte for
+						byte, and it is signed in the same way. To check it:
+					</p>
+					<!-- .wraps makes this one wrap instead of scroll, so it needs no tabindex -->
+					<pre
+						class="verify-cmd wraps"
+						role="group"
+						aria-label="Command that checks the Docker image"><code
+							>gh attestation verify oci://{IMAGE_NAME}:{appVersion.release} --repo polyym/pgp-converter</code
+						></pre>
 				</div>
 
 				<div class="concept">
@@ -504,11 +559,13 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 				<div class="concept">
 					<h3>If the stakes are high</h3>
 					<p>
-						Run the app on your own machine, or use dedicated PGP software such as <a
-							href="https://gnupg.org/"
+						Run your own copy of the app, as the <a
+							href={RUN_IT_YOURSELF_URL}
 							target="_blank"
-							rel="noopener noreferrer">GnuPG</a
-						>.
+							rel="noopener noreferrer">README</a
+						>
+						describes, or use dedicated PGP software such as
+						<a href="https://gnupg.org/" target="_blank" rel="noopener noreferrer">GnuPG</a>.
 					</p>
 				</div>
 			</section>
@@ -572,6 +629,20 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 						</div>
 					</a>
 					<a
+						href="https://awesome-privacy.xyz/"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="resource"
+					>
+						<div class="resource-icon">
+							<Icon name="external" size={20} />
+						</div>
+						<div class="resource-content">
+							<strong>Awesome Privacy</strong>
+							<span>A curated list of privacy-respecting alternatives to everyday apps</span>
+						</div>
+					</a>
+					<a
 						href="https://www.privacyguides.org/"
 						target="_blank"
 						rel="noopener noreferrer"
@@ -610,8 +681,8 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 </PageFrame>
 
 <style>
-	/* Desktop: the list of sections stays beside the text, as the inputs stay
-     beside the result on the tool pages */
+	/* Desktop: the table of contents sticks beside the text, at the same offset
+     as the tool pages' result column (.workspace .result-column in app.css) */
 	@media (min-width: 1024px) {
 		.doc {
 			display: grid;
@@ -631,7 +702,8 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 		}
 	}
 
-	/* Jumps from "On this page" stop a little below the top bar, which the page keeps clear of */
+	/* Added to html's scroll-padding-top, which already keeps jumps clear of the
+     top bar, so a heading reached from the table of contents sits 12px below it */
 	.section {
 		margin-bottom: 40px;
 		scroll-margin-top: 12px;
@@ -668,7 +740,7 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 		color: var(--text);
 	}
 
-	/* Desktop only: there the list stays on screen beside the text */
+	/* The current-section highlight is desktop only, where the table of contents stays in view */
 	@media (min-width: 1024px) {
 		.toc-link {
 			padding: 4px 10px;
@@ -912,6 +984,10 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 	.verify-cmd code {
 		font-family: inherit;
 	}
+	.verify-cmd.wraps {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
 
 	@media (max-width: 380px) {
 		.section h2 {
@@ -927,7 +1003,6 @@ gh attestation verify version.json --repo polyym/pgp-converter</code
 		}
 	}
 
-	/* Fingers need a larger target than a mouse pointer does */
 	@media (pointer: coarse) {
 		.toc-grid {
 			row-gap: 0;

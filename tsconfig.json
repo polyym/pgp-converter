@@ -4,9 +4,8 @@
 		"sourceMap": true,
 		"strict": true
 	},
-	// The build scripts are TypeScript that Node runs as it is, and are checked
-	// with the rest
+	// Node runs the build scripts as TypeScript directly, so type-check them here
 	"include": ["src", "scripts", "vite.config.ts", "vitest.config.ts"],
-	// The service worker runs outside a page and has its own settings beside it
+	// Checked on its own (`npm run check`) with service worker globals, not the DOM
 	"exclude": ["src/service-worker"]
 }
